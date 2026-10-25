@@ -31,7 +31,7 @@ jobs:
       OUT: ${{ github.workspace }}/out
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Read region settings
         id: region
@@ -49,6 +49,7 @@ jobs:
 
       - name: Install tools
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           sudo apt-get update -qq
           sudo apt-get install -y -qq osmium-tool gdal-bin build-essential libsqlite3-dev zlib1g-dev
           git clone --depth 1 https://github.com/felt/tippecanoe.git "$WORK/tippecanoe"
@@ -59,12 +60,12 @@ jobs:
           osmium --version | head -1
           gdalinfo --version
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -75,6 +76,7 @@ jobs:
 
       - name: Download and clip OpenStreetMap data
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           curl -fsSL --retry 3 -o "$WORK/source.osm.pbf" "${{ steps.region.outputs.osm }}"
           osmium extract --strategy complete_ways -b "${{ steps.region.outputs.bbox }}" \
             "$WORK/source.osm.pbf" -o "$WORK/region.osm.pbf" --overwrite
@@ -88,8 +90,9 @@ jobs:
 
       - name: Download elevation (USGS 3DEP)
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           mkdir -p "$WORK/dem"
-          python3 pipeline/dem_tiles.py --bbox "${{ steps.region.outputs.bbox }}" \
+          python3 pipeline/dem_tiles.py --bbox="${{ steps.region.outputs.bbox }}" \
             --product "${{ steps.region.outputs.dem_product }}" > "$WORK/dem-urls.txt"
           cat "$WORK/dem-urls.txt"
           while read -r url; do
@@ -104,6 +107,7 @@ jobs:
 
       - name: Build topo basemap (Planetiler)
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           java -Xmx6g -jar "$WORK/planetiler.jar" \
             --osm-path="$WORK/region.osm.pbf" \
             --output="$OUT/topo.pmtiles" \
@@ -114,6 +118,7 @@ jobs:
 
       - name: Build contours (40 ft, index every 200 ft)
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           # 40 ft is exactly 12.192 m, so contour the metre DEM and convert labels to feet.
           gdal_contour -q -a ele_m -i 12.192 "$WORK/dem-region.tif" "$WORK/contours.gpkg"
           ogr2ogr -f GeoJSONSeq "$WORK/contours.geojsonl" "$WORK/contours.gpkg" -t_srs EPSG:4326 \
@@ -127,18 +132,21 @@ jobs:
 
       - name: Build terrain tiles (hillshade and elevation lookup)
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/terrain_rgb.py --dem "$WORK/dem-region.tif" \
-            --bbox "${{ steps.region.outputs.bbox }}" \
+            --bbox="${{ steps.region.outputs.bbox }}" \
             --minzoom 6 --maxzoom "${{ steps.region.outputs.terrain_max_zoom }}" \
             --out "$OUT/terrain.pmtiles"
 
       - name: Build water, trails, places and routing graph
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/build_osm_layers.py --pbf "$WORK/filtered.osm.pbf" \
-            --bbox "${{ steps.region.outputs.bbox }}" --dem "$WORK/dem-region.tif" --out "$OUT"
+            --bbox="${{ steps.region.outputs.bbox }}" --dem "$WORK/dem-region.tif" --out "$OUT"
 
       - name: Write manifest and check report
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/package.py --dir "$OUT" --region "$REGION" \
             --regions-file pipeline/regions.json --expect-trail "${{ inputs.expect_trail }}" \
             --summary "$WORK/summary.md"
@@ -146,8 +154,16 @@ jobs:
 
       - name: Publish release
         run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
           TAG="maps-${REGION}-$(date -u +%Y-%m-%d)-run${{ github.run_number }}"
           gh release create "$TAG" "$OUT"/* \
             --title "Map files: ${REGION} ($(date -u +%Y-%m-%d))" \
             --notes-file "$WORK/summary.md"
           echo "Release: $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report failure details
+        if: failure()
+        run: |
+          tail -n 60 "$WORK/build.log" 2>/dev/null | sed 's/%/%25/g' > "$WORK/tail.txt" || true
+          msg=$(awk '{printf "%s%%0A", $0}' "$WORK/tail.txt")
+          echo "::error title=Last build output::${msg}"
