@@ -1,0 +1,153 @@
+name: Build map files
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Region to build"
+        type: choice
+        options:
+          - cottonwood-canyon
+          - oregon
+        default: cottonwood-canyon
+      expect_trail:
+        description: "Trail name the check report should look for"
+        default: "Pinnacles"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-maps-${{ inputs.region }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      REGION: ${{ inputs.region }}
+      WORK: ${{ github.workspace }}/work
+      OUT: ${{ github.workspace }}/out
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read region settings
+        id: region
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os
+          r = json.load(open("pipeline/regions.json"))[os.environ["REGION"]]
+          print("bbox=" + ",".join(str(v) for v in r["bbox"]))
+          print("osm=" + r["osm_extract"])
+          print("dem_product=" + r["dem_product"])
+          print("max_zoom=" + str(r["max_zoom"]))
+          print("terrain_max_zoom=" + str(r["terrain_max_zoom"]))
+          EOF
+          mkdir -p "$WORK" "$OUT"
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osmium-tool gdal-bin build-essential libsqlite3-dev zlib1g-dev
+          git clone --depth 1 https://github.com/felt/tippecanoe.git "$WORK/tippecanoe"
+          make -C "$WORK/tippecanoe" -j"$(nproc)" >/dev/null
+          sudo make -C "$WORK/tippecanoe" install >/dev/null
+          gh release download --repo onthegomap/planetiler --pattern planetiler.jar --dir "$WORK"
+          tippecanoe --version
+          osmium --version | head -1
+          gdalinfo --version
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install Python packages
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Download and clip OpenStreetMap data
+        run: |
+          curl -fsSL --retry 3 -o "$WORK/source.osm.pbf" "${{ steps.region.outputs.osm }}"
+          osmium extract --strategy complete_ways -b "${{ steps.region.outputs.bbox }}" \
+            "$WORK/source.osm.pbf" -o "$WORK/region.osm.pbf" --overwrite
+          osmium tags-filter "$WORK/region.osm.pbf" \
+            w/highway n/highway=trailhead \
+            n/natural=spring,peak,water_point n/amenity=drinking_water,water_point,toilets \
+            n/man_made=water_well n/tourism=camp_site,viewpoint \
+            r/route=hiking,foot \
+            -o "$WORK/filtered.osm.pbf" --overwrite
+          osmium fileinfo -e "$WORK/region.osm.pbf" | grep -E "Number of (nodes|ways|relations)" || true
+
+      - name: Download elevation (USGS 3DEP)
+        run: |
+          mkdir -p "$WORK/dem"
+          python3 pipeline/dem_tiles.py --bbox "${{ steps.region.outputs.bbox }}" \
+            --product "${{ steps.region.outputs.dem_product }}" > "$WORK/dem-urls.txt"
+          cat "$WORK/dem-urls.txt"
+          while read -r url; do
+            # Tiles fully over the ocean don't exist; skip them.
+            curl -fsSL --retry 3 -o "$WORK/dem/$(basename "$url")" "$url" || echo "skipped $url"
+          done < "$WORK/dem-urls.txt"
+          ls -la "$WORK/dem"
+          gdalbuildvrt "$WORK/dem.vrt" "$WORK"/dem/*.tif
+          IFS=, read -r W S E N <<< "${{ steps.region.outputs.bbox }}"
+          gdalwarp -q -overwrite -te_srs EPSG:4326 -te "$W" "$S" "$E" "$N" \
+            -co COMPRESS=DEFLATE -co TILED=YES "$WORK/dem.vrt" "$WORK/dem-region.tif"
+
+      - name: Build topo basemap (Planetiler)
+        run: |
+          java -Xmx6g -jar "$WORK/planetiler.jar" \
+            --osm-path="$WORK/region.osm.pbf" \
+            --output="$OUT/topo.pmtiles" \
+            --bounds="${{ steps.region.outputs.bbox }}" \
+            --maxzoom="${{ steps.region.outputs.max_zoom }}" \
+            --download --download-dir="$WORK/planetiler-sources" \
+            --tmpdir="$WORK/planetiler-tmp" --force
+
+      - name: Build contours (40 ft, index every 200 ft)
+        run: |
+          # 40 ft is exactly 12.192 m, so contour the metre DEM and convert labels to feet.
+          gdal_contour -q -a ele_m -i 12.192 "$WORK/dem-region.tif" "$WORK/contours.gpkg"
+          ogr2ogr -f GeoJSONSeq "$WORK/contours.geojsonl" "$WORK/contours.gpkg" -t_srs EPSG:4326 \
+            -dialect SQLITE \
+            -sql "SELECT geom, CAST(ROUND(ele_m * 3.28084) AS INTEGER) AS ele_ft, CASE WHEN CAST(ROUND(ele_m * 3.28084) AS INTEGER) % 200 = 0 THEN 1 ELSE 0 END AS major FROM contour"
+          tippecanoe -o "$OUT/contours.pmtiles" -l contours -Z10 -z14 \
+            -j '{"contours":["any",[">=","$zoom",13],["==","major",1]]}' \
+            --simplification=4 --drop-densest-as-needed --no-tile-size-limit \
+            --attribution="Contours from USGS 3DEP" --name="TrailGuide contours" \
+            --force "$WORK/contours.geojsonl"
+
+      - name: Build terrain tiles (hillshade and elevation lookup)
+        run: |
+          python3 pipeline/terrain_rgb.py --dem "$WORK/dem-region.tif" \
+            --bbox "${{ steps.region.outputs.bbox }}" \
+            --minzoom 6 --maxzoom "${{ steps.region.outputs.terrain_max_zoom }}" \
+            --out "$OUT/terrain.pmtiles"
+
+      - name: Build water, trails, places and routing graph
+        run: |
+          python3 pipeline/build_osm_layers.py --pbf "$WORK/filtered.osm.pbf" \
+            --bbox "${{ steps.region.outputs.bbox }}" --dem "$WORK/dem-region.tif" --out "$OUT"
+
+      - name: Write manifest and check report
+        run: |
+          python3 pipeline/package.py --dir "$OUT" --region "$REGION" \
+            --regions-file pipeline/regions.json --expect-trail "${{ inputs.expect_trail }}" \
+            --summary "$WORK/summary.md"
+          cat "$WORK/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish release
+        run: |
+          TAG="maps-${REGION}-$(date -u +%Y-%m-%d)-run${{ github.run_number }}"
+          gh release create "$TAG" "$OUT"/* \
+            --title "Map files: ${REGION} ($(date -u +%Y-%m-%d))" \
+            --notes-file "$WORK/summary.md"
+          echo "Release: $TAG" >> "$GITHUB_STEP_SUMMARY"

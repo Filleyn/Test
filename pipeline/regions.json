@@ -1,0 +1,18 @@
+{
+  "cottonwood-canyon": {
+    "title": "Cottonwood Canyon State Park (test area, Pinnacles Trail)",
+    "bbox": [-120.62, 45.40, -120.36, 45.60],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/oregon-latest.osm.pbf",
+    "dem_product": "13",
+    "max_zoom": 15,
+    "terrain_max_zoom": 14
+  },
+  "oregon": {
+    "title": "All of Oregon",
+    "bbox": [-124.70, 41.95, -116.45, 46.30],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/oregon-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12
+  }
+}
