@@ -11,8 +11,8 @@ on:
           - oregon
         default: cottonwood-canyon
       expect_trail:
-        description: "Trail name the check report should look for"
-        default: "Pinnacles"
+        description: "Trail name the check report should look for (blank uses the region's default)"
+        default: ""
 
 permissions:
   contents: write
@@ -24,17 +24,20 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 350
     env:
       REGION: ${{ inputs.region }}
-      WORK: ${{ github.workspace }}/work
-      OUT: ${{ github.workspace }}/out
+      # /mnt has far more free space than the runner's main disk.
+      WORK: /mnt/work
+      OUT: /mnt/out
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
 
       - name: Read region settings
         id: region
+        env:
+          EXPECT: ${{ inputs.expect_trail }}
         run: |
           python3 - <<'EOF' >> "$GITHUB_OUTPUT"
           import json, os
@@ -44,8 +47,13 @@ jobs:
           print("dem_product=" + r["dem_product"])
           print("max_zoom=" + str(r["max_zoom"]))
           print("terrain_max_zoom=" + str(r["terrain_max_zoom"]))
+          print("contour_max_zoom=" + str(r.get("contour_max_zoom", 14)))
+          print("roads=" + r.get("roads", "all"))
+          print("expect_trail=" + (os.environ.get("EXPECT") or r.get("expect_trail", "")))
           EOF
-          mkdir -p "$WORK" "$OUT"
+          sudo mkdir -p "$WORK" "$OUT"
+          sudo chown -R "$USER" "$WORK" "$OUT"
+          df -h / /mnt
 
       - name: Install tools
         run: |
@@ -102,7 +110,7 @@ jobs:
           ls -la "$WORK/dem"
           gdalbuildvrt "$WORK/dem.vrt" "$WORK"/dem/*.tif
           IFS=, read -r W S E N <<< "${{ steps.region.outputs.bbox }}"
-          gdalwarp -q -overwrite -te_srs EPSG:4326 -te "$W" "$S" "$E" "$N" \
+          gdalwarp -q -overwrite -multi -wo NUM_THREADS=ALL_CPUS -te_srs EPSG:4326 -te "$W" "$S" "$E" "$N" \
             -co COMPRESS=DEFLATE -co TILED=YES "$WORK/dem.vrt" "$WORK/dem-region.tif"
 
       - name: Build topo basemap (Planetiler)
@@ -124,7 +132,7 @@ jobs:
           ogr2ogr -f GeoJSONSeq "$WORK/contours.geojsonl" "$WORK/contours.gpkg" -t_srs EPSG:4326 \
             -dialect SQLITE \
             -sql "SELECT geom, CAST(ROUND(ele_m * 3.28084) AS INTEGER) AS ele_ft, CASE WHEN CAST(ROUND(ele_m * 3.28084) AS INTEGER) % 200 = 0 THEN 1 ELSE 0 END AS major FROM contour"
-          tippecanoe -o "$OUT/contours.pmtiles" -l contours -Z10 -z14 \
+          tippecanoe -o "$OUT/contours.pmtiles" -l contours -Z10 -z"${{ steps.region.outputs.contour_max_zoom }}" \
             -j '{"contours":["any",[">=","$zoom",13],["==","major",1]]}' \
             --simplification=4 --drop-densest-as-needed --no-tile-size-limit \
             --attribution="Contours from USGS 3DEP" --name="TrailGuide contours" \
@@ -142,19 +150,24 @@ jobs:
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/build_osm_layers.py --pbf "$WORK/filtered.osm.pbf" \
-            --bbox="${{ steps.region.outputs.bbox }}" --dem "$WORK/dem-region.tif" --out "$OUT"
+            --bbox="${{ steps.region.outputs.bbox }}" --dem "$WORK/dem-region.tif" --out "$OUT" \
+            --roads "${{ steps.region.outputs.roads }}"
 
       - name: Write manifest and check report
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/package.py --dir "$OUT" --region "$REGION" \
-            --regions-file pipeline/regions.json --expect-trail "${{ inputs.expect_trail }}" \
+            --regions-file pipeline/regions.json --expect-trail "${{ steps.region.outputs.expect_trail }}" \
             --summary "$WORK/summary.md"
           cat "$WORK/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish release
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
+          # GitHub release files must be under 2 GB each.
+          big=$(find "$OUT" -type f -size +2000M -printf "%f %s\n")
+          if [ -n "$big" ]; then echo "::error title=File too large for a GitHub release::$big"; exit 1; fi
+          ls -la "$OUT"
           TAG="maps-${REGION}-$(date -u +%Y-%m-%d)-run${{ github.run_number }}"
           gh release create "$TAG" "$OUT"/* \
             --title "Map files: ${REGION} ($(date -u +%Y-%m-%d))" \

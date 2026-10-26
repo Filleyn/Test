@@ -33,6 +33,9 @@ ROUTABLE = {
     "service": "road", "tertiary": "road", "secondary": "road",
 }
 TRAIL_KINDS = {"trail", "track"}
+# Statewide builds leave out town streets and paved through-roads to keep the
+# routing graph small; forest roads (tracks, unclassified, service) stay in.
+TOWN_ROADS = {"living_street", "residential", "tertiary", "secondary"}
 
 WATER_TAGS = [
     ("natural", "spring", "spring"),
@@ -74,6 +77,31 @@ def encode_polyline(coords, precision=5):
     return "".join(out)
 
 
+def simplify(coords, tol=0.00003):
+    """Ramer-Douglas-Peucker on (lon, lat) pairs; tol in degrees (about 3 m)."""
+    if len(coords) < 3:
+        return coords
+    keep = [False] * len(coords)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(coords) - 1)]
+    while stack:
+        a, b = stack.pop()
+        (x1, y1), (x2, y2) = coords[a], coords[b]
+        dx, dy = x2 - x1, y2 - y1
+        norm = math.hypot(dx, dy) or 1e-12
+        best, idx = 0.0, None
+        for i in range(a + 1, b):
+            x0, y0 = coords[i]
+            d = abs(dy * x0 - dx * y0 + x2 * y1 - y2 * x1) / norm
+            if d > best:
+                best, idx = d, i
+        if idx is not None and best > tol:
+            keep[idx] = True
+            stack.append((a, idx))
+            stack.append((idx, b))
+    return [c for c, k in zip(coords, keep) if k]
+
+
 def is_foot_allowed(tags):
     foot = tags.get("foot")
     if foot in ("no", "private"):
@@ -91,10 +119,17 @@ def seasonal_flag(tags):
 
 
 class Elevation:
-    """Samples a DEM GeoTIFF in feet. Returns None everywhere if no DEM."""
+    """Samples a DEM GeoTIFF in feet. Returns None everywhere if no DEM.
+
+    The whole raster is read into memory when it fits (a statewide 1 arc-second
+    DEM is about 2 GB as float32), which is far faster than per-point reads.
+    """
+
+    MAX_IN_MEMORY = 3_500_000_000
 
     def __init__(self, path):
         self.ds = None
+        self.arr = None
         if path and os.path.exists(path):
             import rasterio
             from rasterio.warp import transform
@@ -103,6 +138,16 @@ class Elevation:
             self._transform = transform
             self.nodata = self.ds.nodata
             self.is_geographic = self.ds.crs is None or self.ds.crs.is_geographic
+            if self.ds.width * self.ds.height * 4 <= self.MAX_IN_MEMORY:
+                self.arr = self.ds.read(1, out_dtype="float32")
+                self.inv = ~self.ds.transform
+
+    def _valid(self, val):
+        if val != val:  # NaN
+            return False
+        if self.nodata is not None and val == self.nodata:
+            return False
+        return val > -1000
 
     def sample(self, coords):
         if self.ds is None or not coords:
@@ -111,12 +156,20 @@ class Elevation:
         if not self.is_geographic:
             xs, ys = self._transform("EPSG:4326", self.ds.crs, xs, ys)
         out = []
+        if self.arr is not None:
+            h, w = self.arr.shape
+            for x, y in zip(xs, ys):
+                col, row = self.inv * (x, y)
+                r, c = int(row), int(col)
+                if 0 <= r < h and 0 <= c < w:
+                    val = float(self.arr[r, c])
+                    out.append(val * FT_PER_M if self._valid(val) else None)
+                else:
+                    out.append(None)
+            return out
         for v in self.ds.sample(list(zip(xs, ys)), indexes=1):
             val = float(v[0])
-            if self.nodata is not None and val == self.nodata or val < -1000:
-                out.append(None)
-            else:
-                out.append(val * FT_PER_M)
+            out.append(val * FT_PER_M if self._valid(val) else None)
         return out
 
 
@@ -182,12 +235,13 @@ def in_bbox(lon, lat, bbox):
     return bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3]
 
 
-def build(pbf, bbox, dem_path, out_dir):
+def build(pbf, bbox, dem_path, out_dir, roads="all"):
     os.makedirs(out_dir, exist_ok=True)
     elev = Elevation(dem_path)
     way_routes = read_route_relations(pbf)
 
     water, pois, trails = [], [], []
+    trail_ways = 0
     ways = []  # (way_id, [node ids], [(lon, lat)], tags-subset)
     node_use = defaultdict(int)
 
@@ -231,6 +285,8 @@ def build(pbf, bbox, dem_path, out_dir):
             kind = ROUTABLE.get(hw)
             if not kind or not is_foot_allowed(tags):
                 continue
+            if roads == "minor" and hw in TOWN_ROADS:
+                continue
             refs, coords = [], []
             for n in obj.nodes:
                 if n.location.valid():
@@ -249,7 +305,10 @@ def build(pbf, bbox, dem_path, out_dir):
                 # Endpoints always count as junctions; shared nodes count twice.
                 node_use[r] += 2 if i in (0, len(refs) - 1) else 1
             if kind in TRAIL_KINDS:
-                trails.append(feature("LineString", [[round(x, 6), round(y, 6)] for x, y in coords], {
+                trail_ways += 1
+            # The search index keeps named trails only; unnamed ones are still on the map tiles.
+            if kind in TRAIL_KINDS and name:
+                trails.append(feature("LineString", [[round(x, 6), round(y, 6)] for x, y in simplify(coords)], {
                     "kind": kind, "highway": hw, "name": name, "routes": routes,
                     "osm_id": f"w{obj.id}",
                 }))
@@ -313,7 +372,8 @@ def build(pbf, bbox, dem_path, out_dir):
     stats = {
         "water_sources": len(water),
         "water_seasonal": sum(1 for w in water if w["properties"]["seasonal"]),
-        "trail_ways": len(trails),
+        "trail_ways": trail_ways,
+        "named_trail_ways": len(trails),
         "named_trails": len(named),
         "pois": len(pois),
         "graph_vertices": len(vertices),
@@ -333,9 +393,11 @@ def main():
     ap.add_argument("--bbox", required=True, help="west,south,east,north")
     ap.add_argument("--dem", help="Elevation GeoTIFF (metres) for climb and descent")
     ap.add_argument("--out", required=True, help="Output folder")
+    ap.add_argument("--roads", choices=["all", "minor"], default="all",
+                    help="minor leaves town streets out of the routing graph")
     args = ap.parse_args()
     bbox = [float(v) for v in args.bbox.split(",")]
-    stats = build(args.pbf, bbox, args.dem, args.out)
+    stats = build(args.pbf, bbox, args.dem, args.out, args.roads)
     json.dump(stats, sys.stdout, indent=2)
     print()
 

@@ -1,18 +1,34 @@
 {
   "cottonwood-canyon": {
     "title": "Cottonwood Canyon State Park (test area, Pinnacles Trail)",
-    "bbox": [-120.62, 45.40, -120.36, 45.60],
+    "bbox": [
+      -120.62,
+      45.4,
+      -120.36,
+      45.6
+    ],
     "osm_extract": "https://download.geofabrik.de/north-america/us/oregon-latest.osm.pbf",
     "dem_product": "13",
     "max_zoom": 15,
-    "terrain_max_zoom": 14
+    "terrain_max_zoom": 14,
+    "contour_max_zoom": 14,
+    "roads": "all",
+    "expect_trail": "Pinnacles"
   },
   "oregon": {
     "title": "All of Oregon",
-    "bbox": [-124.70, 41.95, -116.45, 46.30],
+    "bbox": [
+      -124.7,
+      41.95,
+      -116.45,
+      46.3
+    ],
     "osm_extract": "https://download.geofabrik.de/north-america/us/oregon-latest.osm.pbf",
     "dem_product": "1",
     "max_zoom": 14,
-    "terrain_max_zoom": 12
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Pacific Crest"
   }
 }

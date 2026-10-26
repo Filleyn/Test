@@ -51,14 +51,31 @@ def render_tile(src, tile):
     return buf.getvalue()
 
 
-def build(dem, bbox, minzoom, maxzoom, out, name):
+_src = None
+
+
+def _init_worker(dem):
+    global _src
+    _src = rasterio.open(dem)
+
+
+def _render(t):
+    data = render_tile(_src, mercantile.Tile(*t))
+    return (zxy_to_tileid(t[2], t[0], t[1]), data) if data is not None else None
+
+
+def build(dem, bbox, minzoom, maxzoom, out, name, workers=None):
+    import multiprocessing as mp
+
+    todo = [(t.x, t.y, t.z) for z in range(minzoom, maxzoom + 1) for t in mercantile.tiles(*bbox, zooms=z)]
+    print(f"rendering {len(todo)} terrain tiles")
     tiles = []
-    with rasterio.open(dem) as src:
-        for z in range(minzoom, maxzoom + 1):
-            for t in mercantile.tiles(*bbox, zooms=z):
-                data = render_tile(src, t)
-                if data is not None:
-                    tiles.append((zxy_to_tileid(t.z, t.x, t.y), data))
+    with mp.Pool(workers or mp.cpu_count(), initializer=_init_worker, initargs=(dem,)) as pool:
+        for i, result in enumerate(pool.imap_unordered(_render, todo, chunksize=16)):
+            if result is not None:
+                tiles.append(result)
+            if i and i % 2000 == 0:
+                print(f"  {i}/{len(todo)}", flush=True)
     if not tiles:
         raise SystemExit("No elevation data inside the bounding box")
     tiles.sort(key=lambda p: p[0])
