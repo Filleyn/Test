@@ -60,9 +60,8 @@ jobs:
             echo "TRAILGUIDE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
             echo "Signing with the private key from repository secrets."
           else
-            echo "TRAILGUIDE_KEYSTORE=${{ github.workspace }}/android/dev-signing.jks" >> "$GITHUB_ENV"
-            echo "TRAILGUIDE_KEYSTORE_PASSWORD=trailguide-dev" >> "$GITHUB_ENV"
-            echo "::notice::Signed with the development key in the repo. Add TRAILGUIDE_KEYSTORE_B64 and TRAILGUIDE_KEYSTORE_PASSWORD secrets to use a private key."
+            echo "::error title=Signing key missing::Add the repository secrets TRAILGUIDE_KEYSTORE_B64 and TRAILGUIDE_KEYSTORE_PASSWORD (Settings, Secrets and variables, Actions), then run this workflow again."
+            exit 1
           fi
 
       - name: Build APK

@@ -19,7 +19,7 @@ Every push to `android/` builds a new APK and publishes it as a release named `a
 
 After that the map, GPS and emergency screen work in airplane mode. New versions install over the old one.
 
-**Signing.** Builds are signed with a development key kept in this repo (`android/dev-signing.jks`), so updates install cleanly. To use a private key instead, add the repository secrets `TRAILGUIDE_KEYSTORE_B64` (base64 of a PKCS12 keystore with alias `trailguide`) and `TRAILGUIDE_KEYSTORE_PASSWORD`. Switching keys means uninstalling once.
+**Signing.** Builds are signed with a private key stored only in the repository secrets `TRAILGUIDE_KEYSTORE_B64` (base64 of a PKCS12 keystore with alias `trailguide`) and `TRAILGUIDE_KEYSTORE_PASSWORD`. The build stops with a clear error if they are missing. Keep a copy of the keystore somewhere safe: losing it means uninstalling and reinstalling the app to update.
 
 ## Phase 1: building the map files
 

@@ -232,9 +232,13 @@ fun MapScreen(
     Box(Modifier.fillMaxSize().background(Color(0xFFEFEEE2))) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
-        // Top: offline badge and layers button
+        // Top: offline badge and layers button, plus a notice when you're off the map
+        val bbox = remember(mapVersion) { vm.store.bbox() }
+        val outside = fix != null && bbox != null &&
+            (fix!!.lon < bbox[0] || fix!!.lat < bbox[1] || fix!!.lon > bbox[2] || fix!!.lat > bbox[3])
+        Column(Modifier.statusBarsPadding().padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
-            Modifier.statusBarsPadding().padding(16.dp).fillMaxWidth(),
+            Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -251,6 +255,28 @@ fun MapScreen(
             RoundButton(onClick = { showLayers = true }, description = "Map layers") {
                 Icon(Icons.Filled.Layers, contentDescription = null, tint = TG.Ink)
             }
+        }
+        if (outside && bbox != null) {
+            Surface(
+                onClick = {
+                    following = false
+                    headingUp = false
+                    map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.cameraMode = CameraMode.NONE
+                    val bounds = LatLngBounds.Builder()
+                        .include(LatLng(bbox[1], bbox[0])).include(LatLng(bbox[3], bbox[2])).build()
+                    map?.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 40))
+                },
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFFFFF4E5),
+                shadowElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text("You're outside your downloaded maps", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF6B3A00))
+                    Text("Tap to go to ${vm.store.title().substringBefore(" (")}.", fontSize = 13.sp, color = Color(0xFF6B3A00))
+                }
+            }
+        }
         }
 
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
