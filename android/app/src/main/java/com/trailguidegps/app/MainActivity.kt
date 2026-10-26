@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trailguidegps.app.data.Waypoint
 import com.trailguidegps.app.ui.EmergencyScreen
 import com.trailguidegps.app.ui.SavedScreen
+import com.trailguidegps.app.ui.SearchScreen
 import com.trailguidegps.app.ui.WaypointEditor
 import com.trailguidegps.app.ui.MapScreen
 import com.trailguidegps.app.ui.SetupScreen
@@ -37,13 +39,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         MapLibre.getInstance(this)
-        enableEdgeToEdge()
+        // Dark clock and status icons over the light map (the emergency screen switches them to light).
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+        )
 
         setContent {
             TrailGuideTheme {
                 var hasPermission by rememberSaveable { mutableStateOf(locationGranted()) }
                 var showEmergency by rememberSaveable { mutableStateOf(false) }
                 var showSaved by rememberSaveable { mutableStateOf(false) }
+                var showSearch by rememberSaveable { mutableStateOf(false) }
                 var editingFromSaved by remember { mutableStateOf<Waypoint?>(null) }
                 val mapsReady by vm.mapsReady.collectAsStateWithLifecycle()
                 val message by vm.message.collectAsStateWithLifecycle()
@@ -96,6 +103,7 @@ class MainActivity : ComponentActivity() {
                             onEmergency = { showEmergency = true },
                             onStartRecording = startRecording,
                             onOpenSaved = { showSaved = true },
+                            onOpenSearch = { showSearch = true },
                         )
                     } else {
                         SetupScreen(vm)
@@ -111,6 +119,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                    if (showSearch) SearchScreen(vm, onClose = { showSearch = false })
                     if (showEmergency) EmergencyScreen(vm, onClose = { showEmergency = false })
                 }
             }

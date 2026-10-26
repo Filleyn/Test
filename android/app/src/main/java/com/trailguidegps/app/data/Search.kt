@@ -1,0 +1,65 @@
+package com.trailguidegps.app.data
+
+import com.trailguidegps.app.geo.Geo
+
+/** One search hit: a trail (at its closest point to you) or a place. */
+data class SearchResult(
+    val name: String,
+    val kind: String,
+    val lat: Double,
+    val lon: Double,
+    val distanceM: Double,
+    val point: Features.Point? = null,
+)
+
+/** Offline search over the named places and trails in the map files. */
+object Search {
+    private const val LIMIT = 60
+
+    fun search(features: Features, query: String, refLat: Double, refLon: Double): List<SearchResult> {
+        val q = query.trim().lowercase()
+        if (q.isEmpty()) return emptyList()
+        val tokens = q.split(Regex("\\s+"))
+
+        fun score(name: String): Int? {
+            val n = name.lowercase()
+            if (!tokens.all { n.contains(it) }) return null
+            return when {
+                n.startsWith(q) -> 0
+                n.split(Regex("[^a-z0-9]+")).any { it.startsWith(tokens.first()) } -> 1
+                else -> 2
+            }
+        }
+
+        val hits = ArrayList<Pair<Int, SearchResult>>()
+        features.allPoints.forEach { p ->
+            val name = p.name ?: return@forEach
+            val s = score(name) ?: return@forEach
+            hits += s to SearchResult(name, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p)
+        }
+        features.trailsByName.forEach { (name, parts) ->
+            val s = score(name) ?: return@forEach
+            var best = Double.MAX_VALUE
+            var bestLat = 0.0
+            var bestLon = 0.0
+            for (t in parts) for (c in t.coords) {
+                val d = Geo.distanceM(refLat, refLon, c[1], c[0])
+                if (d < best) { best = d; bestLat = c[1]; bestLon = c[0] }
+            }
+            hits += s to SearchResult(name, "trail", bestLat, bestLon, best)
+        }
+        return hits.sortedWith(compareBy({ it.first }, { it.second.distanceM })).take(LIMIT).map { it.second }
+    }
+
+    /** Closest points of the given kinds, nearest first, within [maxM]. */
+    fun nearest(features: Features, kinds: Set<String>, refLat: Double, refLon: Double, n: Int = 8, maxM: Double = 32_000.0): List<SearchResult> =
+        features.allPoints.asSequence()
+            .filter { it.kind in kinds }
+            .map { p -> SearchResult(p.label, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p) }
+            .filter { it.distanceM <= maxM }
+            .sortedBy { it.distanceM }
+            .take(n)
+            .toList()
+
+    val WATER_KINDS = setOf("spring", "drinking_water", "water_point", "well")
+}

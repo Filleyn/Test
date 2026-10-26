@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,6 +70,7 @@ import com.trailguidegps.app.geo.Geo
 import com.trailguidegps.app.location.Fix
 import com.trailguidegps.app.data.TrackStore
 import com.trailguidegps.app.data.Waypoint
+import com.trailguidegps.app.map.MapIcons
 import com.trailguidegps.app.map.MapStyle
 import com.trailguidegps.app.record.Recording
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -86,13 +88,9 @@ import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import kotlin.math.roundToInt
 
-private data class Selected(val title: String, val subtitle: String, val lat: Double, val lon: Double)
+private typealias Selected = AppViewModel.SelectedPlace
 
-private val kindLabels = mapOf(
-    "spring" to "Spring", "water_point" to "Water point", "drinking_water" to "Drinking water",
-    "well" to "Well", "campsite" to "Campsite", "trailhead" to "Trailhead", "toilets" to "Toilets",
-    "viewpoint" to "Viewpoint", "peak" to "Peak", "trail" to "Trail", "track" to "Track",
-)
+private val kindLabels = com.trailguidegps.app.data.Features.KIND_LABELS
 
 private val layerNames = linkedMapOf(
     "hillshade" to "Hillshade",
@@ -111,6 +109,7 @@ fun MapScreen(
     onEmergency: () -> Unit,
     onStartRecording: () -> Unit,
     onOpenSaved: () -> Unit,
+    onOpenSearch: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -133,7 +132,11 @@ fun MapScreen(
     var headingUp by remember { mutableStateOf(false) }
     var cameraPlaced by remember { mutableStateOf(false) }
     var showLayers by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<Selected?>(null) }
+    val selected by vm.selected.collectAsStateWithLifecycle()
+    val waterNotes by vm.waterNotes.notes.collectAsStateWithLifecycle()
+    var editingNoteFor by remember { mutableStateOf<Selected?>(null) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val statusTopPx = androidx.compose.foundation.layout.WindowInsets.statusBars.getTop(density)
     val layerOn = remember { mutableStateMapOf<String, Boolean>().apply { MapStyle.GROUPS.keys.forEach { put(it, true) } } }
 
     DisposableEffect(lifecycleOwner) {
@@ -160,6 +163,10 @@ fun MapScreen(
             m.uiSettings.isRotateGesturesEnabled = true
             m.setMinZoomPreference(5.0)
             m.setMaxZoomPreference(17.5)
+            m.addOnCameraIdleListener {
+                val t = m.cameraPosition.target
+                if (t != null) vm.mapCenter = t.latitude to t.longitude
+            }
             m.addOnMapLongClickListener { latLng ->
                 editing = Waypoint(name = vm.waypoints.nextName(), lat = latLng.latitude, lon = latLng.longitude)
                 true
@@ -169,12 +176,12 @@ fun MapScreen(
                 val wpHit = m.queryRenderedFeatures(point, MapStyle.LAYER_WAYPOINTS).firstOrNull()
                 if (wpHit != null && wpHit.hasProperty("id")) {
                     selectedWaypointId = wpHit.getStringProperty("id")
-                    selected = null
+                    vm.select(null)
                     return@addOnMapClickListener true
                 }
                 selectedWaypointId = null
                 val hit = m.queryRenderedFeatures(point, "water-points", "places", "peaks", "trail-hit", "trail-hit-unnamed").firstOrNull()
-                selected = hit?.let { f ->
+                vm.select(hit?.let { f ->
                     fun prop(key: String): String? =
                         if (f.hasProperty(key) && !f.getProperty(key).isJsonNull) f.getProperty(key).asString else null
                     val kind = prop("kind") ?: when {
@@ -183,6 +190,7 @@ fun MapScreen(
                         else -> "trail"
                     }
                     val name = prop("name") ?: kindLabels[kind] ?: "Unnamed"
+                    val isWater = f.hasProperty("drinking_water") || kind in com.trailguidegps.app.data.Search.WATER_KINDS
                     val parts = mutableListOf(kindLabels[kind] ?: kind)
                     prop("ele_ft")?.toDoubleOrNull()?.let { parts += "%,d ft".format(it.roundToInt()) }
                     if (prop("seasonal") == "true") parts += "may be seasonal"
@@ -191,12 +199,21 @@ fun MapScreen(
                     Selected(
                         name, parts.joinToString(" · "),
                         geomPoint?.latitude() ?: latLng.latitude, geomPoint?.longitude() ?: latLng.longitude,
+                        osmId = prop("osm_id"), isWater = isWater,
                     )
-                }
+                })
                 hit != null
             }
             map = m
         }
+    }
+
+    // The map's north arrow sits under the search bar on the left, clear of the status bar.
+    LaunchedEffect(map, statusTopPx) {
+        val m = map ?: return@LaunchedEffect
+        val d = context.resources.displayMetrics.density
+        m.uiSettings.compassGravity = android.view.Gravity.TOP or android.view.Gravity.START
+        m.uiSettings.setCompassMargins((16 * d).toInt(), statusTopPx + (100 * d).toInt(), 0, 0)
     }
 
     // (Re)load the style whenever new map files are installed.
@@ -204,6 +221,7 @@ fun MapScreen(
         val m = map ?: return@LaunchedEffect
         style = null
         m.setStyle(Style.Builder().fromJson(MapStyle.build(vm.store))) { s ->
+            MapIcons.addAll(context, s)
             MapStyle.GROUPS.forEach { (group, ids) -> setVisible(s, ids, layerOn[group] != false) }
             if (!cameraPlaced) {
                 vm.store.bbox()?.let { b ->
@@ -318,13 +336,13 @@ fun MapScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
+            Surface(onClick = onOpenSearch, shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(8.dp).background(TG.Ok, CircleShape))
-                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = TG.Muted)
+                    Spacer(Modifier.width(10.dp))
                     Column {
-                        Text("Offline · ${vm.store.title().substringBefore(" (")}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
-                        vm.store.builtDate()?.let { Text("Map data built $it", fontSize = 12.sp, color = TG.Muted) }
+                        Text("Search trails, water, places", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+                        Text("Offline · ${vm.store.title().substringBefore(" (")} maps, ${vm.store.builtDate() ?: ""}", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
                     }
                 }
             }
@@ -378,7 +396,9 @@ fun MapScreen(
                 selectedWaypoint = selectedWaypointId?.let { id -> waypoints.firstOrNull { it.id == id } },
                 shownTrackName = shownTrack?.first?.let { id -> vm.tracks.summaries.value.firstOrNull { it.id == id }?.name },
                 recording = recording,
-                onCloseSelected = { selected = null; selectedWaypointId = null },
+                onCloseSelected = { vm.select(null); selectedWaypointId = null },
+                waterNote = selected?.osmId?.let { waterNotes[it] },
+                onEditNote = { editingNoteFor = selected },
                 onEditWaypoint = { editing = it },
                 onHideTrack = { vm.hideTrack() },
                 onRequestPermission = onRequestPermission,
@@ -392,6 +412,15 @@ fun MapScreen(
                 placeDescription = fix?.let { f -> features?.describe(f.lat, f.lon) },
             )
         }
+    }
+
+    editingNoteFor?.let { sel ->
+        WaterNoteDialog(
+            placeName = sel.title,
+            initial = vm.waterNotes.get(sel.osmId)?.text.orEmpty(),
+            onSave = { text -> sel.osmId?.let { vm.waterNotes.set(it, text) }; editingNoteFor = null },
+            onDismiss = { editingNoteFor = null },
+        )
     }
 
     editing?.let { w ->
@@ -468,6 +497,8 @@ private fun BottomPanel(
     hasLocationPermission: Boolean,
     gpsOn: Boolean,
     selected: Selected?,
+    waterNote: com.trailguidegps.app.data.WaterNotes.Note?,
+    onEditNote: () -> Unit,
     selectedWaypoint: Waypoint?,
     shownTrackName: String?,
     recording: Recording?,
@@ -517,11 +548,21 @@ private fun BottomPanel(
                     Column(Modifier.weight(1f)) {
                         Text(selected.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
                         Text(selected.subtitle, fontSize = 13.sp, color = TG.Muted)
+                        if (selected.isWater) {
+                            if (waterNote != null) {
+                                Text("Your note (${waterNote.date}): ${waterNote.text}", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
+                            } else {
+                                Text("Map data can't tell you if it's flowing. Check recent trip reports, and add a note when you visit.", fontSize = 13.sp, color = Color(0xFF6B3A00), modifier = Modifier.padding(top = 4.dp))
+                            }
+                        }
                         fix?.let { f ->
                             val d = Geo.distanceM(f.lat, f.lon, selected.lat, selected.lon)
                             val dir = Geo.compassPoint(Geo.bearingDeg(f.lat, f.lon, selected.lat, selected.lon))
                             Text("${Geo.formatDistance(d)} $dir of you (straight line)", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
                         }
+                    }
+                    if (selected.isWater && selected.osmId != null) {
+                        TextButton(onClick = onEditNote) { Text(if (waterNote == null) "Add note" else "Edit note", color = TG.Accent) }
                     }
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }

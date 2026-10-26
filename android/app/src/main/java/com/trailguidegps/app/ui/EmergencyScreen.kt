@@ -62,7 +62,13 @@ fun EmergencyScreen(vm: AppViewModel, onClose: () -> Unit) {
         val previous = window?.attributes?.screenBrightness
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window?.attributes = window?.attributes?.apply { screenBrightness = 1f }
+        // Light status bar icons on this dark screen.
+        val insets = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
+        insets?.isAppearanceLightStatusBars = false
+        insets?.isAppearanceLightNavigationBars = false
         onDispose {
+            insets?.isAppearanceLightStatusBars = true
+            insets?.isAppearanceLightNavigationBars = true
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             window?.attributes = window?.attributes?.apply {
                 screenBrightness = previous ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE

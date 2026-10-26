@@ -15,14 +15,32 @@ class Features private constructor(
     private val points: List<Point>,
     private val trails: List<Trail>,
 ) {
-    data class Point(val name: String, val kind: String, val lat: Double, val lon: Double)
+    /** A named or unnamed point: water source, campsite, peak, lake, town and so on. */
+    data class Point(
+        val name: String?,
+        val kind: String,
+        val lat: Double,
+        val lon: Double,
+        val osmId: String? = null,
+        val seasonal: Boolean = false,
+        val lastEdit: String? = null,
+        val isWater: Boolean = false,
+    ) {
+        val label: String get() = name ?: (Features.KIND_LABELS[kind] ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() })
+    }
     class Trail(val name: String, val coords: List<DoubleArray>)
 
     private val pointGrid = HashMap<Long, MutableList<Int>>()
     private val trailGrid = HashMap<Long, MutableList<Int>>()
 
+    /** Every point, including unnamed water sources, for "nearest" lists and search. */
+    val allPoints: List<Point> get() = points
+
+    /** Named trails grouped by name; one trail name often spans many map segments. */
+    val trailsByName: Map<String, List<Trail>> by lazy { trails.groupBy { it.name } }
+
     init {
-        points.forEachIndexed { i, p -> pointGrid.getOrPut(cell(p.lat, p.lon)) { mutableListOf() }.add(i) }
+        points.forEachIndexed { i, p -> if (p.name != null) pointGrid.getOrPut(cell(p.lat, p.lon)) { mutableListOf() }.add(i) }
         trails.forEachIndexed { i, t ->
             val cells = HashSet<Long>()
             t.coords.forEach { c -> cells += cell(c[1], c[0]) }
@@ -57,8 +75,8 @@ class Features private constructor(
             if (nearest != null) break
         }
         val near = nearest?.takeIf { it.second < 8000 }?.let { (p, d) ->
-            if (d < 30) "at ${p.name}"
-            else "${Geo.formatDistance(d)} ${Geo.compassPoint(Geo.bearingDeg(p.lat, p.lon, lat, lon))} of ${p.name}"
+            if (d < 30) "at ${p.label}"
+            else "${Geo.formatDistance(d)} ${Geo.compassPoint(Geo.bearingDeg(p.lat, p.lon, lat, lon))} of ${p.label}"
         }
         return when {
             onTrail != null && near != null -> "On $onTrail, $near"
@@ -71,16 +89,30 @@ class Features private constructor(
     companion object {
         private const val CELL = 0.02 // degrees, about 1.4 mi
 
+        val KIND_LABELS = mapOf(
+            "spring" to "Spring", "water_point" to "Water point", "drinking_water" to "Drinking water",
+            "well" to "Well", "campsite" to "Campsite", "trailhead" to "Trailhead", "toilets" to "Toilets",
+            "viewpoint" to "Viewpoint", "peak" to "Peak", "lake" to "Lake", "town" to "Town",
+            "waterfall" to "Waterfall", "hot_spring" to "Hot spring", "saddle" to "Saddle", "pass" to "Pass",
+            "shelter" to "Shelter", "trail" to "Trail", "track" to "Track",
+        )
+
         private fun key(row: Long, col: Long) = (row shl 32) xor (col and 0xffffffffL)
         private fun cell(lat: Double, lon: Double) = key(floor(lat / CELL).toLong(), floor(lon / CELL).toLong())
 
         fun load(store: MapStore): Features {
             val points = mutableListOf<Point>()
             for (name in listOf("water.geojson", "pois.geojson")) {
+                val isWater = name == "water.geojson"
                 readFeatures(store.file(name)) { props, type, coords ->
-                    val label = props["name"]
-                    if (type == "Point" && !label.isNullOrBlank() && coords.isNotEmpty()) {
-                        points += Point(label, props["kind"] ?: "", coords[0][1], coords[0][0])
+                    val label = props["name"]?.takeIf { it.isNotBlank() }
+                    // Unnamed water still matters ("nearest water"); other unnamed places don't.
+                    if (type == "Point" && coords.isNotEmpty() && (label != null || isWater)) {
+                        points += Point(
+                            label, props["kind"] ?: "", coords[0][1], coords[0][0],
+                            osmId = props["osm_id"], seasonal = props["seasonal"] == "true",
+                            lastEdit = props["last_edit"], isWater = isWater,
+                        )
                     }
                 }
             }

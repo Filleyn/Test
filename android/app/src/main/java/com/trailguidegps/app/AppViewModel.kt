@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.trailguidegps.app.data.Features
 import com.trailguidegps.app.data.Gpx
 import com.trailguidegps.app.data.MapStore
+import com.trailguidegps.app.data.SearchResult
 import com.trailguidegps.app.data.TrackPoint
+import com.trailguidegps.app.data.WaterNotes
 import com.trailguidegps.app.data.TrackStore
 import com.trailguidegps.app.data.Waypoint
 import com.trailguidegps.app.data.WaypointStore
@@ -123,6 +125,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun focusOn(points: List<Pair<Double, Double>>) { if (points.isNotEmpty()) _focus.value = Focus(points) }
+
+    // ---- Selection, search and water notes (phase 4) ----
+
+    /** Whatever is selected on the map (a spring, campsite, trail, search result). */
+    data class SelectedPlace(
+        val title: String,
+        val subtitle: String,
+        val lat: Double,
+        val lon: Double,
+        val osmId: String? = null,
+        val isWater: Boolean = false,
+    )
+    private val _selected = MutableStateFlow<SelectedPlace?>(null)
+    val selected: StateFlow<SelectedPlace?> = _selected.asStateFlow()
+    fun select(p: SelectedPlace?) { _selected.value = p }
+
+    val waterNotes = WaterNotes(app)
+
+    /** Map centre, used to sort search results when there's no GPS fix. */
+    @Volatile var mapCenter: Pair<Double, Double>? = null
+
+    fun searchReference(): Pair<Double, Double>? =
+        tracker.fix.value?.let { it.lat to it.lon } ?: mapCenter
+
+    fun openResult(r: SearchResult) {
+        val p = r.point
+        val parts = mutableListOf(Features.KIND_LABELS[r.kind] ?: r.kind)
+        if (p?.seasonal == true) parts += "may be seasonal"
+        p?.lastEdit?.let { parts += "map data edited $it" }
+        _selected.value = SelectedPlace(r.name, parts.joinToString(" · "), r.lat, r.lon, p?.osmId, p?.isWater == true)
+        focusOn(listOf(r.lat to r.lon))
+    }
 
     fun showTrack(id: String) {
         val (_, pts) = tracks.load(id) ?: return

@@ -123,3 +123,24 @@ fun StopRecordingDialog(defaultName: String, onSave: (String) -> Unit, onDiscard
         },
     )
 }
+
+@Composable
+fun WaterNoteDialog(placeName: String, initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Note for $placeName") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it },
+                    placeholder = { Text("e.g. Flowing, cold. Filtered 2 L.") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Saved on this phone with today's date. Leave it empty to remove the note.", fontSize = 12.sp, color = TG.Muted)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(text) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}

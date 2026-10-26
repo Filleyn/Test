@@ -57,6 +57,7 @@ object MapStyle {
             layers.put(l)
         }
         fun inClass(values: JSONArray) = arr("in", arr("get", "class"), arr("literal", values))
+        fun inKind(values: List<String>) = arr("in", arr("get", "kind"), arr("literal", JSONArray(values)))
         fun byZoom(vararg stops: Number) = JSONArray().put("interpolate").put(arr("linear")).put(arr("zoom")).apply { stops.forEach { put(it) } }
         fun halo(color: String, textColor: String, width: Double = 1.6) =
             JSONObject().put("text-color", textColor).put("text-halo-color", color).put("text-halo-width", width)
@@ -117,18 +118,19 @@ object MapStyle {
                 .put("text-field", arr("case", arr("has", "ele_ft"),
                     arr("concat", arr("coalesce", arr("get", "name"), "Peak"), "\n", arr("to-string", arr("get", "ele_ft")), " ft"),
                     arr("coalesce", arr("get", "name"), ""))))
-        layer("places", "circle", "pois", filter = arr("!=", arr("get", "kind"), "peak"), paint = JSONObject()
-            .put("circle-radius", 6)
-            .put("circle-color", arr("match", arr("get", "kind"), "campsite", "#B4491A", "trailhead", "#2F7A4B", "#6B716A"))
-            .put("circle-stroke-color", "#FFFFFF").put("circle-stroke-width", 2))
-        layer("place-labels", "symbol", "pois", filter = arr("all", arr("has", "name"), arr("!=", arr("get", "kind"), "peak")),
+        layer("places", "symbol", "pois", filter = inKind(ICON_KINDS),
+            layout = JSONObject().put("icon-image", arr("concat", "poi-", arr("get", "kind")))
+                .put("icon-allow-overlap", true).put("icon-size", 1))
+        layer("place-labels", "symbol", "pois", filter = arr("all", arr("has", "name"), inKind(ICON_KINDS)),
             paint = halo("#FFFFFF", "#23271F"),
             layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 11).put("text-offset", arr(0, 1.1))
                 .put("text-anchor", "top").put("text-field", arr("get", "name")), minzoom = 12.5)
-        layer("water-points", "circle", "water", paint = JSONObject().put("circle-radius", 7)
-            .put("circle-color", "#2E7DBF").put("circle-stroke-color", "#FFFFFF").put("circle-stroke-width", 2))
+        layer("water-points", "symbol", "water", layout = JSONObject()
+            .put("icon-image", arr("case", arr("==", arr("get", "seasonal"), true), "water-seasonal",
+                arr("match", arr("get", "kind"), "drinking_water", "water-tap", "water_point", "water-point", "well", "water-well", "water-spring")))
+            .put("icon-allow-overlap", true).put("icon-size", 1))
         layer("water-labels", "symbol", "water", paint = halo("#FFFFFF", "#1F5F92"),
-            layout = JSONObject().put("text-font", arr(ITALIC)).put("text-size", 11).put("text-offset", arr(0, 1.2))
+            layout = JSONObject().put("text-font", arr(ITALIC)).put("text-size", 11).put("text-offset", arr(0, 1.4))
                 .put("text-anchor", "top")
                 .put("text-field", arr("coalesce", arr("get", "name"),
                     arr("match", arr("get", "kind"), "spring", "Spring", "well", "Well", "Water"))),
@@ -157,6 +159,9 @@ object MapStyle {
             .put("layers", layers)
             .toString()
     }
+
+    /** Place kinds drawn with an icon; lakes and towns are labelled by the base map instead. */
+    val ICON_KINDS = listOf("campsite", "trailhead", "toilets", "shelter", "viewpoint", "waterfall", "hot_spring", "pass", "saddle")
 
     const val SRC_SHOWN_TRACK = "user-shown-track"
     const val SRC_RECORDING = "user-recording"
