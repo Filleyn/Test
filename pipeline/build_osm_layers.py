@@ -6,7 +6,7 @@ tag-filtered, see the workflow), plus an optional elevation GeoTIFF, and writes:
 
   water.geojson          springs, drinking water, water points and wells
   trails.geojson         trails, paths and tracks with names, for offline search
-  pois.geojson           peaks, trailheads, campsites, viewpoints, for search
+  pois.geojson           peaks, trailheads, campsites, lakes, towns and more, for search
   routing-graph.json.gz  network of junctions and segments for route planning
 
 Lengths are in miles and elevations in feet, matching the app.
@@ -50,6 +50,16 @@ POI_TAGS = [
     ("tourism", "camp_site", "campsite"),
     ("tourism", "viewpoint", "viewpoint"),
     ("amenity", "toilets", "toilets"),
+    ("waterway", "waterfall", "waterfall"),
+    ("natural", "hot_spring", "hot_spring"),
+    ("natural", "saddle", "saddle"),
+    ("mountain_pass", "yes", "pass"),
+    ("tourism", "alpine_hut", "shelter"),
+    ("amenity", "shelter", "shelter"),
+    ("place", "city", "town"),
+    ("place", "town", "town"),
+    ("place", "village", "town"),
+    ("place", "hamlet", "town"),
 ]
 
 
@@ -231,6 +241,44 @@ def read_route_relations(pbf):
     return way_routes
 
 
+def read_lakes(pbf, bbox):
+    """Named lakes and reservoirs as label points, from water areas (ways and multipolygons)."""
+    lakes = []
+    seen = set()
+    for obj in osmium.FileProcessor(pbf).with_areas():
+        if not obj.is_area():
+            continue
+        tags = obj.tags
+        if tags.get("natural") != "water" and tags.get("landuse") != "reservoir":
+            continue
+        name = tags.get("name")
+        if not name:
+            continue
+        best, best_area = None, 0.0
+        for ring in obj.outer_rings():
+            pts = [(n.lon, n.lat) for n in ring if n.location.valid()]
+            if len(pts) < 3:
+                continue
+            area = abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]))) / 2
+            if area >= best_area:
+                best, best_area = pts, area
+        if not best:
+            continue
+        lon = sum(p[0] for p in best) / len(best)
+        lat = sum(p[1] for p in best) / len(best)
+        key = (name, round(lon, 3), round(lat, 3))
+        if key in seen or not in_bbox(lon, lat, bbox):
+            continue
+        seen.add(key)
+        water_kind = tags.get("water") or ("reservoir" if tags.get("landuse") == "reservoir" else "lake")
+        acres = best_area * (111320 * math.cos(math.radians(lat))) * 110540 / 4046.86
+        lakes.append(feature("Point", [round(lon, 6), round(lat, 6)], {
+            "kind": "lake", "name": name, "water": water_kind, "acres": round(acres, 1),
+            "osm_id": f"{'w' if obj.from_way() else 'r'}{obj.orig_id()}",
+        }))
+    return lakes
+
+
 def in_bbox(lon, lat, bbox):
     return bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3]
 
@@ -364,6 +412,8 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
 
     write_geojson("water.geojson", water)
     write_geojson("trails.geojson", trails)
+    lakes = read_lakes(pbf, bbox)
+    pois.extend(lakes)
     write_geojson("pois.geojson", pois)
     with gzip.open(os.path.join(out_dir, "routing-graph.json.gz"), "wt") as f:
         json.dump(graph, f, separators=(",", ":"))
@@ -376,6 +426,7 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
         "named_trail_ways": len(trails),
         "named_trails": len(named),
         "pois": len(pois),
+        "lakes": len(lakes),
         "graph_vertices": len(vertices),
         "graph_edges": len(edges),
         "graph_miles": round(sum(e[2] for e in edges), 1),

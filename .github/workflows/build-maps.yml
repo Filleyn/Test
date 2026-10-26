@@ -91,7 +91,9 @@ jobs:
           osmium tags-filter "$WORK/region.osm.pbf" \
             w/highway n/highway=trailhead \
             n/natural=spring,peak,water_point n/amenity=drinking_water,water_point,toilets \
-            n/man_made=water_well n/tourism=camp_site,viewpoint \
+            n/man_made=water_well n/tourism=camp_site,viewpoint,alpine_hut \
+            n/waterway=waterfall n/natural=hot_spring,saddle n/mountain_pass=yes n/amenity=shelter \
+            n/place=city,town,village,hamlet wr/natural=water wr/landuse=reservoir \
             r/route=hiking,foot \
             -o "$WORK/filtered.osm.pbf" --overwrite
           osmium fileinfo -e "$WORK/region.osm.pbf" | grep -E "Number of (nodes|ways|relations)" || true
