@@ -1,7 +1,7 @@
 # Pipeline working folders and outputs (published as GitHub Releases instead)
-work/
-out/
-data/
+/work/
+/out/
+/data/
 *.pmtiles
 *.osm.pbf
 __pycache__/
