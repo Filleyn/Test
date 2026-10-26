@@ -73,14 +73,14 @@ jobs:
 
       - name: Publish release
         run: |
-          VERSION="0.2.${{ github.run_number }}"
+          VERSION="$(tr -d '[:space:]' < android/version.txt).${{ github.run_number }}"
           APK="$RUNNER_TEMP/TrailGuideGPS-$VERSION.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "$APK"
           MAPLIBRE=$(grep -m1 -o "org.maplibre.gl:android-sdk:[^ ]*" "$LOG" | tail -1 || true)
           {
             echo "## TrailGuide GPS $VERSION"
             echo
-            echo "Install on the Pixel: open this page on the phone, tap the .apk file below, and allow installs from your browser when asked."
+            echo "Install on the Pixel: open this page on the phone, tap the .apk file below, and allow installs from your browser when asked. It installs over the previous version."
             echo
             echo "Built from commit ${GITHUB_SHA::7}. ${MAPLIBRE}"
           } > "$RUNNER_TEMP/notes.md"

@@ -53,6 +53,18 @@ object Geo {
 
     fun formatFeet(meters: Double): String = "%,d ft".format((meters * FT_PER_M).roundToInt())
 
+    /** Always in miles, two decimals under 10 mi: "0.42 mi", "12.3 mi". */
+    fun formatMiles(meters: Double): String {
+        val mi = meters / M_PER_MI
+        return if (mi < 10) String.format("%.2f mi", mi) else String.format("%.1f mi", mi)
+    }
+
+    /** "1:05" for an hour and five minutes, "0:42" for 42 minutes. */
+    fun formatDuration(ms: Long): String {
+        val min = ms / 60_000
+        return "%d:%02d".format(min / 60, min % 60)
+    }
+
     private fun roundTo(v: Double, step: Int): Int = ((v / step).roundToInt() * step)
 
     fun decimal(lat: Double, lon: Double): Pair<String, String> {

@@ -4,8 +4,16 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.trailguidegps.app.data.Features
+import com.trailguidegps.app.data.Gpx
 import com.trailguidegps.app.data.MapStore
+import com.trailguidegps.app.data.TrackPoint
+import com.trailguidegps.app.data.TrackStore
+import com.trailguidegps.app.data.Waypoint
+import com.trailguidegps.app.data.WaypointStore
 import com.trailguidegps.app.location.LocationTracker
+import com.trailguidegps.app.record.Recording
+import com.trailguidegps.app.record.TrackRecorder
+import com.trailguidegps.app.record.TrackRecordingService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -82,6 +90,112 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _download.value = DownloadState.Error(friendly(e))
             }
         }
+    }
+
+    // ---- Waypoints, tracks and recording (phase 3) ----
+
+    val waypoints = WaypointStore(app)
+    val tracks = TrackStore(app)
+    val recording: StateFlow<Recording?> = TrackRecorder.state
+
+    /** A saved track drawn on the map, if the user chose one. */
+    private val _shownTrack = MutableStateFlow<Pair<String, List<TrackPoint>>?>(null)
+    val shownTrack: StateFlow<Pair<String, List<TrackPoint>>?> = _shownTrack.asStateFlow()
+
+    /** Camera requests from other screens (for example "show on map" in Saved). */
+    data class Focus(val points: List<Pair<Double, Double>>, val nonce: Long = System.nanoTime())
+    private val _focus = MutableStateFlow<Focus?>(null)
+    val focus: StateFlow<Focus?> = _focus.asStateFlow()
+
+    /** Short messages for the user, shown once. */
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+    fun messageShown() { _message.value = null }
+
+    init {
+        // A recording that was cut off (phone restart, app killed) is saved, not lost.
+        val leftover = TrackRecorder.recoverable(app)
+        if (leftover.size >= 2) {
+            tracks.save("Recovered track ${dateLabel(leftover.first().time)}", leftover)
+            _message.value = "A track that was still recording was saved as \"Recovered track\"."
+        }
+        TrackRecorder.discardRecoverable(app)
+    }
+
+    fun focusOn(points: List<Pair<Double, Double>>) { if (points.isNotEmpty()) _focus.value = Focus(points) }
+
+    fun showTrack(id: String) {
+        val (_, pts) = tracks.load(id) ?: return
+        _shownTrack.value = id to pts
+        focusOn(pts.map { it.lat to it.lon })
+    }
+
+    fun hideTrack() { _shownTrack.value = null }
+
+    fun startRecording() {
+        val app = getApplication<Application>()
+        TrackRecorder.start(app)
+        TrackRecordingService.start(app)
+    }
+
+    fun setPaused(paused: Boolean) = TrackRecorder.setPaused(paused)
+
+    /** Stops recording; saves it unless [save] is false. */
+    fun stopRecording(name: String?, save: Boolean) {
+        val app = getApplication<Application>()
+        val pts = TrackRecorder.finish(app)
+        TrackRecordingService.stop(app)
+        if (save && pts.size >= 2) {
+            val summary = tracks.save(name?.takeIf { it.isNotBlank() } ?: defaultTrackName(pts.first().time), pts)
+            _shownTrack.value = summary.id to pts
+            _message.value = "Saved \"${summary.name}\"."
+        } else if (save) {
+            _message.value = "The track was too short to save."
+        }
+    }
+
+    fun defaultTrackName(startMs: Long = System.currentTimeMillis()) = "Track ${dateLabel(startMs)}"
+
+    private fun dateLabel(ms: Long) = java.text.SimpleDateFormat("MMM d, yyyy h:mm a", java.util.Locale.US).format(java.util.Date(ms))
+
+    fun deleteTrack(id: String) {
+        tracks.delete(id)
+        if (_shownTrack.value?.first == id) _shownTrack.value = null
+    }
+
+    fun importGpx(uri: android.net.Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    app.contentResolver.openInputStream(uri)!!.use { Gpx.read(it) }
+                }
+            }
+            result.onSuccess { imp ->
+                withContext(Dispatchers.IO) {
+                    waypoints.addAll(imp.waypoints)
+                    imp.tracks.forEach { (n, pts) -> tracks.save(n, pts) }
+                }
+                _message.value = "Imported ${imp.waypoints.size} waypoints and ${imp.tracks.size} tracks."
+                val pts = imp.waypoints.map { it.lat to it.lon } + imp.tracks.flatMap { t -> t.second.map { it.lat to it.lon } }
+                focusOn(pts)
+            }.onFailure {
+                _message.value = "That file couldn't be read as GPX."
+            }
+        }
+    }
+
+    /** Writes a GPX file to the app's share folder and returns a link other apps can open. */
+    fun exportGpx(fileName: String, wps: List<Waypoint>, trackIds: List<String>): android.net.Uri? {
+        val app = getApplication<Application>()
+        return runCatching {
+            val trk = trackIds.mapNotNull { tracks.load(it) }
+            val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
+            val safe = fileName.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "TrailGuide" }
+            val file = java.io.File(dir, "$safe.gpx")
+            file.writeText(Gpx.write(wps, trk))
+            androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", file)
+        }.getOrNull()
     }
 
     private fun friendly(e: Exception): String = when (e) {

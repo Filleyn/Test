@@ -37,6 +37,10 @@ object MapStyle {
                 .put("encoding", "mapbox").put("tileSize", 256))
             .put("water", JSONObject().put("type", "geojson").put("data", gj("water.geojson")))
             .put("pois", JSONObject().put("type", "geojson").put("data", gj("pois.geojson")))
+            // Your own data, filled in by the app after the style loads.
+            .put(SRC_SHOWN_TRACK, emptyGeoJson())
+            .put(SRC_RECORDING, emptyGeoJson())
+            .put(SRC_WAYPOINTS, emptyGeoJson())
 
         val roads = arr("motorway", "trunk", "primary", "secondary", "tertiary", "minor", "service")
         val trails = arr("path", "track")
@@ -130,6 +134,21 @@ object MapStyle {
                     arr("match", arr("get", "kind"), "spring", "Spring", "well", "Well", "Water"))),
             minzoom = 12.0)
 
+        // Your tracks and waypoints draw above everything else.
+        layer("shown-track-casing", "line", SRC_SHOWN_TRACK, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 7),
+            layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer("shown-track", "line", SRC_SHOWN_TRACK, paint = JSONObject().put("line-color", "#8E3218").put("line-width", 4),
+            layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer("recording-casing", "line", SRC_RECORDING, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
+            layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer("recording", "line", SRC_RECORDING, paint = JSONObject().put("line-color", "#E0661F").put("line-width", 4.5),
+            layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer(LAYER_WAYPOINTS, "circle", SRC_WAYPOINTS, paint = JSONObject().put("circle-radius", 8)
+            .put("circle-color", arr("get", "color")).put("circle-stroke-color", "#FFFFFF").put("circle-stroke-width", 2.5))
+        layer("waypoint-labels", "symbol", SRC_WAYPOINTS, paint = halo("#FFFFFF", "#23271F"),
+            layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 12).put("text-offset", arr(0, 1.2))
+                .put("text-anchor", "top").put("text-field", arr("get", "name")).put("text-optional", true))
+
         return JSONObject()
             .put("version", 8)
             .put("name", "TrailGuide Topo")
@@ -138,6 +157,14 @@ object MapStyle {
             .put("layers", layers)
             .toString()
     }
+
+    const val SRC_SHOWN_TRACK = "user-shown-track"
+    const val SRC_RECORDING = "user-recording"
+    const val SRC_WAYPOINTS = "user-waypoints"
+    const val LAYER_WAYPOINTS = "user-waypoints"
+
+    private fun emptyGeoJson() = JSONObject().put("type", "geojson")
+        .put("data", JSONObject().put("type", "FeatureCollection").put("features", JSONArray()))
 
     private fun arr(vararg v: Any): JSONArray = JSONArray().apply { v.forEach { put(it) } }
 }
