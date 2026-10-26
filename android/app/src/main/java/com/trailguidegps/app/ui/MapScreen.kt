@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -136,7 +138,7 @@ fun MapScreen(
     val waterNotes by vm.waterNotes.notes.collectAsStateWithLifecycle()
     var editingNoteFor by remember { mutableStateOf<Selected?>(null) }
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val statusTopPx = androidx.compose.foundation.layout.WindowInsets.statusBars.getTop(density)
+    val statusTopPx = WindowInsets.statusBars.getTop(density)
     val layerOn = remember { mutableStateMapOf<String, Boolean>().apply { MapStyle.GROUPS.keys.forEach { put(it, true) } } }
 
     DisposableEffect(lifecycleOwner) {
