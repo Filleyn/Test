@@ -6,8 +6,20 @@ This repo has two parts:
 
 | Folder | What it is | Status |
 | --- | --- | --- |
-| `pipeline/` + `.github/workflows/build-maps.yml` | Builds the offline map files from open data | Phase 1 |
-| `app/` | The Android app (Kotlin, Jetpack Compose, MapLibre) | Phase 2 onward |
+| `pipeline/` + `.github/workflows/build-maps.yml` | Builds the offline map files from open data | Phase 1 done |
+| `android/` + `.github/workflows/build-app.yml` | The Android app (Kotlin, Jetpack Compose, MapLibre) | Phase 2 |
+
+## Installing the app
+
+Every push to `android/` builds a new APK and publishes it as a release named `app-v0.2.N`.
+
+1. On the Pixel, open the newest `app-v…` release on GitHub and tap the `.apk` file.
+2. Allow your browser to install apps when Android asks (one time).
+3. Open TrailGuide GPS, tap **Download maps** (needs Wi-Fi or data once), and allow location.
+
+After that the map, GPS and emergency screen work in airplane mode. New versions install over the old one.
+
+**Signing.** Builds are signed with a development key kept in this repo (`android/dev-signing.jks`), so updates install cleanly. To use a private key instead, add the repository secrets `TRAILGUIDE_KEYSTORE_B64` (base64 of a PKCS12 keystore with alias `trailguide`) and `TRAILGUIDE_KEYSTORE_PASSWORD`. Switching keys means uninstalling once.
 
 ## Phase 1: building the map files
 
