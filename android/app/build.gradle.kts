@@ -18,9 +18,9 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
-        versionName = "0.2.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
+        versionName = "0.3.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
         buildConfigField("String", "MAPS_REPO", "\"Filleyn/Test\"")
-        buildConfigField("String", "MAPS_REGION", "\"cottonwood-canyon\"")
+        buildConfigField("String", "MAPS_REGION", "\"oregon\"")
         // Pixel phones are 64-bit ARM; leaving out other processor types keeps the APK small.
         ndk { abiFilters += "arm64-v8a" }
     }

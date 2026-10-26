@@ -35,6 +35,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _download = MutableStateFlow<DownloadState>(DownloadState.Idle)
     val download: StateFlow<DownloadState> = _download.asStateFlow()
 
+    /** The newest map release found on GitHub, for showing its size before downloading. */
+    private val _release = MutableStateFlow<MapStore.Release?>(null)
+    val release: StateFlow<MapStore.Release?> = _release.asStateFlow()
+
+    fun checkRelease() {
+        if (_release.value != null) return
+        viewModelScope.launch {
+            _release.value = runCatching { store.findLatestRelease() }.getOrNull()
+        }
+    }
+
     private val _features = MutableStateFlow<Features?>(null)
     val features: StateFlow<Features?> = _features.asStateFlow()
 
@@ -55,7 +66,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _download.value = DownloadState.Checking
             try {
-                val release = store.findLatestRelease()
+                val release = store.findLatestRelease().also { _release.value = it }
                 if (!force && store.isReady() && store.installedTag() == release.tag) {
                     _download.value = DownloadState.UpToDate(release.tag)
                     return@launch

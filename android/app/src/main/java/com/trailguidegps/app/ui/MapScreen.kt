@@ -142,15 +142,19 @@ fun MapScreen(
             m.uiSettings.isLogoEnabled = false
             m.uiSettings.isCompassEnabled = true
             m.uiSettings.isRotateGesturesEnabled = true
-            m.setMinZoomPreference(7.0)
+            m.setMinZoomPreference(5.0)
             m.setMaxZoomPreference(17.5)
             m.addOnMapClickListener { latLng ->
                 val point = m.projection.toScreenLocation(latLng)
-                val hit = m.queryRenderedFeatures(point, "water-points", "places", "peaks", "trail-hit").firstOrNull()
+                val hit = m.queryRenderedFeatures(point, "water-points", "places", "peaks", "trail-hit", "trail-hit-unnamed").firstOrNull()
                 selected = hit?.let { f ->
                     fun prop(key: String): String? =
                         if (f.hasProperty(key) && !f.getProperty(key).isJsonNull) f.getProperty(key).asString else null
-                    val kind = prop("kind") ?: if (f.hasProperty("ele")) "peak" else "trail"
+                    val kind = prop("kind") ?: when {
+                        f.hasProperty("ele") -> "peak"
+                        prop("class") == "track" -> "track"
+                        else -> "trail"
+                    }
                     val name = prop("name") ?: kindLabels[kind] ?: "Unnamed"
                     val parts = mutableListOf(kindLabels[kind] ?: kind)
                     prop("ele_ft")?.toDoubleOrNull()?.let { parts += "%,d ft".format(it.roundToInt()) }
@@ -197,9 +201,17 @@ fun MapScreen(
         }
         vm.tracker.fix.value?.let { m.locationComponent.forceLocationUpdate(it.location) }
     }
+    var zoomedToMe by remember { mutableStateOf(false) }
     LaunchedEffect(fix, style) {
         val m = map ?: return@LaunchedEffect
         val f = fix ?: return@LaunchedEffect
+        val b = vm.store.bbox()
+        if (!zoomedToMe && style != null && b != null &&
+            f.lon >= b[0] && f.lat >= b[1] && f.lon <= b[2] && f.lat <= b[3]
+        ) {
+            zoomedToMe = true
+            m.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(f.lat, f.lon), 13.0))
+        }
         if (style != null && m.locationComponent.isLocationComponentActivated) {
             m.locationComponent.forceLocationUpdate(f.location)
         }
@@ -273,7 +285,7 @@ fun MapScreen(
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text("You're outside your downloaded maps", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF6B3A00))
-                    Text("Tap to go to ${vm.store.title().substringBefore(" (")}.", fontSize = 13.sp, color = Color(0xFF6B3A00))
+                    Text("Tap to show the area your maps cover.", fontSize = 13.sp, color = Color(0xFF6B3A00))
                 }
             }
         }

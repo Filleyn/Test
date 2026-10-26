@@ -70,27 +70,39 @@ class MapStore(context: Context) {
 
     /**
      * Downloads every file into a temporary folder, then swaps it in, so a failed
-     * download never leaves a half-updated map.
+     * download never leaves a half-updated map. An interrupted download of the same
+     * release picks up where it stopped instead of starting over.
      */
     suspend fun download(release: Release, onProgress: (file: String, done: Long, total: Long) -> Unit) =
         withContext(Dispatchers.IO) {
             val tmp = File(dir.parentFile, "$region.download")
-            tmp.deleteRecursively()
+            val tagFile = File(tmp, TAG_FILE)
+            if (!(tagFile.exists() && tagFile.readText().trim() == release.tag)) {
+                tmp.deleteRecursively()
+            }
             tmp.mkdirs()
-            var done = 0L
+            tagFile.writeText(release.tag)
             val total = release.totalBytes
+            var done = release.assets.sumOf { a -> File(tmp, a.name).length().coerceAtMost(a.size) }
             for (asset in release.assets) {
+                val target = File(tmp, asset.name)
+                val have = if (target.exists()) target.length() else 0L
+                if (have == asset.size) continue
                 val conn = (URL(asset.url).openConnection() as HttpURLConnection).apply {
                     instanceFollowRedirects = true
                     setRequestProperty("User-Agent", "TrailGuideGPS")
+                    if (have in 1 until asset.size) setRequestProperty("Range", "bytes=$have-")
                     connectTimeout = 15000
                     readTimeout = 60000
                 }
                 try {
-                    if (conn.responseCode != 200) error("Download of ${asset.name} failed (${conn.responseCode})")
+                    val code = conn.responseCode
+                    val append = code == 206
+                    if (code != 200 && code != 206) error("Download of ${asset.name} failed (HTTP $code)")
+                    if (!append) done -= have
                     conn.inputStream.use { input ->
-                        File(tmp, asset.name).outputStream().use { out ->
-                            val buf = ByteArray(64 * 1024)
+                        java.io.FileOutputStream(target, append).use { out ->
+                            val buf = ByteArray(256 * 1024)
                             while (true) {
                                 val n = input.read(buf)
                                 if (n < 0) break
@@ -103,12 +115,14 @@ class MapStore(context: Context) {
                 } finally {
                     conn.disconnect()
                 }
+                if (target.length() != asset.size) error("${asset.name} didn't finish downloading. Try again to resume.")
             }
-            File(tmp, TAG_FILE).writeText(release.tag)
             val missing = REQUIRED.filter { !File(tmp, it).exists() }
             if (missing.isNotEmpty()) error("Release is missing ${missing.joinToString()}")
             dir.deleteRecursively()
             if (!tmp.renameTo(dir)) error("Couldn't move map files into place")
+            // Remove map files for other regions (for example the earlier test area).
+            dir.parentFile?.listFiles()?.filter { it.isDirectory && it != dir }?.forEach { it.deleteRecursively() }
         }
 
     companion object {

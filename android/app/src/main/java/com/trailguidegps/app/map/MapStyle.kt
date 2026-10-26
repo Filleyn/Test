@@ -15,7 +15,7 @@ object MapStyle {
     val GROUPS = linkedMapOf(
         "hillshade" to listOf("hillshade"),
         "contours" to listOf("contours-minor", "contours-major", "contour-labels"),
-        "trails" to listOf("trail", "trail-names", "trail-hit"),
+        "trails" to listOf("trail", "trail-names", "trail-hit", "trail-hit-unnamed"),
         "water" to listOf("water-points", "water-labels"),
         "places" to listOf("places", "place-labels", "peaks", "peak-labels"),
     )
@@ -37,7 +37,6 @@ object MapStyle {
                 .put("encoding", "mapbox").put("tileSize", 256))
             .put("water", JSONObject().put("type", "geojson").put("data", gj("water.geojson")))
             .put("pois", JSONObject().put("type", "geojson").put("data", gj("pois.geojson")))
-            .put("trails", JSONObject().put("type", "geojson").put("data", gj("trails.geojson")))
 
         val roads = arr("motorway", "trunk", "primary", "secondary", "tertiary", "minor", "service")
         val trails = arr("path", "track")
@@ -84,9 +83,11 @@ object MapStyle {
         layer("trail", "line", "topo", "transportation", inClass(trails),
             JSONObject().put("line-color", "#B5462A").put("line-width", byZoom(10, 1.2, 15, 2.8))
                 .put("line-dasharray", arr(3, 1.5)))
-        // Invisible wide line so trails are easy to tap.
-        layer("trail-hit", "line", "trails", paint = JSONObject().put("line-color", "#000000")
-            .put("line-opacity", 0).put("line-width", 18))
+        // Invisible wide lines so trails are easy to tap (named ones carry their name here).
+        layer("trail-hit", "line", "topo", "transportation_name", inClass(trails),
+            JSONObject().put("line-color", "#000000").put("line-opacity", 0).put("line-width", 18))
+        layer("trail-hit-unnamed", "line", "topo", "transportation", inClass(trails),
+            JSONObject().put("line-color", "#000000").put("line-opacity", 0).put("line-width", 18))
         layer("contour-labels", "symbol", "contours", "contours", arr("==", arr("get", "major"), 1),
             halo(GROUND, "#8A6440", 1.4),
             JSONObject().put("symbol-placement", "line").put("text-font", arr(REGULAR))
