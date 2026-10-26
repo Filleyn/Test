@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple launcher icon: a peak with a dashed trail on a forest-green tile. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FF2F5D45" android:pathData="M18,10h72a8,8 0,0 1,8 8v72a8,8 0,0 1,-8 8h-72a8,8 0,0 1,-8 -8v-72a8,8 0,0 1,8 -8z" />
+    <path android:fillColor="#FFEFEEE2" android:pathData="M22,78L46,38L58,56L66,46L86,78Z" />
+    <path android:fillColor="#FF2F5D45" android:pathData="M46,38L52,48L46,46L41,47Z" />
+    <path android:strokeColor="#FFB4491A" android:strokeWidth="4" android:strokeLineCap="round"
+        android:pathData="M28,88C40,84 50,80 56,72" android:fillColor="#00000000" />
+</vector>

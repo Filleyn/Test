@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="map_ground">#FFEFEEE2</color>
+    <color name="trail_orange">#FFB4491A</color>
+</resources>

@@ -5,3 +5,11 @@ data/
 *.pmtiles
 *.osm.pbf
 __pycache__/
+
+# Android build outputs
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+# Map label fonts are fetched during the CI build
+android/app/src/main/assets/fonts/
