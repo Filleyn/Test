@@ -1,0 +1,29 @@
+name: Inspect closure and fire data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Look at sources
+        run: |
+          bash pipeline/inspect_alerts.sh > result.md 2>&1 || true
+          cat result.md >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          text = open("result.md").read()
+          chunks, cur = [], ""
+          for line in text.splitlines(True):
+              while len(line) > 3500:
+                  chunks.append(cur + line[:3500]); cur = ""; line = line[3500:]
+              if len(cur) + len(line) > 3500:
+                  chunks.append(cur); cur = ""
+              cur += line
+          chunks.append(cur)
+          for i, c in enumerate(chunks[:9]):
+              esc = c.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::notice title=Result part {i + 1:02d}::{esc}")
+          PY
