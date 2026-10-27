@@ -149,12 +149,12 @@ fun MapScreen(
     val routingReady by vm.routingReady.collectAsStateWithLifecycle()
     val shownRoute by vm.shownRoute.collectAsStateWithLifecycle()
     val shownRoutes by vm.shownRoutes.collectAsStateWithLifecycle()
-    val following by vm.following.collectAsStateWithLifecycle()
+    val routeFollow by vm.following.collectAsStateWithLifecycle()
     val settings by vm.settings.value.collectAsStateWithLifecycle()
     // Keep the screen awake while following, if that's switched on in Settings.
     val view = androidx.compose.ui.platform.LocalView.current
-    DisposableEffect(following != null, settings.keepScreenOn) {
-        view.keepScreenOn = following != null && settings.keepScreenOn
+    DisposableEffect(routeFollow != null, settings.keepScreenOn) {
+        view.keepScreenOn = routeFollow != null && settings.keepScreenOn
         onDispose { view.keepScreenOn = false }
     }
     var showPace by remember { mutableStateOf(false) }
@@ -366,8 +366,8 @@ fun MapScreen(
     }
     LaunchedEffect(shownRoute?.id, plan.active) { profileMark = null }
     // While off route, a dashed line from you back to the nearest point on it.
-    LaunchedEffect(style, following?.offRoute, following?.nearest, fix) {
-        val f = following
+    LaunchedEffect(style, routeFollow?.offRoute, routeFollow?.nearest, fix) {
+        val f = routeFollow
         val me = fix
         val line = if (f != null && f.offRoute && f.nearest != null && me != null)
             listOf(doubleArrayOf(me.lat, me.lon), f.nearest) else emptyList()
@@ -599,7 +599,7 @@ fun MapScreen(
                 pace = pace,
                 onHideRoute = { vm.hideRoute() },
                 onRouteScrub = { d -> profileMark = d?.let { dist -> shownRoute?.let { RouteStore.pointAt(it.coords, dist) } } },
-                following = following,
+                following = routeFollow,
                 onFollow = onStartFollowing,
                 onStopFollowing = { vm.stopFollowing() },
                 placeDescription = fix?.let { f -> features?.describe(f.lat, f.lon) },
