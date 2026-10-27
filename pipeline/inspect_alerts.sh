@@ -1,10 +1,13 @@
 #!/bin/bash
-for s in deschutes willamette mthood ochoco umpqua rogue-siskiyou fremont-winema malheur umatilla wallowa-whitman siuslaw colville okawen gifford-pinchot; do
-  code=$(curl -s -o /dev/null -w "%{http_code} %{url_effective}" -L -m 30 "https://www.fs.usda.gov/r06/$s/alerts")
-  echo "$s $code"
-done
-for u in "https://www.blm.gov/alerts" "https://www.oregon.gov/odf/fire/pages/restrictions.aspx" "https://inciweb.wildfire.gov/state/oregon" "https://stateparks.oregon.gov/index.cfm?do=v.page&id=5" ; do
-  echo "$u $(curl -s -o /dev/null -w '%{http_code}' -L -m 30 "$u")"
-done
-echo "## WFIGS incident points"
-curl -sS -m 40 "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query?where=POOState%3D%27US-OR%27&outFields=IncidentName,IncidentSize,PercentContained,FireDiscoveryDateTime,ModifiedOnDateTime_dt,IncidentTypeCategory&returnGeometry=false&resultRecordCount=5&f=json" | head -c 2500; echo
+B=https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services
+P="geometry=-125.5,41.0,-115.5,47.0&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outSR=4326&f=geojson"
+echo "## perimeters"
+curl -sS -m 60 -G "$B/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query?$P&maxAllowableOffset=0.0003" \
+  --data-urlencode "where=attr_IncidentTypeCategory = 'WF'" \
+  --data-urlencode "outFields=poly_IncidentName,poly_GISAcres,attr_PercentContained,attr_ModifiedOnDateTime_dt,attr_FireDiscoveryDateTime" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('error' if 'error' in d else '', d.get('error')); f=d.get('features',[]); print(len(f), 'features'); print(f[0]['properties'] if f else '', f[0]['geometry']['coordinates'][0][0][:2] if f else '')"
+echo "## points"
+curl -sS -m 60 -G "$B/WFIGS_Incident_Locations_Current/FeatureServer/0/query?$P" \
+  --data-urlencode "where=IncidentTypeCategory = 'WF'" \
+  --data-urlencode "outFields=IncidentName,IncidentSize,PercentContained,FireDiscoveryDateTime,ModifiedOnDateTime_dt" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error')); f=d.get('features',[]); print(len(f), 'features'); [print(x['properties'], x['geometry']['coordinates']) for x in f[:4]]"
