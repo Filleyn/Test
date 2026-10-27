@@ -26,4 +26,19 @@ jobs:
         env:
           NAMES: ${{ inputs.names }}
           BBOX: ${{ inputs.bbox }}
-        run: python3 pipeline/inspect_osm.py --pbf /mnt/or.osm.pbf --bbox="$BBOX" --names "$NAMES" | tee -a "$GITHUB_STEP_SUMMARY"
+        run: |
+          python3 pipeline/inspect_osm.py --pbf /mnt/or.osm.pbf --bbox="$BBOX" --names "$NAMES" > result.md
+          cat result.md >> "$GITHUB_STEP_SUMMARY"
+          # Also as annotations, which can be read through the API.
+          python3 - <<'PY'
+          text = open("result.md").read()
+          chunks, cur = [], ""
+          for line in text.splitlines(True):
+              if len(cur) + len(line) > 3500:
+                  chunks.append(cur); cur = ""
+              cur += line
+          chunks.append(cur)
+          for i, c in enumerate(chunks[:9]):
+              esc = c.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::notice title=Result part {i + 1}::{esc}")
+          PY

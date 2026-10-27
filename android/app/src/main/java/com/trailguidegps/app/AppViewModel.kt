@@ -417,14 +417,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return Triple(point, RouteLeg(coords, len, routed.names, onTrail = true), null)
     }
 
-    fun savePlan(name: String) {
+    fun savePlan(name: String, color: String = com.trailguidegps.app.data.RouteColors.DEFAULT) {
         val st = _plan.value
         if (st.points.size < 2) return
         viewModelScope.launch {
             val saved = withContext(Dispatchers.IO) {
                 val coords = ArrayList<DoubleArray>()
                 st.legs.forEach { leg -> leg.coords.forEach { c -> if (coords.lastOrNull()?.let { it[0] == c[0] && it[1] == c[1] } != true) coords += c } }
-                SavedRoute(RouteStore.newId(), name.ifBlank { "Route" }, System.currentTimeMillis(), st.points, coords, st.stats, st.via)
+                SavedRoute(RouteStore.newId(), name.ifBlank { "Route" }, System.currentTimeMillis(), st.points, coords, st.stats, st.via, color)
                     .also { routes.save(it) }
             }
             _plan.value = PlanState()
@@ -450,6 +450,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteRoute(id: String) {
         routes.delete(id)
         if (_shownRoute.value?.id == id) _shownRoute.value = null
+    }
+
+    fun setRouteColor(id: String, color: String) {
+        routes.setColor(id, color)
+        if (_shownRoute.value?.id == id) _shownRoute.value = _shownRoute.value?.copy(color = color)
     }
 
     fun renameRoute(id: String, name: String) {

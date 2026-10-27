@@ -19,7 +19,9 @@ object MapStyle {
         PlaceGroup("trailheads", listOf("trailhead")),
         // Restrooms are everywhere in towns, so they only show when zoomed in.
         PlaceGroup("restrooms", listOf("toilets"), iconMinZoom = 13.0, labels = false),
-        PlaceGroup("other", listOf("shelter", "viewpoint", "waterfall", "hot_spring", "pass", "saddle")),
+        PlaceGroup("waterfalls", listOf("waterfall")),
+        PlaceGroup("shelters", listOf("shelter")),
+        PlaceGroup("other", listOf("viewpoint", "hot_spring", "pass", "saddle")),
     )
 
     /** Layers you can tap for details. */
@@ -57,6 +59,7 @@ object MapStyle {
             .put(SRC_SHOWN_ROUTE, emptyGeoJson())
             .put(SRC_PLAN, emptyGeoJson())
             .put(SRC_PLAN_POINTS, emptyGeoJson())
+            .put(SRC_PROFILE_MARK, emptyGeoJson())
             .put(SRC_RECORDING, emptyGeoJson())
             .put(SRC_WAYPOINTS, emptyGeoJson())
 
@@ -169,7 +172,8 @@ object MapStyle {
         // Routes are purple: saved routes solid, the route being planned on top with straight legs dashed.
         layer("shown-route-casing", "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 7.5),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
-        layer("shown-route", "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", ROUTE_PURPLE).put("line-width", 4.5),
+        layer("shown-route", "line", SRC_SHOWN_ROUTE, paint = JSONObject()
+            .put("line-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("line-width", 4.5),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer("plan-casing", "line", SRC_PLAN, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
@@ -184,6 +188,9 @@ object MapStyle {
             .put("circle-color", arr("match", arr("get", "role"), "start", "#2E8B57", "end", ROUTE_PURPLE, "#FFFFFF"))
             .put("circle-stroke-color", arr("match", arr("get", "role"), "mid", ROUTE_PURPLE, "#FFFFFF"))
             .put("circle-stroke-width", 3))
+        // Where you're pressing on the elevation graph.
+        layer("profile-mark", "circle", SRC_PROFILE_MARK, paint = JSONObject().put("circle-radius", 9)
+            .put("circle-color", "#FFFFFF").put("circle-stroke-color", "#23271F").put("circle-stroke-width", 4))
         layer("recording-casing", "line", SRC_RECORDING, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer("recording", "line", SRC_RECORDING, paint = JSONObject().put("line-color", "#E0661F").put("line-width", 4.5),
@@ -207,6 +214,7 @@ object MapStyle {
     const val SRC_SHOWN_ROUTE = "user-shown-route"
     const val SRC_PLAN = "user-plan"
     const val SRC_PLAN_POINTS = "user-plan-points"
+    const val SRC_PROFILE_MARK = "user-profile-mark"
     const val ROUTE_PURPLE = "#6B3FA0"
     const val SRC_RECORDING = "user-recording"
     const val SRC_WAYPOINTS = "user-waypoints"

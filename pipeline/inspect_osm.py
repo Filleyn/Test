@@ -17,6 +17,10 @@ COUNT_TAGS = [
 ]
 
 
+ROADS = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
+         "service", "living_street", "motorway_link", "trunk_link", "primary_link", "secondary_link"}
+
+
 class Inspector(osmium.SimpleHandler):
     def __init__(self, patterns, bbox):
         super().__init__()
@@ -40,7 +44,9 @@ class Inspector(osmium.SimpleHandler):
         name = tags.get("name", "")
         if tags.get("amenity") == "parking" and re.search(r"trail ?head|\bTH\b", name, re.I):
             self.parking_th[kind] += 1
-        if lon is not None and self.inside(lon, lat) and any(p.search(name) for p in self.patterns):
+        boring = (tags.get("waterway") or tags.get("boundary") or tags.get("natural") in ("water", "wetland")
+                  or tags.get("highway") in ROADS or tags.get("type") in ("waterway", "boundary"))
+        if lon is not None and not boring and self.inside(lon, lat) and any(p.search(name) for p in self.patterns):
             self.hits.append((kind, obj.id, round(lat, 5), round(lon, 5), tags))
 
     def node(self, n):

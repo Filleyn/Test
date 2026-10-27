@@ -109,8 +109,10 @@ private val layerNames = linkedMapOf(
     "campsites" to "Campsites",
     "trailheads" to "Trailheads",
     "peaks" to "Peaks",
+    "waterfalls" to "Waterfalls",
+    "shelters" to "Shelters and huts",
     "restrooms" to "Restrooms (when zoomed in)",
-    "other" to "Other places: viewpoints, waterfalls, shelters, hot springs",
+    "other" to "Other places: viewpoints, hot springs, passes",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -145,6 +147,8 @@ fun MapScreen(
     var showWaypointPicker by remember { mutableStateOf(false) }
     var askSaveRoute by remember { mutableStateOf(false) }
     var askDiscardRoute by remember { mutableStateOf(false) }
+    // The spot you're pressing on an elevation graph, shown on the map.
+    var profileMark by remember { mutableStateOf<DoubleArray?>(null) }
     androidx.activity.compose.BackHandler(enabled = plan.active) {
         if (plan.points.size >= 2) askDiscardRoute = true else vm.cancelPlanning()
     }
@@ -319,7 +323,19 @@ fun MapScreen(
     }
     LaunchedEffect(style, shownRoute) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SHOWN_ROUTE)
-            ?.setGeoJson(RouteStore.lineGeoJson(shownRoute?.coords.orEmpty()))
+            ?.setGeoJson(shownRoute?.let { RouteStore.lineGeoJson(it.coords, it.color) } ?: RouteStore.lineGeoJson(emptyList()))
+    }
+    LaunchedEffect(shownRoute?.id, plan.active) { profileMark = null }
+    LaunchedEffect(style, profileMark) {
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PROFILE_MARK)?.setGeoJson(RouteStore.pointGeoJson(profileMark))
+        // Bring the marked spot into view if it's off screen.
+        val m = profileMark ?: return@LaunchedEffect
+        map?.let { mm ->
+            val ll = org.maplibre.android.geometry.LatLng(m[0], m[1])
+            if (mm.projection.visibleRegion.latLngBounds.contains(ll) == false) {
+                mm.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newLatLng(ll), 300)
+            }
+        }
     }
     LaunchedEffect(style, shownTrack) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SHOWN_TRACK)
@@ -502,6 +518,9 @@ fun MapScreen(
                             onAddWaypoint = { showWaypointPicker = true },
                             onSave = { askSaveRoute = true },
                             onEditPace = { showPace = true },
+                            onScrub = { d ->
+                                profileMark = d?.let { RouteStore.pointAt(plan.legs.flatMap { leg -> leg.coords }, it) }
+                            },
                         )
                     }
                 }
@@ -530,6 +549,7 @@ fun MapScreen(
                 shownRoute = shownRoute,
                 pace = pace,
                 onHideRoute = { vm.hideRoute() },
+                onRouteScrub = { d -> profileMark = d?.let { dist -> shownRoute?.let { RouteStore.pointAt(it.coords, dist) } } },
                 placeDescription = fix?.let { f -> features?.describe(f.lat, f.lon) },
             )
         }
@@ -573,7 +593,7 @@ fun MapScreen(
             plan.via.isNotEmpty() -> plan.via.first()
             else -> "Route ${java.text.SimpleDateFormat("MMM d", java.util.Locale.US).format(java.util.Date())}"
         }
-        SaveRouteDialog(suggested, onSave = { name -> askSaveRoute = false; vm.savePlan(name) }, onDismiss = { askSaveRoute = false })
+        SaveRouteDialog(suggested, onSave = { name, color -> askSaveRoute = false; vm.savePlan(name, color) }, onDismiss = { askSaveRoute = false })
     }
     if (askDiscardRoute) {
         androidx.compose.material3.AlertDialog(
@@ -676,6 +696,7 @@ private fun BottomPanel(
     shownRoute: SavedRoute?,
     pace: Pace,
     onHideRoute: () -> Unit,
+    onRouteScrub: (Double?) -> Unit,
     placeDescription: String?,
 ) {
     Surface(
@@ -800,7 +821,7 @@ private fun BottomPanel(
             }
             shownRoute?.let { r ->
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(width = 18.dp, height = 4.dp).background(RoutePurple, RoundedCornerShape(2.dp)))
+                    Box(Modifier.size(width = 18.dp, height = 4.dp).background(routeColor(r.color), RoundedCornerShape(2.dp)))
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(r.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
@@ -810,7 +831,10 @@ private fun BottomPanel(
                             fontSize = 12.sp, color = TG.Muted,
                         )
                     }
-                    TextButton(onClick = onHideRoute) { Text("Hide", color = RoutePurple) }
+                    TextButton(onClick = onHideRoute) { Text("Hide", color = routeColor(r.color)) }
+                }
+                if (r.stats.profile.size >= 2) {
+                    ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub)
                 }
             }
             shownTrackName?.let { name ->

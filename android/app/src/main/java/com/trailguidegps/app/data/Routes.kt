@@ -102,9 +102,27 @@ data class SavedRoute(
     val coords: List<DoubleArray>,
     val stats: RouteStats,
     val via: List<String>,
+    val color: String = RouteColors.DEFAULT,
 )
 
-data class RouteSummary(val id: String, val name: String, val createdAt: Long, val distanceM: Double, val gainM: Double, val lossM: Double)
+data class RouteSummary(
+    val id: String, val name: String, val createdAt: Long, val distanceM: Double, val gainM: Double, val lossM: Double,
+    val color: String = RouteColors.DEFAULT,
+)
+
+/** Colors you can give a route. Chosen to stand out from trails (red-brown), tracks and water. */
+object RouteColors {
+    const val DEFAULT = "#6B3FA0"
+    val ALL = listOf(
+        "Purple" to "#6B3FA0",
+        "Blue" to "#1F4FB4",
+        "Magenta" to "#C2185B",
+        "Green" to "#2E7D32",
+        "Gold" to "#B07D00",
+        "Black" to "#222222",
+    )
+    fun nameOf(hex: String) = ALL.firstOrNull { it.second.equals(hex, true) }?.first ?: "Custom"
+}
 
 /** Saved routes, one JSON file each in the app's private storage. */
 class RouteStore(context: Context) {
@@ -115,7 +133,7 @@ class RouteStore(context: Context) {
     fun save(r: SavedRoute) {
         val o = JSONObject().put("id", r.id).put("name", r.name).put("created", r.createdAt)
             .put("distance", r.stats.distanceM).put("gain", r.stats.gainM).put("loss", r.stats.lossM)
-            .put("via", JSONArray(r.via))
+            .put("via", JSONArray(r.via)).put("color", r.color)
             .put("points", JSONArray().apply {
                 r.points.forEach { p ->
                     put(JSONObject().put("lat", p.lat).put("lon", p.lon).put("trail", p.followTrails).put("wp", p.waypointName ?: JSONObject.NULL))
@@ -145,11 +163,16 @@ class RouteStore(context: Context) {
             RouteStats(o.getDouble("distance"), o.getDouble("gain"), o.getDouble("loss"),
                 (0 until pf.length()).map { i -> pf.getJSONArray(i).let { it.getDouble(0) to it.getDouble(1) } }),
             (0 until via.length()).map { via.getString(it) },
+            o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT },
         )
     }.getOrNull()
 
     fun rename(id: String, name: String) {
         load(id)?.let { save(it.copy(name = name)) }
+    }
+
+    fun setColor(id: String, color: String) {
+        load(id)?.let { save(it.copy(color = color)) }
     }
 
     fun delete(id: String) {
@@ -163,7 +186,8 @@ class RouteStore(context: Context) {
                 // Read only the small fields; the line itself can be large.
                 val o = JSONObject(f.readText())
                 RouteSummary(o.getString("id"), o.getString("name"), o.getLong("created"),
-                    o.getDouble("distance"), o.getDouble("gain"), o.getDouble("loss"))
+                    o.getDouble("distance"), o.getDouble("gain"), o.getDouble("loss"),
+                    o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT })
             }.getOrNull()
         }
         .sortedByDescending { it.createdAt }
@@ -184,12 +208,38 @@ class RouteStore(context: Context) {
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
         }
 
-        fun lineGeoJson(coords: List<DoubleArray>): String {
+        /** The point [distanceM] along the line, as (lat, lon); distances measured the same way as the profile. */
+        fun pointAt(coords: List<DoubleArray>, distanceM: Double): DoubleArray? {
+            if (coords.isEmpty()) return null
+            var along = 0.0
+            for (i in 0 until coords.size - 1) {
+                val a = coords[i]
+                val b = coords[i + 1]
+                val d = Geo.distanceM(a[0], a[1], b[0], b[1])
+                if (along + d >= distanceM) {
+                    val t = if (d == 0.0) 0.0 else ((distanceM - along) / d).coerceIn(0.0, 1.0)
+                    return doubleArrayOf(a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+                }
+                along += d
+            }
+            return coords.last()
+        }
+
+        fun pointGeoJson(p: DoubleArray?): String {
+            val features = JSONArray()
+            if (p != null) {
+                features.put(JSONObject().put("type", "Feature").put("properties", JSONObject())
+                    .put("geometry", JSONObject().put("type", "Point").put("coordinates", JSONArray().put(p[1]).put(p[0]))))
+            }
+            return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
+        }
+
+        fun lineGeoJson(coords: List<DoubleArray>, color: String = RouteColors.DEFAULT): String {
             val c = JSONArray()
             coords.forEach { c.put(JSONArray().put(it[1]).put(it[0])) }
             val features = JSONArray()
             if (coords.size >= 2) {
-                features.put(JSONObject().put("type", "Feature").put("properties", JSONObject())
+                features.put(JSONObject().put("type", "Feature").put("properties", JSONObject().put("color", color))
                     .put("geometry", JSONObject().put("type", "LineString").put("coordinates", c)))
             }
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()

@@ -74,6 +74,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     val routes by vm.routes.summaries.collectAsStateWithLifecycle()
     val pace by vm.pace.collectAsStateWithLifecycle()
     var renamingRoute by remember { mutableStateOf<RouteSummary?>(null) }
+    var recoloring by remember { mutableStateOf<RouteSummary?>(null) }
     val fix by vm.tracker.fix.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var renaming by remember { mutableStateOf<TrackSummary?>(null) }
@@ -135,6 +136,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                             r, pace,
                             onShow = { vm.showRoute(r.id); onClose() },
                             onRename = { renamingRoute = r },
+                            onColor = { recoloring = r },
                             onExport = { share(r.name, emptyList(), emptyList(), listOf(r.id)) },
                             onDelete = { deleting = r.name to { vm.deleteRoute(r.id) } },
                         )
@@ -193,6 +195,17 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         )
     }
 
+    recoloring?.let { r ->
+        var color by remember(r.id) { mutableStateOf(r.color) }
+        AlertDialog(
+            onDismissRequest = { recoloring = null },
+            title = { Text("Route color") },
+            text = { RouteColorPicker(color) { color = it } },
+            confirmButton = { TextButton(onClick = { vm.setRouteColor(r.id, color); recoloring = null }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { recoloring = null }) { Text("Cancel") } },
+        )
+    }
+
     deleting?.let { (label, action) ->
         AlertDialog(
             onDismissRequest = { deleting = null },
@@ -234,9 +247,9 @@ private fun TrackRow(t: TrackSummary, onShow: () -> Unit, onRename: () -> Unit, 
 }
 
 @Composable
-private fun RouteRow(r: RouteSummary, pace: Pace, onShow: () -> Unit, onRename: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
+private fun RouteRow(r: RouteSummary, pace: Pace, onShow: () -> Unit, onRename: () -> Unit, onColor: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(width = 22.dp, height = 4.dp).background(RoutePurple, RoundedCornerShape(2.dp)))
+        Box(Modifier.size(width = 22.dp, height = 4.dp).background(routeColor(r.color), RoundedCornerShape(2.dp)))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(r.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
@@ -249,7 +262,7 @@ private fun RouteRow(r: RouteSummary, pace: Pace, onShow: () -> Unit, onRename: 
             )
             Text("Planned ${dateFmt.format(Date(r.createdAt))}", fontSize = 12.sp, color = TG.Muted)
         }
-        RowMenu(listOf("Show on map" to onShow, "Rename" to onRename, "Export GPX" to onExport, "Delete" to onDelete))
+        RowMenu(listOf("Show on map" to onShow, "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete))
     }
 }
 

@@ -2,6 +2,13 @@ package com.trailguidegps.app.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.pointer.pointerInput
+import com.trailguidegps.app.data.RouteColors
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,11 +57,14 @@ import com.trailguidegps.app.geo.Geo
 import kotlin.math.roundToInt
 
 val RoutePurple = Color(0xFF6B3FA0)
-private val ProfileFill = Color(0xFFECE3F5)
 
-/** Elevation along the route, with the low and high point labelled in feet. */
+/**
+ * Elevation along the route, with the low and high point labelled in feet.
+ * Press or drag on it and [onScrub] gets the distance along the route (metres),
+ * so the map can show where that is. It stays marked after you let go.
+ */
 @Composable
-fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier) {
+fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier, color: Color = RoutePurple, onScrub: ((Double?) -> Unit)? = null) {
     val pts = stats.profile
     if (pts.size < 2) return
     val minE = pts.minOf { it.second }
@@ -62,27 +72,97 @@ fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier) {
     val maxD = pts.last().first.coerceAtLeast(1.0)
     // At least 100 ft of vertical range so flat routes don't look dramatic.
     val range = (maxE - minE).coerceAtLeast(30.0)
+    var scrub by remember(pts) { mutableStateOf<Double?>(null) }
+    val scrubCallback by rememberUpdatedState(onScrub)
+    DisposableEffect(pts) { onDispose { scrubCallback?.invoke(null) } }
+    fun elevationAt(d: Double): Double {
+        var i = pts.indexOfFirst { it.first >= d }
+        if (i <= 0) return pts[maxOf(i, 0)].second
+        val (d0, e0) = pts[i - 1]
+        val (d1, e1) = pts[i]
+        return if (d1 == d0) e1 else e0 + (e1 - e0) * (d - d0) / (d1 - d0)
+    }
     Column(modifier) {
         Row(Modifier.fillMaxWidth()) {
-            Text("${Geo.formatFeet(maxE)} high", fontSize = 11.sp, color = TG.Muted, modifier = Modifier.weight(1f))
-            Text("${Geo.formatFeet(minE)} low", fontSize = 11.sp, color = TG.Muted)
+            val s0 = scrub
+            if (s0 != null) {
+                Text(
+                    "%.1f mi · %s".format(s0 / Geo.M_PER_MI, Geo.formatFeet(elevationAt(s0))),
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.weight(1f),
+                )
+                Text("marked on map", fontSize = 11.sp, color = TG.Muted)
+            } else {
+                Text("${Geo.formatFeet(maxE)} high", fontSize = 11.sp, color = TG.Muted, modifier = Modifier.weight(1f))
+                Text(if (onScrub != null) "press the graph to find a spot" else "${Geo.formatFeet(minE)} low", fontSize = 11.sp, color = TG.Muted)
+            }
         }
         Canvas(
-            Modifier.fillMaxWidth().height(56.dp).padding(top = 2.dp)
-                .semantics { contentDescription = "Elevation profile from ${Geo.formatFeet(minE)} to ${Geo.formatFeet(maxE)}" },
+            Modifier.fillMaxWidth().height(64.dp).padding(top = 2.dp)
+                .semantics { contentDescription = "Elevation profile from ${Geo.formatFeet(minE)} to ${Geo.formatFeet(maxE)}" }
+                .pointerInput(pts) {
+                    if (scrubCallback == null) return@pointerInput
+                    awaitEachGesture {
+                        fun set(x: Float) {
+                            val d = (x / size.width).coerceIn(0f, 1f) * maxD
+                            scrub = d
+                            scrubCallback?.invoke(d)
+                        }
+                        val down = awaitFirstDown()
+                        set(down.position.x)
+                        down.consume()
+                        while (true) {
+                            val change = awaitPointerEvent().changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            set(change.position.x)
+                            change.consume()
+                        }
+                    }
+                },
         ) {
             fun x(d: Double) = (d / maxD * size.width).toFloat()
             fun y(e: Double) = (size.height - ((e - minE) / range) * (size.height - 4f) - 2f).toFloat()
             val line = Path()
             pts.forEachIndexed { i, (d, e) -> if (i == 0) line.moveTo(x(d), y(e)) else line.lineTo(x(d), y(e)) }
             val fill = Path().apply { addPath(line); lineTo(x(maxD), size.height); lineTo(0f, size.height); close() }
-            drawPath(fill, ProfileFill)
-            drawPath(line, RoutePurple, style = Stroke(width = 2.dp.toPx()))
+            drawPath(fill, color.copy(alpha = 0.14f))
+            drawPath(line, color, style = Stroke(width = 2.dp.toPx()))
             drawLine(Color(0xFFD4D7D2), Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1f)
+            scrub?.let { d ->
+                val px = x(d)
+                drawLine(TG.Ink, Offset(px, 0f), Offset(px, size.height), strokeWidth = 1.5.dp.toPx())
+                drawCircle(Color.White, radius = 5.dp.toPx(), center = Offset(px, y(elevationAt(d))))
+                drawCircle(TG.Ink, radius = 5.dp.toPx(), center = Offset(px, y(elevationAt(d))), style = Stroke(width = 2.5.dp.toPx()))
+            }
         }
-        Text("0 mi", fontSize = 11.sp, color = TG.Muted)
+        Row(Modifier.fillMaxWidth()) {
+            Text("0 mi", fontSize = 11.sp, color = TG.Muted, modifier = Modifier.weight(1f))
+            Text("%.1f mi".format(maxD / Geo.M_PER_MI), fontSize = 11.sp, color = TG.Muted)
+        }
     }
 }
+
+/** A row of color dots to pick a route color. */
+@Composable
+fun RouteColorPicker(selected: String, onPick: (String) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        RouteColors.ALL.forEach { (name, hex) ->
+            val c = Color(android.graphics.Color.parseColor(hex))
+            val isSel = hex.equals(selected, true)
+            Box(
+                Modifier.size(40.dp)
+                    .semantics { contentDescription = "$name${if (isSel) ", selected" else ""}" }
+                    .background(if (isSel) TG.Ink else Color.Transparent, CircleShape)
+                    .padding(3.dp)
+                    .background(Color.White, CircleShape)
+                    .padding(2.dp)
+                    .background(c, CircleShape)
+                    .clickable { onPick(hex) },
+            )
+        }
+    }
+}
+
+fun routeColor(hex: String): Color = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(RoutePurple)
 
 /** Miles, climb, descent and estimated time in one row. */
 @Composable
@@ -112,6 +192,7 @@ fun RoutePlannerPanel(
     onAddWaypoint: () -> Unit,
     onSave: () -> Unit,
     onEditPace: () -> Unit,
+    onScrub: (Double?) -> Unit = {},
 ) {
     Column {
         if (plan.points.isEmpty()) {
@@ -128,7 +209,7 @@ fun RoutePlannerPanel(
             RouteStatsRow(plan.stats, pace)
             if (plan.stats.profile.size >= 2) {
                 Spacer(Modifier.height(8.dp))
-                ElevationProfile(plan.stats)
+                ElevationProfile(plan.stats, onScrub = onScrub)
             }
             if (plan.via.isNotEmpty()) {
                 Text(
@@ -243,13 +324,20 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
 
 /** Ask for a name when saving a planned route. */
 @Composable
-fun SaveRouteDialog(defaultName: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+fun SaveRouteDialog(defaultName: String, onSave: (name: String, color: String) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(defaultName) }
+    var color by remember { mutableStateOf(RouteColors.DEFAULT) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Save route") },
-        text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Route name") }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton(onClick = { onSave(name.trim()) }) { Text("Save") } },
+        text = {
+            Column {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Route name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("Color", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                RouteColorPicker(color) { color = it }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(name.trim(), color) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Keep planning") } },
     )
 }
