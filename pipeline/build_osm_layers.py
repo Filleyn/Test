@@ -7,7 +7,7 @@ tag-filtered, see the workflow), plus an optional elevation GeoTIFF, and writes:
   water.geojson          springs, drinking water, water points and wells
   trails.geojson         trails, paths and tracks with names, for offline search
   pois.geojson           peaks, trailheads, campsites, lakes, towns and more, for search
-  routing-graph.json.gz  network of junctions and segments for route planning
+  routing.bin.gz         compact trail network the phone routes on (see routing_bin.py)
 
 Lengths are in miles and elevations in feet, matching the app.
 """
@@ -20,6 +20,8 @@ import sys
 from collections import defaultdict
 
 import osmium
+
+import routing_bin
 
 MI_PER_M = 1 / 1609.344
 FT_PER_M = 3.28084
@@ -389,27 +391,13 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
                     if nm is not None and nm not in name_index:
                         name_index[nm] = len(names)
                         names.append(nm)
-                    edges.append([
+                    edges.append((
                         vid(refs[start], seg[0]), vid(refs[i], seg[-1]),
-                        round(length_m * MI_PER_M, 4), round(gain, 1), round(loss, 1),
+                        length_m, gain / FT_PER_M, loss / FT_PER_M,
                         name_index.get(nm, -1), kinds.index(info["kind"]),
-                        encode_polyline(seg),
-                    ])
+                        simplify(seg),
+                    ))
                 start = i
-
-    graph = {
-        "version": 1,
-        "units": {"length": "mi", "elevation": "ft"},
-        "bbox": bbox,
-        "has_elevation": elev.ds is not None,
-        "vertices": vertices,
-        "edge_fields": ["from", "to", "length_mi", "gain_ft", "loss_ft",
-                        "name", "kind", "polyline5"],
-        "names": names,
-        "kinds": kinds,
-        "edges": edges,
-        "attribution": "© OpenStreetMap contributors (ODbL); elevation USGS 3DEP",
-    }
 
     def write_geojson(name, feats):
         with open(os.path.join(out_dir, name), "w") as f:
@@ -420,10 +408,7 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
     lakes = read_lakes(pbf, bbox)
     pois.extend(lakes)
     write_geojson("pois.geojson", pois)
-    # mtime=0 keeps the file byte-identical when nothing changed, so the app can skip re-downloading it.
-    with open(os.path.join(out_dir, "routing-graph.json.gz"), "wb") as raw:
-        with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as gz:
-            gz.write(json.dumps(graph, separators=(",", ":")).encode())
+    graph_bytes = routing_bin.write(os.path.join(out_dir, "routing.bin.gz"), vertices, edges, names, bbox)
 
     named = sorted({t["properties"]["name"] for t in trails if t["properties"]["name"]})
     stats = {
@@ -436,7 +421,8 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
         "lakes": len(lakes),
         "graph_vertices": len(vertices),
         "graph_edges": len(edges),
-        "graph_miles": round(sum(e[2] for e in edges), 1),
+        "graph_miles": round(sum(e[2] for e in edges) * MI_PER_M, 1),
+        "graph_mb_unpacked": round(graph_bytes / 1e6, 1),
         "has_elevation": elev.ds is not None,
         "trail_names_sample": named[:25],
     }

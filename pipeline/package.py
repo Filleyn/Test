@@ -41,6 +41,30 @@ def pmtiles_info(path):
         }
 
 
+def route_check(graph_path, trails_path, trail_name):
+    """Routes between the two ends of the longest mapped piece of the test trail."""
+    import routing_check as rc
+    try:
+        g = rc.load(graph_path)
+        feats = [f for f in json.load(open(trails_path))["features"]
+                 if trail_name.lower() in (f["properties"].get("name") or "").lower()]
+        if not feats:
+            return f"⚠️ Route check skipped: no trail named like \"{trail_name}\""
+        coords = max(feats, key=lambda f: len(f["geometry"]["coordinates"]))["geometry"]["coordinates"]
+        a = rc.snap(g, coords[0][1], coords[0][0])
+        b = rc.snap(g, coords[-1][1], coords[-1][0])
+        if not a or not b:
+            return "❌ Route check: couldn't snap the test trail's ends to the network"
+        r = rc.route(g, a, b)
+        if not r:
+            return "❌ Route check: no route found along the test trail"
+        miles = r[0] / 1609.344
+        straight = rc.dist_m(a[2], a[3], b[2], b[3]) / 1609.344
+        return f"✅ Route check: {miles:.2f} mi along \"{trail_name}\" ({straight:.2f} mi straight line, {len(r[1])} segments)"
+    except Exception as e:  # report, don't fail the build
+        return f"❌ Route check failed: {e}"
+
+
 def human(n):
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024 or unit == "GB":
@@ -89,7 +113,7 @@ def main():
 
     # Check report
     expected = ["topo.pmtiles", "contours.pmtiles", "terrain.pmtiles", "water.geojson",
-                "trails.geojson", "pois.geojson", "routing-graph.json.gz"]
+                "trails.geojson", "pois.geojson", "routing.bin.gz"]
     have = {f["name"] for f in files}
     lines = [f"## Map build: {region['title']}", "", f"Built {built}", "", "### Files", "",
              "| File | Size | Detail |", "| --- | --- | --- |"]
@@ -108,11 +132,13 @@ def main():
     if stats:
         lines.append(f"- Water sources: {stats.get('water_sources', 0)} ({stats.get('water_seasonal', 0)} marked seasonal)")
         lines.append(f"- Trail ways: {stats.get('trail_ways', 0)}, named trails: {stats.get('named_trails', 0)}")
-        lines.append(f"- Routing graph: {stats.get('graph_edges', 0):,} segments, {stats.get('graph_miles', 0):,} mi, elevation {'included' if stats.get('has_elevation') else 'MISSING'}")
+        lines.append(f"- Trail network: {stats.get('graph_edges', 0):,} segments, {stats.get('graph_miles', 0):,} mi, {stats.get('graph_mb_unpacked', 0)} MB unpacked, elevation {'included' if stats.get('has_elevation') else 'MISSING'}")
         if a.expect_trail:
             trails = json.load(open(os.path.join(a.dir, "trails.geojson")))["features"] if "trails.geojson" in have else []
             found = any(a.expect_trail.lower() in (t["properties"].get("name") or "").lower() for t in trails)
             lines.append(f"- {'✅' if found else '⚠️'} Trail matching \"{a.expect_trail}\" {'found' if found else 'not found by name (it may be unnamed in OpenStreetMap)'}")
+        if a.expect_trail and "routing.bin.gz" in have:
+            lines.append("- " + route_check(os.path.join(a.dir, "routing.bin.gz"), os.path.join(a.dir, "trails.geojson"), a.expect_trail))
         if stats.get("trail_names_sample"):
             lines.append(f"- Named trails seen: {', '.join(stats['trail_names_sample'])}")
     lines += ["", "Open the .pmtiles files at https://pmtiles.io to check them visually.", ""]
