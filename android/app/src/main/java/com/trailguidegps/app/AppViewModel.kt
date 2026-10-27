@@ -78,6 +78,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val release = store.findLatestRelease().also { _release.value = it }
                 if (!force && store.isReady() && store.installedTag() == release.tag) {
+                    _update.value = null
                     _download.value = DownloadState.UpToDate(release.tag)
                     return@launch
                 }
@@ -86,6 +87,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _mapsReady.value = store.isReady()
                 _mapVersion.value += 1
+                _update.value = null
                 loadFeatures()
                 _download.value = DownloadState.UpToDate(release.tag)
             } catch (e: Exception) {
@@ -125,6 +127,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun focusOn(points: List<Pair<Double, Double>>) { if (points.isNotEmpty()) _focus.value = Focus(points) }
+
+    // ---- Map update notice ----
+
+    /** A newer map release than the one installed, and what it would cost to download. */
+    data class MapUpdate(val tag: String, val bytes: Long, val built: String)
+    private val _update = MutableStateFlow<MapUpdate?>(null)
+    val update: StateFlow<MapUpdate?> = _update.asStateFlow()
+    private val _updateDismissed = MutableStateFlow(false)
+    val updateDismissed: StateFlow<Boolean> = _updateDismissed.asStateFlow()
+    fun dismissUpdate() { _updateDismissed.value = true }
+
+    /** Quietly checks for newer maps when there's a connection; does nothing offline. */
+    fun checkForMapUpdate() {
+        if (!store.isReady()) return
+        viewModelScope.launch {
+            runCatching {
+                val r = store.findLatestRelease()
+                _release.value = r
+                _update.value = if (r.tag != store.installedTag()) {
+                    MapUpdate(r.tag, store.updateBytes(r), r.tag.removePrefix("maps-${store.region}-").substringBefore("-run"))
+                } else null
+            }
+        }
+    }
 
     // ---- Selection, search and water notes (phase 4) ----
 

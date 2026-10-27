@@ -370,6 +370,35 @@ fun MapScreen(
                 SosButton(onClick = onEmergency)
             }
         }
+        val update by vm.update.collectAsStateWithLifecycle()
+        val updateDismissed by vm.updateDismissed.collectAsStateWithLifecycle()
+        LaunchedEffect(Unit) { vm.checkForMapUpdate() }
+        val dl = download
+        if (dl is DownloadState.Downloading) {
+            Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text("Updating maps: ${percent(dl.done, dl.total)}%", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                    Spacer(Modifier.height(6.dp))
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { if (dl.total > 0) dl.done.toFloat() / dl.total else 0f },
+                        modifier = Modifier.fillMaxWidth(), color = TG.Accent,
+                    )
+                    Text("Keep the app open. The map works as usual meanwhile.", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+        } else if (update != null && !updateDismissed) {
+            val u = update!!
+            Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Map update available", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                        Text("Built ${u.built} · ${formatBytes(u.bytes)} download · use Wi-Fi", fontSize = 12.sp, color = TG.Muted)
+                    }
+                    TextButton(onClick = { vm.dismissUpdate() }) { Text("Later", color = TG.Muted) }
+                    TextButton(onClick = { vm.downloadMaps() }) { Text("Update", color = TG.Accent, fontWeight = FontWeight.SemiBold) }
+                }
+            }
+        }
         if (outside && bbox != null) {
             Surface(
                 onClick = {
@@ -715,6 +744,9 @@ private fun statsLine(f: Fix): String {
     if (f.ageSeconds > 30) parts += "last fix ${f.ageSeconds}s ago"
     return parts.joinToString(" · ")
 }
+
+private fun formatBytes(b: Long): String =
+    if (b >= 1_000_000_000L) "%.1f GB".format(b / 1e9) else "%.0f MB".format(maxOf(1.0, b / 1e6))
 
 private fun percent(done: Long, total: Long): Int = if (total <= 0) 0 else ((done * 100) / total).toInt()
 

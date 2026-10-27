@@ -68,6 +68,25 @@ class MapStore(context: Context) {
         }
     }
 
+    /**
+     * How many bytes an update to [release] would actually download, after
+     * reusing files that haven't changed. Reads the release's small manifest.
+     */
+    suspend fun updateBytes(release: Release): Long = withContext(Dispatchers.IO) {
+        val m = release.assets.firstOrNull { it.name == "manifest.json" } ?: return@withContext release.totalBytes
+        val tmp = File(dir.parentFile, "$region.manifest-check.json")
+        try {
+            fetch(m, tmp.apply { delete() }, 0L) { }
+            val newSums = checksums(tmp)
+            val oldSums = checksums(file("manifest.json"))
+            release.assets.filter { a ->
+                a.name == "manifest.json" || newSums[a.name] == null || newSums[a.name] != oldSums[a.name] || !file(a.name).exists()
+            }.sumOf { it.size }
+        } finally {
+            tmp.delete()
+        }
+    }
+
     /** File name → SHA-256 from a manifest, so unchanged files can be reused. */
     private fun checksums(manifest: File): Map<String, String> = runCatching {
         val files = JSONObject(manifest.readText()).getJSONArray("files")
