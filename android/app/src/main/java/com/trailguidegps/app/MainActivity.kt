@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
                 var showSaved by rememberSaveable { mutableStateOf(false) }
                 var showSearch by rememberSaveable { mutableStateOf(false) }
                 var showSettings by rememberSaveable { mutableStateOf(false) }
+                var showSatellite by rememberSaveable { mutableStateOf(false) }
                 // What to do once Android has asked about notifications (recording or following).
                 var afterNotifyAsk by remember { mutableStateOf<(() -> Unit)?>(null) }
                 var editingFromSaved by remember { mutableStateOf<Waypoint?>(null) }
@@ -111,6 +112,7 @@ class MainActivity : ComponentActivity() {
                             onOpenSearch = { showSearch = true },
                             onOpenSettings = { showSettings = true },
                             onStartFollowing = { withNotifications { vm.startFollowing() } },
+                            onOpenSatellite = { showSatellite = true },
                         )
                     } else {
                         SetupScreen(vm)
@@ -128,6 +130,7 @@ class MainActivity : ComponentActivity() {
                     }
                     if (showSearch) SearchScreen(vm, onClose = { showSearch = false })
                     if (showSettings) SettingsScreen(vm, onClose = { showSettings = false })
+                    if (showSatellite) com.trailguidegps.app.ui.SatelliteScreen(vm, onClose = { showSatellite = false })
                     if (showEmergency) EmergencyScreen(vm, onClose = { showEmergency = false })
                 }
             }

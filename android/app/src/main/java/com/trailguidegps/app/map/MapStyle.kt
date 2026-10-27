@@ -47,12 +47,14 @@ object MapStyle {
     ) + PLACE_GROUPS.associate { g -> g.id to g.layers } + linkedMapOf(
         "landmanager" to listOf(LAYER_LAND_FILL),
         "forests" to listOf(LAYER_BOUNDARY_HIT, "boundary-line", "boundary-line-labels", "boundary-point-labels"),
+        // The saved-area layers are added per area; MapScreen finds them by the "satellite" prefix.
+        "satellite" to listOf("satellite-online"),
         "fires" to listOf(LAYER_FIRE_FILL, "fire-line", LAYER_FIRE_POINTS, "fire-labels"),
         "wilderness" to listOf(LAYER_SPECIAL_FILL, "special-line", "special-line-other", "special-line-labels", "special-point-labels"),
     )
 
     /** Layer groups that start switched off. */
-    val DEFAULT_OFF = setOf("landmanager")
+    val DEFAULT_OFF = setOf("landmanager", "satellite")
 
     /** Tap these (in order) for who manages the land, when nothing else was tapped. */
     val LAND_TAP_LAYERS = arrayOf(LAYER_SPECIAL_FILL, LAYER_BOUNDARY_HIT, LAYER_LAND_FILL)
@@ -72,7 +74,8 @@ object MapStyle {
     private const val MEDIUM = "NotoSans-Medium"
     private const val ITALIC = "NotoSans-Italic"
 
-    fun build(store: MapStore): String {
+    /** Saved satellite areas to draw: (area id, its PMTiles file). */
+    fun build(store: MapStore, satelliteAreas: List<Pair<String, java.io.File>> = emptyList()): String {
         fun pm(name: String) = "pmtiles://file://" + store.file(name).absolutePath
         fun gj(name: String) = "file://" + store.file(name).absolutePath
 
@@ -154,6 +157,18 @@ object MapStyle {
         layer("hillshade", "hillshade", "terrain", paint = JSONObject()
             .put("hillshade-exaggeration", 0.45).put("hillshade-shadow-color", "#4E4232")
             .put("hillshade-highlight-color", "#FFFFFF").put("hillshade-accent-color", "#6B5A44"))
+        // Satellite: USGS imagery online, with saved areas on top so they show offline. Off until switched on.
+        sources.put("satellite-online", JSONObject().put("type", "raster")
+            .put("tiles", arr(com.trailguidegps.app.data.SatelliteStore.TILE_URL + "/{z}/{y}/{x}"))
+            .put("tileSize", 256).put("maxzoom", com.trailguidegps.app.data.SatelliteStore.MAX_IMAGERY_ZOOM)
+            .put("attribution", "Imagery: USGS The National Map"))
+        val hidden = JSONObject().put("visibility", "none")
+        val rasterPaint = JSONObject().put("raster-fade-duration", 0)
+        layer("satellite-online", "raster", "satellite-online", paint = rasterPaint, layout = hidden)
+        satelliteAreas.forEach { (id, f) ->
+            sources.put("sat-$id", JSONObject().put("type", "raster").put("url", "pmtiles://file://" + f.absolutePath).put("tileSize", 256))
+            layer("satellite-$id", "raster", "sat-$id", paint = JSONObject(rasterPaint.toString()), layout = JSONObject(hidden.toString()))
+        }
         layer("contours-minor", "line", "contours", "contours", arr("==", arr("get", "major"), 0),
             JSONObject().put("line-color", "#B88A5B").put("line-width", 0.6).put("line-opacity", 0.5))
         layer("contours-major", "line", "contours", "contours", arr("==", arr("get", "major"), 1),

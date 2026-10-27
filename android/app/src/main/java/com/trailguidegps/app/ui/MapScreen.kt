@@ -5,6 +5,9 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -117,6 +120,7 @@ private val layerNames = linkedMapOf(
     "forests" to "National forest and reservation boundaries",
     "wilderness" to "Wilderness and other special areas",
     "fires" to "Active wildfires (updates when online)",
+    "satellite" to "Satellite imagery (online, and saved areas offline)",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,6 +135,7 @@ fun MapScreen(
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     onStartFollowing: () -> Unit,
+    onOpenSatellite: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -151,6 +156,24 @@ fun MapScreen(
     val shownRoute by vm.shownRoute.collectAsStateWithLifecycle()
     val shownRoutes by vm.shownRoutes.collectAsStateWithLifecycle()
     val routeFollow by vm.following.collectAsStateWithLifecycle()
+    val satSelect by vm.satSelect.collectAsStateWithLifecycle()
+    val satVersion by vm.satellite.version.collectAsStateWithLifecycle()
+    val satAreas by vm.satellite.areas.collectAsStateWithLifecycle()
+    // The box you frame when saving satellite imagery, in screen pixels, and the map area it covers.
+    var satFrame by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var satBounds by remember { mutableStateOf<DoubleArray?>(null) } // west, south, east, north
+    LaunchedEffect(satSelect, satFrame, map) {
+        while (satSelect != null) {
+            val r = satFrame
+            val m = map
+            if (r != null && m != null) {
+                val tl = m.projection.fromScreenLocation(android.graphics.PointF(r.left, r.top))
+                val br = m.projection.fromScreenLocation(android.graphics.PointF(r.right, r.bottom))
+                satBounds = doubleArrayOf(tl.longitude, br.latitude, br.longitude, tl.latitude)
+            }
+            kotlinx.coroutines.delay(250)
+        }
+    }
     val settings by vm.settings.value.collectAsStateWithLifecycle()
     // Keep the screen awake while following, if that's switched on in Settings.
     val view = androidx.compose.ui.platform.LocalView.current
@@ -225,6 +248,7 @@ fun MapScreen(
                 true
             }
             m.addOnMapClickListener { latLng ->
+                if (vm.satSelect.value != null) return@addOnMapClickListener true
                 val point = m.projection.toScreenLocation(latLng)
                 if (vm.plan.value.active) {
                     // Planning: each tap adds a point. Tapping one of your waypoints uses its exact spot.
@@ -330,12 +354,13 @@ fun MapScreen(
     }
 
     // (Re)load the style whenever new map files are installed.
-    LaunchedEffect(map, mapVersion) {
+    LaunchedEffect(map, mapVersion, satVersion) {
         val m = map ?: return@LaunchedEffect
         style = null
-        m.setStyle(Style.Builder().fromJson(MapStyle.build(vm.store))) { s ->
+        val areas = vm.satellite.areas.value.filter { it.ready && vm.satellite.file(it).exists() }.map { it.id to vm.satellite.file(it) }
+        m.setStyle(Style.Builder().fromJson(MapStyle.build(vm.store, areas))) { s ->
             MapIcons.addAll(context, s)
-            MapStyle.GROUPS.forEach { (group, ids) -> setVisible(s, ids, layerOn[group] != false) }
+            MapStyle.GROUPS.keys.forEach { group -> setVisible(s, groupLayers(s, group), layerOn[group] != false) }
             if (!cameraPlaced) {
                 vm.store.bbox()?.let { b ->
                     val bounds = LatLngBounds.Builder()
@@ -472,6 +497,14 @@ fun MapScreen(
 
     Box(Modifier.fillMaxSize().background(Color(0xFFEFEEE2))) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+        if (satSelect != null) {
+            // The box to save: whatever of the map is inside it.
+            Box(
+                Modifier.fillMaxSize().statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 96.dp, bottom = 340.dp)
+                    .border(3.dp, Color(0xFF1F4FB4), RoundedCornerShape(6.dp))
+                    .onGloballyPositioned { satFrame = it.boundsInRoot() },
+            )
+        }
 
         // Top: offline badge and layers button, plus a notice when you're off the map
         val bbox = remember(mapVersion) { vm.store.bbox() }
@@ -483,7 +516,18 @@ fun MapScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (plan.active) {
+            if (satSelect != null) {
+                Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
+                    Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { vm.cancelSatSelect() }) { Icon(Icons.Filled.Close, contentDescription = "Cancel", tint = TG.Ink) }
+                        Column(Modifier.weight(1f)) {
+                            Text(if (satSelect?.replacing != null) "Change satellite area" else "Save satellite imagery",
+                                fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+                            Text("Move and zoom so the blue box covers it", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
+                        }
+                    }
+                }
+            } else if (plan.active) {
                 Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { if (plan.points.size >= 2) askDiscardRoute = true else vm.cancelPlanning() }) {
@@ -587,7 +631,25 @@ fun MapScreen(
                     Icon(Icons.Filled.MyLocation, contentDescription = null, tint = if (following && !headingUp) Color.White else TG.Blue)
                 }
             }
-            if (plan.active) {
+            if (satSelect != null) {
+                Surface(
+                    color = Color.White, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
+                        SatSelectPanel(
+                            replacing = satSelect?.replacing,
+                            bounds = satBounds,
+                            suggestName = { lat, lon ->
+                                vm.features.value?.nearTown(lat, lon)?.substringAfter(" of ", "")?.takeIf { it.isNotBlank() }?.let { "Near $it" }
+                            },
+                            freeBytes = context.filesDir.usableSpace,
+                            onCancel = { vm.cancelSatSelect() },
+                            onSave = { name, b, z -> vm.saveSatArea(name, b[0], b[1], b[2], b[3], z) },
+                        )
+                    }
+                }
+            } else if (plan.active) {
                 Surface(
                     color = Color.White, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
@@ -712,7 +774,7 @@ fun MapScreen(
                             onCheckedChange = { on ->
                                 layerOn[group] = on
                                 layerPrefs.edit().putBoolean(group, on).apply()
-                                style?.let { s -> setVisible(s, MapStyle.GROUPS[group].orEmpty(), on) }
+                                style?.let { s -> setVisible(s, groupLayers(s, group), on) }
                             },
                             colors = SwitchDefaults.colors(checkedTrackColor = TG.Accent),
                         )
@@ -747,6 +809,19 @@ fun MapScreen(
                         if (shownRoutes.size < routeCount) TextButton(onClick = { vm.showAllRoutes() }) { Text("Show all", color = TG.Accent) }
                         if (shownRoutes.isNotEmpty()) TextButton(onClick = { vm.hideAllRoutes() }) { Text("Hide all", color = TG.Accent) }
                     }
+                }
+                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Offline satellite areas", fontSize = 16.sp, color = TG.Ink)
+                        val ready = satAreas.filter { it.ready }
+                        Text(
+                            if (satAreas.isEmpty()) "None saved yet. Save an area before a trip."
+                            else "${ready.size} saved · ${"%.0f".format(ready.sumOf { it.bytes } / 1e6)} MB" +
+                                (satAreas.count { !it.ready }.takeIf { it > 0 }?.let { " · $it in progress" } ?: ""),
+                            fontSize = 12.sp, color = TG.Muted,
+                        )
+                    }
+                    TextButton(onClick = { showLayers = false; onOpenSatellite() }) { Text("Manage", color = TG.Accent) }
                 }
                 Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1082,6 +1157,11 @@ private fun RoundButton(onClick: () -> Unit, description: String, active: Boolea
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().semantics { contentDescription = description }) { content() }
     }
 }
+
+/** A switch's layers; satellite also covers each saved area's layer. */
+private fun groupLayers(style: Style, group: String): List<String> =
+    if (group == "satellite") style.layers.map { it.id }.filter { it.startsWith("satellite") }
+    else MapStyle.GROUPS[group].orEmpty()
 
 private fun setVisible(style: Style, ids: List<String>, on: Boolean) {
     ids.forEach { id ->

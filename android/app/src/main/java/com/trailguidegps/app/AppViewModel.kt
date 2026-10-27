@@ -270,6 +270,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- Satellite areas saved for offline use (phase 7) ----
+
+    val satellite = com.trailguidegps.app.data.SatelliteStore.get(app)
+
+    /** Picking an area on the map to save; [replacing] when changing an existing area's boundary. */
+    data class SatSelect(val replacing: com.trailguidegps.app.data.SatArea? = null)
+    private val _satSelect = MutableStateFlow<SatSelect?>(null)
+    val satSelect: StateFlow<SatSelect?> = _satSelect.asStateFlow()
+
+    init {
+        // Pick up downloads that were cut off when the app closed.
+        if (satellite.nextToDownload() != null) {
+            runCatching { com.trailguidegps.app.record.SatelliteDownloadService.start(app) }
+        }
+    }
+
+    fun startSatSelect(replacing: com.trailguidegps.app.data.SatArea? = null) {
+        select(null)
+        _satSelect.value = SatSelect(replacing)
+        replacing?.let { a -> focusOn(listOf(a.north to a.west, a.south to a.east)) }
+    }
+
+    fun cancelSatSelect() { _satSelect.value = null }
+
+    fun saveSatArea(name: String, west: Double, south: Double, east: Double, north: Double, maxZoom: Int) {
+        val replacing = _satSelect.value?.replacing
+        val a = satellite.add(name.ifBlank { "Satellite area" }, west, south, east, north, maxZoom, replacing?.id)
+        _satSelect.value = null
+        com.trailguidegps.app.record.SatelliteDownloadService.start(getApplication())
+        _message.value = "Saving \"${a.name}\" (${a.total} tiles). It keeps going if you leave the app."
+    }
+
+    fun resumeSatArea(id: String) {
+        satellite.resume(id)
+        com.trailguidegps.app.record.SatelliteDownloadService.start(getApplication())
+    }
+
     fun stopFollowing() {
         val app = getApplication<Application>()
         com.trailguidegps.app.route.RouteFollower.stop(app)
