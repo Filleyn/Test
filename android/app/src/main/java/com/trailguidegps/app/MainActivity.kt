@@ -27,6 +27,7 @@ import com.trailguidegps.app.data.Waypoint
 import com.trailguidegps.app.ui.EmergencyScreen
 import com.trailguidegps.app.ui.SavedScreen
 import com.trailguidegps.app.ui.SearchScreen
+import com.trailguidegps.app.ui.SettingsScreen
 import com.trailguidegps.app.ui.WaypointEditor
 import com.trailguidegps.app.ui.MapScreen
 import com.trailguidegps.app.ui.SetupScreen
@@ -51,6 +52,9 @@ class MainActivity : ComponentActivity() {
                 var showEmergency by rememberSaveable { mutableStateOf(false) }
                 var showSaved by rememberSaveable { mutableStateOf(false) }
                 var showSearch by rememberSaveable { mutableStateOf(false) }
+                var showSettings by rememberSaveable { mutableStateOf(false) }
+                // What to do once Android has asked about notifications (recording or following).
+                var afterNotifyAsk by remember { mutableStateOf<(() -> Unit)?>(null) }
                 var editingFromSaved by remember { mutableStateOf<Waypoint?>(null) }
                 val mapsReady by vm.mapsReady.collectAsStateWithLifecycle()
                 val message by vm.message.collectAsStateWithLifecycle()
@@ -70,7 +74,16 @@ class MainActivity : ComponentActivity() {
                 // Recording shows a notification; Android 13+ asks before allowing it.
                 // Recording starts either way; without permission the notification is hidden.
                 val notifyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-                    vm.startRecording()
+                    afterNotifyAsk?.invoke()
+                    afterNotifyAsk = null
+                }
+                fun withNotifications(action: () -> Unit) {
+                    if (Build.VERSION.SDK_INT >= 33 &&
+                        ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        afterNotifyAsk = action
+                        notifyLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else action()
                 }
                 LaunchedEffect(hasPermission) {
                     if (hasPermission) vm.tracker.start()
@@ -83,15 +96,7 @@ class MainActivity : ComponentActivity() {
                 val requestPermission = {
                     launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                 }
-                val startRecording = {
-                    if (Build.VERSION.SDK_INT >= 33 &&
-                        ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                    ) {
-                        notifyLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    } else {
-                        vm.startRecording()
-                    }
-                }
+                val startRecording = { withNotifications { vm.startRecording() } }
 
                 // The map stays alive under the other screens so it doesn't reload.
                 Box(Modifier.fillMaxSize()) {
@@ -104,6 +109,8 @@ class MainActivity : ComponentActivity() {
                             onStartRecording = startRecording,
                             onOpenSaved = { showSaved = true },
                             onOpenSearch = { showSearch = true },
+                            onOpenSettings = { showSettings = true },
+                            onStartFollowing = { withNotifications { vm.startFollowing() } },
                         )
                     } else {
                         SetupScreen(vm)
@@ -120,6 +127,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (showSearch) SearchScreen(vm, onClose = { showSearch = false })
+                    if (showSettings) SettingsScreen(vm, onClose = { showSettings = false })
                     if (showEmergency) EmergencyScreen(vm, onClose = { showEmergency = false })
                 }
             }

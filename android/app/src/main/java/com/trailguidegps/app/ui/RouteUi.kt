@@ -230,6 +230,58 @@ private fun DetailRow(label: String, value: String) {
     }
 }
 
+/** Progress along a route you're following, what's left, and an off-route warning. */
+@Composable
+fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: () -> Unit, modifier: Modifier = Modifier) {
+    val color = routeColor(f.route.color)
+    Column(modifier) {
+        if (f.offRoute && f.offByM != null) {
+            Box(Modifier.fillMaxWidth().background(Color(0xFFC62828), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(
+                    "Off route by ${Geo.formatDistance(f.offByM)}. Follow the red dashed line back to it.",
+                    fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(width = 18.dp, height = 4.dp).background(color, RoundedCornerShape(2.dp)))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (f.arrived) "Arrived: ${f.route.name}" else "Following ${f.route.name}",
+                fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onStop) { Text("Stop", color = TG.Danger, fontWeight = FontWeight.SemiBold) }
+        }
+        if (f.lastFixAt == 0L) {
+            Text("Waiting for GPS…", fontSize = 13.sp, color = TG.Muted)
+        } else {
+            val mins = pace.minutes(f.remainingM, f.climbLeftM)
+            val arrive = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(System.currentTimeMillis() + mins * 60_000L))
+            Row(Modifier.fillMaxWidth()) {
+                FollowStat("%.1f".format(f.remainingM / Geo.M_PER_MI), "miles left", Modifier.weight(1f))
+                FollowStat("+%,d".format((f.climbLeftM * Geo.FT_PER_M).roundToInt()), "ft climb left", Modifier.weight(1f))
+                FollowStat(Pace.format(mins), "about $arrive", Modifier.weight(1.1f))
+            }
+            val total = (f.alongM + f.remainingM).coerceAtLeast(1.0)
+            Box(Modifier.fillMaxWidth().padding(top = 6.dp).height(6.dp).background(Color(0xFFE3E5E0), RoundedCornerShape(3.dp))) {
+                Box(Modifier.fillMaxWidth((f.alongM / total).toFloat().coerceIn(0f, 1f)).height(6.dp).background(color, RoundedCornerShape(3.dp)))
+            }
+            Text("%.1f of %.1f mi".format(f.alongM / Geo.M_PER_MI, total / Geo.M_PER_MI), fontSize = 11.sp, color = TG.Muted,
+                modifier = Modifier.padding(top = 2.dp))
+        }
+    }
+}
+
+@Composable
+private fun FollowStat(value: String, label: String, modifier: Modifier) {
+    Column(modifier) {
+        Text(value, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = TG.Ink, maxLines = 1)
+        Text(label, fontSize = 12.sp, color = TG.Muted, maxLines = 1)
+    }
+}
+
 /** A row of color dots to pick a route color. */
 @Composable
 fun RouteColorPicker(selected: String, onPick: (String) -> Unit) {

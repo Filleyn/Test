@@ -128,6 +128,8 @@ fun MapScreen(
     onStartRecording: () -> Unit,
     onOpenSaved: () -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onStartFollowing: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -147,6 +149,14 @@ fun MapScreen(
     val routingReady by vm.routingReady.collectAsStateWithLifecycle()
     val shownRoute by vm.shownRoute.collectAsStateWithLifecycle()
     val shownRoutes by vm.shownRoutes.collectAsStateWithLifecycle()
+    val following by vm.following.collectAsStateWithLifecycle()
+    val settings by vm.settings.value.collectAsStateWithLifecycle()
+    // Keep the screen awake while following, if that's switched on in Settings.
+    val view = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(following != null, settings.keepScreenOn) {
+        view.keepScreenOn = following != null && settings.keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
     var showPace by remember { mutableStateOf(false) }
     var showWaypointPicker by remember { mutableStateOf(false) }
     var askSaveRoute by remember { mutableStateOf(false) }
@@ -355,6 +365,14 @@ fun MapScreen(
             ?.setGeoJson(RouteStore.routesGeoJson(shownRoutes, shownRoute?.id))
     }
     LaunchedEffect(shownRoute?.id, plan.active) { profileMark = null }
+    // While off route, a dashed line from you back to the nearest point on it.
+    LaunchedEffect(style, following?.offRoute, following?.nearest, fix) {
+        val f = following
+        val me = fix
+        val line = if (f != null && f.offRoute && f.nearest != null && me != null)
+            listOf(doubleArrayOf(me.lat, me.lon), f.nearest) else emptyList()
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_OFF_ROUTE)?.setGeoJson(RouteStore.lineGeoJson(line))
+    }
     LaunchedEffect(style, profileMark) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PROFILE_MARK)?.setGeoJson(RouteStore.pointGeoJson(profileMark))
         // Bring the marked spot into view if it's off screen.
@@ -474,7 +492,7 @@ fun MapScreen(
         }
         val update by vm.update.collectAsStateWithLifecycle()
         val updateDismissed by vm.updateDismissed.collectAsStateWithLifecycle()
-        LaunchedEffect(Unit) { vm.checkForMapUpdate() }
+        LaunchedEffect(Unit) { if (vm.settings.value.value.checkUpdatesOnLaunch) vm.checkForMapUpdate() }
         val dl = download
         if (dl is DownloadState.Downloading) {
             Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
@@ -581,6 +599,9 @@ fun MapScreen(
                 pace = pace,
                 onHideRoute = { vm.hideRoute() },
                 onRouteScrub = { d -> profileMark = d?.let { dist -> shownRoute?.let { RouteStore.pointAt(it.coords, dist) } } },
+                following = following,
+                onFollow = onStartFollowing,
+                onStopFollowing = { vm.stopFollowing() },
                 placeDescription = fix?.let { f -> features?.describe(f.lat, f.lon) },
             )
         }
@@ -683,6 +704,13 @@ fun MapScreen(
                         if (shownRoutes.isNotEmpty()) TextButton(onClick = { vm.hideAllRoutes() }) { Text("Hide all", color = TG.Accent) }
                     }
                 }
+                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("All settings", fontSize = 16.sp, color = TG.Ink)
+                        Text("Off-route alerts, screen, map updates", fontSize = 12.sp, color = TG.Muted)
+                    }
+                    TextButton(onClick = { showLayers = false; onOpenSettings() }) { Text("Open", color = TG.Accent) }
+                }
                 HorizontalDivider(Modifier.padding(vertical = 12.dp), color = TG.Line)
                 Text("Map data", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Muted)
                 Spacer(Modifier.height(4.dp))
@@ -741,6 +769,9 @@ private fun BottomPanel(
     pace: Pace,
     onHideRoute: () -> Unit,
     onRouteScrub: (Double?) -> Unit,
+    following: com.trailguidegps.app.route.Following?,
+    onFollow: () -> Unit,
+    onStopFollowing: () -> Unit,
     placeDescription: String?,
 ) {
     Surface(
@@ -863,7 +894,10 @@ private fun BottomPanel(
                     placeDescription?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 2) }
                 }
             }
-            shownRoute?.let { r ->
+            following?.let { f ->
+                FollowPanel(f, pace, onStop = onStopFollowing, modifier = Modifier.padding(top = 8.dp))
+            }
+            shownRoute?.takeIf { following == null }?.let { r ->
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(width = 18.dp, height = 4.dp).background(routeColor(r.color), RoundedCornerShape(2.dp)))
                     Spacer(Modifier.width(8.dp))
@@ -875,7 +909,13 @@ private fun BottomPanel(
                             fontSize = 12.sp, color = TG.Muted,
                         )
                     }
-                    TextButton(onClick = onHideRoute) { Text("Hide", color = routeColor(r.color)) }
+                    TextButton(onClick = onHideRoute) { Text("Hide", color = TG.Muted) }
+                    Button(
+                        onClick = onFollow, shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = routeColor(r.color), contentColor = Color.White),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp),
+                        modifier = Modifier.height(40.dp),
+                    ) { Text("Follow", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
                 }
                 var showDifficulty by remember(r.id) { mutableStateOf(false) }
                 val difficulty = remember(r) { com.trailguidegps.app.data.Difficulty.of(r.stats, r.terrain) }

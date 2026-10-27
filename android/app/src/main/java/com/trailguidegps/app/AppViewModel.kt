@@ -210,6 +210,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setPaused(paused: Boolean) = TrackRecorder.setPaused(paused)
 
+    // ---- Settings and following a route (phase 6) ----
+
+    val settings = com.trailguidegps.app.data.SettingsStore.get(app)
+    val following: StateFlow<com.trailguidegps.app.route.Following?> = com.trailguidegps.app.route.RouteFollower.state
+
+    /** Follow the route in the bottom panel: progress, what's left, and off-route alerts. */
+    fun startFollowing() {
+        val r = _shownRoute.value ?: return
+        val app = getApplication<Application>()
+        com.trailguidegps.app.route.RouteFollower.start(r)
+        TrackRecordingService.start(app)
+        _message.value = if (settings.value.value.offRouteAlerts)
+            "Following \"${r.name}\". You'll get a buzz if you're more than ${settings.value.value.offRouteFt} ft off it."
+        else "Following \"${r.name}\". Off-route alerts are off in Settings."
+    }
+
+    fun stopFollowing() {
+        val app = getApplication<Application>()
+        com.trailguidegps.app.route.RouteFollower.stop(app)
+        TrackRecordingService.stop(app)
+    }
+
     /** Stops recording; saves it unless [save] is false. */
     fun stopRecording(name: String?, save: Boolean) {
         val app = getApplication<Application>()
@@ -475,11 +497,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Takes a route off the map; with no id, the one in the bottom panel. */
     fun hideRoute(id: String? = _shownRoute.value?.id) {
+        if (following.value?.route?.id == id) stopFollowing()
         val rest = _shownRoutes.value.filter { it.id != id }
         setShown(rest, if (_shownRoute.value?.id == id) rest.lastOrNull() else _shownRoute.value)
     }
 
-    fun hideAllRoutes() = setShown(emptyList(), null)
+    fun hideAllRoutes() {
+        if (following.value != null) stopFollowing()
+        setShown(emptyList(), null)
+    }
 
     /** Puts every saved route on the map, so any of them can be tapped. */
     fun showAllRoutes() {

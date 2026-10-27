@@ -96,6 +96,7 @@ object MapStyle {
             .put(SRC_PLAN, emptyGeoJson())
             .put(SRC_PLAN_POINTS, emptyGeoJson())
             .put(SRC_PROFILE_MARK, emptyGeoJson())
+            .put(SRC_OFF_ROUTE, emptyGeoJson())
             .put(SRC_RECORDING, emptyGeoJson())
             .put(SRC_WAYPOINTS, emptyGeoJson())
 
@@ -283,6 +284,8 @@ object MapStyle {
             .put("circle-color", arr("match", arr("get", "role"), "start", "#2E8B57", "end", ROUTE_PURPLE, "#FFFFFF"))
             .put("circle-stroke-color", arr("match", arr("get", "role"), "mid", ROUTE_PURPLE, "#FFFFFF"))
             .put("circle-stroke-width", 3))
+        layer("off-route", "line", SRC_OFF_ROUTE, paint = JSONObject().put("line-color", "#C62828").put("line-width", 3)
+            .put("line-dasharray", arr(1.5, 1.5)), layout = JSONObject().put("line-cap", "round"))
         // Where you're pressing on the elevation graph.
         layer("profile-mark", "circle", SRC_PROFILE_MARK, paint = JSONObject().put("circle-radius", 9)
             .put("circle-color", "#FFFFFF").put("circle-stroke-color", "#23271F").put("circle-stroke-width", 4))
@@ -311,6 +314,7 @@ object MapStyle {
     const val SRC_PLAN = "user-plan"
     const val SRC_PLAN_POINTS = "user-plan-points"
     const val SRC_PROFILE_MARK = "user-profile-mark"
+    const val SRC_OFF_ROUTE = "user-off-route"
     const val ROUTE_PURPLE = "#6B3FA0"
     const val SRC_RECORDING = "user-recording"
     const val SRC_WAYPOINTS = "user-waypoints"

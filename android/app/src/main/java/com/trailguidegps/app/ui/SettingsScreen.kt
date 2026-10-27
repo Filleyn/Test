@@ -1,0 +1,142 @@
+package com.trailguidegps.app.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.trailguidegps.app.AppViewModel
+import com.trailguidegps.app.BuildConfig
+import com.trailguidegps.app.data.Settings
+
+/** All the app's settings in one place. */
+@Composable
+fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
+    val s by vm.settings.value.collectAsStateWithLifecycle()
+    val pace by vm.pace.collectAsStateWithLifecycle()
+    var showPace by remember { mutableStateOf(false) }
+    BackHandler(onBack = onClose)
+
+    Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onClose) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to map", tint = TG.Ink) }
+            Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
+        }
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Section("Following a route")
+            ToggleRow(
+                "Off-route alerts",
+                "Buzz and notify when you stray from a route you're following, even with the screen off.",
+                s.offRouteAlerts,
+            ) { on -> vm.settings.update { it.copy(offRouteAlerts = on) } }
+            if (s.offRouteAlerts) {
+                Text("Alert when more than", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 6.dp)) {
+                    Settings.OFF_ROUTE_CHOICES.forEach { ft ->
+                        FilterChip(
+                            selected = s.offRouteFt == ft, onClick = { vm.settings.update { it.copy(offRouteFt = ft) } },
+                            label = { Text("%,d ft".format(ft)) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Accent, selectedLabelColor = Color.White),
+                        )
+                    }
+                }
+                Text("off the route. Smaller numbers catch wrong turns sooner but can go off from GPS drift in canyons and thick forest.",
+                    fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
+            }
+            ToggleRow("Keep the screen on", "While following a route. Uses more battery.", s.keepScreenOn) { on ->
+                vm.settings.update { it.copy(keepScreenOn = on) }
+            }
+
+            Section("Time estimates")
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Hiking pace", fontSize = 16.sp, color = TG.Ink)
+                    Text("%.1f mph · %d min per 1,000 ft of climb · %d min breaks per hour".format(pace.mph, pace.climbMinPer1000Ft, pace.breakMinPerHour),
+                        fontSize = 12.sp, color = TG.Muted)
+                }
+                TextButton(onClick = { showPace = true }) { Text("Change", color = TG.Accent) }
+            }
+
+            Section("Maps")
+            ToggleRow("Check for map updates when the app opens", "Only when you have a connection. You choose when to download.",
+                s.checkUpdatesOnLaunch) { on -> vm.settings.update { it.copy(checkUpdatesOnLaunch = on) } }
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Installed maps", fontSize = 16.sp, color = TG.Ink)
+                    Text("${vm.store.title()} · built ${vm.store.builtDate() ?: "unknown"}", fontSize = 12.sp, color = TG.Muted)
+                }
+                val dl by vm.download.collectAsStateWithLifecycle()
+                TextButton(
+                    onClick = { vm.downloadMaps() },
+                    enabled = dl !is com.trailguidegps.app.DownloadState.Checking && dl !is com.trailguidegps.app.DownloadState.Downloading,
+                ) { Text("Update now", color = TG.Accent) }
+            }
+            val dl by vm.download.collectAsStateWithLifecycle()
+            when (val d = dl) {
+                com.trailguidegps.app.DownloadState.Checking -> "Checking for newer map files…"
+                is com.trailguidegps.app.DownloadState.Downloading -> "Downloading ${d.file}…"
+                is com.trailguidegps.app.DownloadState.UpToDate -> "Map files are up to date."
+                is com.trailguidegps.app.DownloadState.Error -> d.message
+                else -> null
+            }?.let { Text(it, fontSize = 12.sp, color = TG.Muted) }
+
+            Section("About")
+            Text("TrailGuide GPS ${BuildConfig.VERSION_NAME}", fontSize = 16.sp, color = TG.Ink)
+            Text("Maps © OpenStreetMap contributors. Elevation and public land from USGS.", fontSize = 12.sp, color = TG.Muted,
+                modifier = Modifier.padding(top = 2.dp, bottom = 24.dp))
+        }
+    }
+    if (showPace) PaceDialog(pace, onSave = { vm.setPace(it); showPace = false }, onDismiss = { showPace = false })
+}
+
+@Composable
+private fun Section(title: String) {
+    Spacer(Modifier.height(12.dp))
+    Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Accent)
+    Spacer(Modifier.height(4.dp))
+    HorizontalDivider(color = TG.Line)
+}
+
+@Composable
+private fun ToggleRow(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, fontSize = 16.sp, color = TG.Ink)
+            Text(detail, fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
+        }
+        Switch(checked = on, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = TG.Accent))
+    }
+}
