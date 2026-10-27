@@ -420,8 +420,10 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
     lakes = read_lakes(pbf, bbox)
     pois.extend(lakes)
     write_geojson("pois.geojson", pois)
-    with gzip.open(os.path.join(out_dir, "routing-graph.json.gz"), "wt") as f:
-        json.dump(graph, f, separators=(",", ":"))
+    # mtime=0 keeps the file byte-identical when nothing changed, so the app can skip re-downloading it.
+    with open(os.path.join(out_dir, "routing-graph.json.gz"), "wb") as raw:
+        with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as gz:
+            gz.write(json.dumps(graph, separators=(",", ":")).encode())
 
     named = sorted({t["properties"]["name"] for t in trails if t["properties"]["name"]})
     stats = {
