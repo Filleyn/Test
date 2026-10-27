@@ -162,18 +162,6 @@ fun MapScreen(
     // The box you frame when saving satellite imagery, in screen pixels, and the map area it covers.
     var satFrame by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var satBounds by remember { mutableStateOf<DoubleArray?>(null) } // west, south, east, north
-    LaunchedEffect(satSelect, satFrame, map) {
-        while (satSelect != null) {
-            val r = satFrame
-            val m = map
-            if (r != null && m != null) {
-                val tl = m.projection.fromScreenLocation(android.graphics.PointF(r.left, r.top))
-                val br = m.projection.fromScreenLocation(android.graphics.PointF(r.right, r.bottom))
-                satBounds = doubleArrayOf(tl.longitude, br.latitude, br.longitude, tl.latitude)
-            }
-            kotlinx.coroutines.delay(250)
-        }
-    }
     val settings by vm.settings.value.collectAsStateWithLifecycle()
     // Keep the screen awake while following, if that's switched on in Settings.
     val view = androidx.compose.ui.platform.LocalView.current
@@ -351,6 +339,19 @@ fun MapScreen(
         val d = context.resources.displayMetrics.density
         m.uiSettings.compassGravity = android.view.Gravity.TOP or android.view.Gravity.START
         m.uiSettings.setCompassMargins((16 * d).toInt(), statusTopPx + (100 * d).toInt(), 0, 0)
+    }
+
+    LaunchedEffect(satSelect, satFrame, map) {
+        while (satSelect != null) {
+            val r = satFrame
+            val m = map
+            if (r != null && m != null) {
+                val tl = m.projection.fromScreenLocation(android.graphics.PointF(r.left, r.top))
+                val br = m.projection.fromScreenLocation(android.graphics.PointF(r.right, r.bottom))
+                satBounds = doubleArrayOf(tl.longitude, br.latitude, br.longitude, tl.latitude)
+            }
+            kotlinx.coroutines.delay(250)
+        }
     }
 
     // (Re)load the style whenever new map files are installed.
