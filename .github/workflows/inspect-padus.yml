@@ -14,28 +14,9 @@ jobs:
         run: |
           {
             set -x
-            python3 pipeline/fetch_padus.py --state OR --list | head -70 || true
-            python3 pipeline/fetch_padus.py --state OR --out padus.zip || true
-            ls -la padus.zip; file padus.zip
-            mkdir -p padus && unzip -q -o padus.zip -d padus || true
-            # Zips inside the zip
-            for z in $(find padus -name "*.zip"); do unzip -q -o "$z" -d "${z%.zip}" || true; done
-            find padus | head -60
-            SRC=$(find padus \( -name "*.gdb" -o -name "*.gpkg" -o -name "*.shp" \) | head -1)
-            echo "Source: $SRC"
+            pip install -q duckdb
+            python3 pipeline/padus_inspect.py OR
             set +x
-            echo "## Layers"; ogrinfo -ro -so "$SRC" | tail -n +2
-            for L in $(ogrinfo -ro -so "$SRC" | sed -n 's/^[0-9]*: \([^ ]*\).*/\1/p'); do
-              echo "## $L"; ogrinfo -ro -so "$SRC" "$L" | grep -E "Feature Count|Geometry|: (String|Integer|Real)" | head -60
-              for F in Mang_Name Mang_Type Des_Tp Pub_Access; do
-                echo "### $L $F"
-                ogrinfo -ro -q "$SRC" -sql "SELECT $F, COUNT(*) AS n FROM \"$L\" GROUP BY $F" 2>/dev/null | grep -E "^  $F|^  n " | paste - - | head -40
-              done
-            done
-            echo "## Forest and wilderness names"
-            for L in $(ogrinfo -ro -so "$SRC" | sed -n 's/^[0-9]*: \([^ ]*\).*/\1/p'); do
-              ogrinfo -ro -q "$SRC" -sql "SELECT Unit_Nm, Des_Tp FROM \"$L\" WHERE Unit_Nm LIKE '%Deschutes%' OR Unit_Nm LIKE '%Jefferson%'" 2>/dev/null | grep -E "Unit_Nm|Des_Tp" | paste - - | sed "s/^/$L: /" | head -20
-            done
           } > result.md 2>&1 || true
           cat result.md >> "$GITHUB_STEP_SUMMARY"
           python3 - <<'PY'
