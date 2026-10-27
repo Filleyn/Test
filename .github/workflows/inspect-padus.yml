@@ -15,7 +15,12 @@ jobs:
           {
             set -x
             pip install -q duckdb
-            python3 pipeline/padus_inspect.py OR
+            git clone -q --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe
+            make -s -C /tmp/tippecanoe -j"$(nproc)" >/dev/null 2>&1 && sudo make -s -C /tmp/tippecanoe install >/dev/null 2>&1
+            time python3 pipeline/build_publiclands.py --state OR --work /tmp/pad --out /tmp/publiclands.pmtiles --stats /tmp/pad-stats.json 2>&1 | grep -v "^ *[0-9.]*%" | tail -40
+            ls -la /tmp/publiclands.pmtiles /tmp/pad
+            head -c 3000 /tmp/pad-stats.json
+            head -c 600 /tmp/pad/pad-labels.geojsonl
             set +x
           } > result.md 2>&1 || true
           cat result.md >> "$GITHUB_STEP_SUMMARY"
