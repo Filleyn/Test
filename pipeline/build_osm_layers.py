@@ -324,10 +324,15 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
                 if ele_ft is None and pkind == "peak":
                     ele_ft = elev.sample([(lon, lat)])[0]
                     ele_ft = round(ele_ft) if ele_ft is not None else None
-                pois.append(feature("Point", [round(lon, 6), round(lat, 6)], {
-                    "kind": pkind, "name": tags.get("name"), "ele_ft": ele_ft,
-                    "osm_id": f"n{obj.id}",
-                }))
+                props = {"kind": pkind, "name": tags.get("name"), "ele_ft": ele_ft, "osm_id": f"n{obj.id}"}
+                if pkind == "town":
+                    # Keep the size so the app can say "near Sisters" rather than a tiny hamlet.
+                    props["place"] = tags.get("place")
+                    try:
+                        props["population"] = int(str(tags.get("population", "")).replace(",", "").split(";")[0])
+                    except ValueError:
+                        props["population"] = None
+                pois.append(feature("Point", [round(lon, 6), round(lat, 6)], props))
         elif obj.is_way():
             hw = tags.get("highway")
             kind = ROUTABLE.get(hw)
