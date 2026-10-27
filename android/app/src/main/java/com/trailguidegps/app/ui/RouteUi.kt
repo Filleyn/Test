@@ -9,6 +9,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.input.pointer.pointerInput
 import com.trailguidegps.app.data.RouteColors
+import com.trailguidegps.app.data.Difficulty
+import com.trailguidegps.app.data.RouteTerrain
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -144,6 +148,88 @@ fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier, color: Co
     }
 }
 
+val DifficultyColors = listOf(Color(0xFF2E7D32), Color(0xFF558B2F), Color(0xFFB07D00), Color(0xFFD84315), Color(0xFFB71C1C))
+
+/** One line: the rating, the steepest stretch and the high point. Tap for the full breakdown. */
+@Composable
+fun DifficultyLine(d: Difficulty, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 40.dp).clickable(onClick = onClick)
+            .semantics { contentDescription = "Difficulty: ${d.label}. Tap for details." },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.background(DifficultyColors[d.level], RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp)) {
+            Text(d.label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+        }
+        Spacer(Modifier.width(8.dp))
+        val bits = buildList {
+            d.steepestGradePct?.let { add("steepest ${it.roundToInt()}%") }
+            d.highPointFt?.let { add("top %,d ft".format(it.roundToInt())) }
+            d.terrain?.takeIf { it.sacMax > 0 }?.let { add("T${it.sacMax}") }
+        }
+        Text(bits.joinToString(" · "), fontSize = 12.sp, color = TG.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text("Details", fontSize = 12.sp, color = TG.Accent, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** The full difficulty breakdown and how it's worked out. */
+@Composable
+fun DifficultyDialog(d: Difficulty, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Difficulty: ${d.label}") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                DetailRow("Rating", "%.0f".format(d.score) + " (Shenandoah National Park scale)")
+                Text(
+                    "√(feet of climb × 2 × miles). Under 50 easiest · 50–100 moderate · 100–150 moderately strenuous · " +
+                        "150–200 strenuous · over 200 very strenuous.",
+                    fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp,
+                )
+                d.steepestGradePct?.let { g ->
+                    val where = d.steepestAtM?.let { " at mile %.1f".format(it / Geo.M_PER_MI) } ?: ""
+                    val feel = when { g < 8 -> "gentle"; g < 15 -> "moderate"; g < 25 -> "steep"; else -> "very steep" }
+                    DetailRow("Steepest stretch", "${g.roundToInt()}% ($feel), over a tenth of a mile$where")
+                }
+                d.highPointFt?.let { h ->
+                    DetailRow("Highest point", "%,d ft".format(h.roundToInt()) +
+                        if (h >= 8000) ". Thinner air: expect to go slower and watch for altitude sickness." else "")
+                }
+                d.terrain?.let { t ->
+                    val total = (t.trailM + t.trackM + t.roadM + t.offTrailM).coerceAtLeast(1.0)
+                    fun share(m: Double) = "%.1f mi".format(m / Geo.M_PER_MI) + " (${(m / total * 100).roundToInt()}%)"
+                    val parts = buildList {
+                        if (t.trailM > 0) add("trail ${share(t.trailM)}")
+                        if (t.trackM > 0) add("dirt road ${share(t.trackM)}")
+                        if (t.roadM > 0) add("road ${share(t.roadM)}")
+                        if (t.offTrailM > 0) add("off trail ${share(t.offTrailM)}")
+                    }
+                    if (parts.isNotEmpty()) DetailRow("Surface", parts.joinToString(", "))
+                    if (t.offTrailM > 160) {
+                        Text("Off-trail parts are straight lines on the map; the real ground may be rougher and longer.",
+                            fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
+                    }
+                    val ratedPct = (t.sacRatedM / total * 100).roundToInt()
+                    DetailRow("Technical (SAC scale)",
+                        if (t.sacMax == 0) "Not rated: none of these trails have a difficulty tag in the map data."
+                        else Difficulty.SAC[t.sacMax] + if (ratedPct < 90) " (only $ratedPct% of the route is rated)" else "")
+                } ?: DetailRow("Technical (SAC scale)", "Unknown for this route. Routes saved before version 0.7 don't have it.")
+                Text("Ratings are a guide from map data. Check current conditions, snow and closures before you go.",
+                    fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Column {
+        Text(label, fontSize = 12.sp, color = TG.Muted)
+        Text(value, fontSize = 15.sp, color = TG.Ink, lineHeight = 20.sp)
+    }
+}
+
 /** A row of color dots to pick a route color. */
 @Composable
 fun RouteColorPicker(selected: String, onPick: (String) -> Unit) {
@@ -198,6 +284,7 @@ fun RoutePlannerPanel(
     onEditPace: () -> Unit,
     onScrub: (Double?) -> Unit = {},
 ) {
+    var showDifficulty by remember { mutableStateOf(false) }
     Column {
         if (plan.points.isEmpty()) {
             Text("Tap the map where your route starts.", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
@@ -211,6 +298,9 @@ fun RoutePlannerPanel(
             )
         } else {
             RouteStatsRow(plan.stats, pace)
+            val difficulty = remember(plan.stats, plan.legs) { Difficulty.of(plan.stats, RouteTerrain.of(plan.legs)) }
+            if (plan.points.size >= 2) DifficultyLine(difficulty, onClick = { showDifficulty = true }, Modifier.padding(top = 4.dp))
+            if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
             if (plan.stats.profile.size >= 2) {
                 Spacer(Modifier.height(8.dp))
                 ElevationProfile(plan.stats, onScrub = onScrub)

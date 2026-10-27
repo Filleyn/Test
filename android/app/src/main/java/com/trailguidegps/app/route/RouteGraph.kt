@@ -15,8 +15,15 @@ import kotlin.math.sqrt
 /** A tap snapped onto the nearest trail: which segment, how far along it (0–1), and where. */
 data class Snap(val edge: Int, val frac: Double, val lat: Double, val lon: Double, val distM: Double)
 
-/** A routed stretch between two snaps: its line (lat, lon pairs), length and the trails it uses. */
-data class RoutedLeg(val coords: List<DoubleArray>, val lengthM: Double, val names: List<String>)
+/**
+ * A routed stretch between two snaps: its line (lat, lon pairs), length and the trails it uses.
+ * [kindM] is metres on trail, track and road; [sacMax] the hardest SAC scale rating met (0 = none rated),
+ * [sacRatedM] how many metres carried a rating at all.
+ */
+data class RoutedLeg(
+    val coords: List<DoubleArray>, val lengthM: Double, val names: List<String>,
+    val kindM: DoubleArray = DoubleArray(3), val sacMax: Int = 0, val sacRatedM: Double = 0.0,
+)
 
 /**
  * The offline trail network (routing.bin from the map build), memory-mapped so
@@ -39,6 +46,8 @@ class RouteGraph private constructor(private val buf: ByteBuffer) {
     private val eTo: IntBuffer
     private val eLen: FloatBuffer
     private val eName: IntBuffer
+    private val eKind: ByteBuffer
+    private val eSac: ByteBuffer?
     private val geomStart: IntBuffer
     private val cLat: IntBuffer
     private val cLon: IntBuffer
@@ -59,7 +68,8 @@ class RouteGraph private constructor(private val buf: ByteBuffer) {
         cellDeg = buf.getDouble(32)
         minLat = buf.getDouble(40)
         minLon = buf.getDouble(48)
-        val off = LongArray(17) { buf.getLong(56 + it * 8) }
+        val version = buf.getInt(4)
+        val off = LongArray(if (version >= 2) 18 else 17) { buf.getLong(56 + it * 8) }
         fun ints(i: Int, n: Int): IntBuffer = view(off[i], n * 4).asIntBuffer()
         fun floats(i: Int, n: Int): FloatBuffer = view(off[i], n * 4).asFloatBuffer()
         vlat = ints(0, vertexCount)
@@ -70,6 +80,8 @@ class RouteGraph private constructor(private val buf: ByteBuffer) {
         eTo = ints(5, edgeCount)
         eLen = floats(6, edgeCount)
         eName = ints(9, edgeCount)
+        eKind = view(off[10], edgeCount)
+        eSac = if (version >= 2) view(off[17], edgeCount) else null
         geomStart = ints(11, edgeCount + 1)
         cLat = ints(12, coordCount)
         cLon = ints(13, coordCount)
@@ -96,6 +108,25 @@ class RouteGraph private constructor(private val buf: ByteBuffer) {
     private fun other(e: Int, v: Int) = if (eFrom.get(e) == v) eTo.get(e) else eFrom.get(e)
 
     fun nameOf(edge: Int): String? = eName.get(edge).takeIf { it >= 0 }?.let { names[it] }
+
+    /** 0 trail, 1 track, 2 road. */
+    fun kindOf(edge: Int): Int = (eKind.get(edge).toInt() and 0xff).coerceIn(0, 2)
+
+    /** SAC hiking scale 1–6, or 0 if the trail isn't rated (or the map is too old to say). */
+    fun sacOf(edge: Int): Int = eSac?.get(edge)?.toInt()?.and(0xff) ?: 0
+
+    /** Adds up terrain for a leg made of these (edge, metres used) pieces. */
+    private fun terrain(pieces: List<Pair<Int, Double>>): Triple<DoubleArray, Int, Double> {
+        val kindM = DoubleArray(3)
+        var sacMax = 0
+        var rated = 0.0
+        for ((e, m) in pieces) {
+            kindM[kindOf(e)] += m
+            val s = sacOf(e)
+            if (s > 0) { rated += m; if (s > sacMax) sacMax = s }
+        }
+        return Triple(kindM, sacMax, rated)
+    }
 
     /** The points of an edge, from its start vertex to its end vertex, as (lat, lon). */
     private fun edgePoints(e: Int): List<DoubleArray> {
@@ -189,7 +220,8 @@ class RouteGraph private constructor(private val buf: ByteBuffer) {
             val direct = abs(a.frac - b.frac) * eLen.get(a.edge)
             val viaNetwork = search(a, b, maxSettled, direct)
             if (viaNetwork == null) {
-                return RoutedLeg(subLine(a.edge, a.frac, b.frac), direct, listOfNotNull(nameOf(a.edge)))
+                val (kindM, sac, rated) = terrain(listOf(a.edge to direct))
+                return RoutedLeg(subLine(a.edge, a.frac, b.frac), direct, listOfNotNull(nameOf(a.edge)), kindM, sac, rated)
             }
             return viaNetwork
         }
@@ -271,7 +303,14 @@ class RouteGraph private constructor(private val buf: ByteBuffer) {
         (listOf(a.edge) + edges.map { it.first } + listOf(b.edge)).forEach { e ->
             nameOf(e)?.let { if (names.lastOrNull() != it) names += it }
         }
-        return RoutedLeg(coords, best, names)
+        val la2 = eLen.get(a.edge).toDouble()
+        val lb2 = eLen.get(b.edge).toDouble()
+        val (kindM, sac, rated) = terrain(
+            listOf(a.edge to (if (startV == eFrom.get(a.edge)) a.frac else 1 - a.frac) * la2) +
+                edges.map { (e, _) -> e to eLen.get(e).toDouble() } +
+                listOf(b.edge to (if (bestV == bFrom) b.frac else 1 - b.frac) * lb2),
+        )
+        return RoutedLeg(coords, best, names, kindM, sac, rated)
     }
 
     /** A plain binary min-heap of (key, vertex) without boxing. */

@@ -652,6 +652,17 @@ fun MapScreen(
                     }
                     TextButton(onClick = { showPace = true }) { Text("Change", color = TG.Accent) }
                 }
+                val routeCount = vm.routes.summaries.collectAsStateWithLifecycle().value.size
+                if (routeCount > 0) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Saved routes", fontSize = 16.sp, color = TG.Ink)
+                            Text("${shownRoutes.size} of $routeCount on the map · tap one for details", fontSize = 12.sp, color = TG.Muted)
+                        }
+                        if (shownRoutes.size < routeCount) TextButton(onClick = { vm.showAllRoutes() }) { Text("Show all", color = TG.Accent) }
+                        if (shownRoutes.isNotEmpty()) TextButton(onClick = { vm.hideAllRoutes() }) { Text("Hide all", color = TG.Accent) }
+                    }
+                }
                 HorizontalDivider(Modifier.padding(vertical = 12.dp), color = TG.Line)
                 Text("Map data", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Muted)
                 Spacer(Modifier.height(4.dp))
@@ -846,6 +857,10 @@ private fun BottomPanel(
                     }
                     TextButton(onClick = onHideRoute) { Text("Hide", color = routeColor(r.color)) }
                 }
+                var showDifficulty by remember(r.id) { mutableStateOf(false) }
+                val difficulty = remember(r) { com.trailguidegps.app.data.Difficulty.of(r.stats, r.terrain) }
+                DifficultyLine(difficulty, onClick = { showDifficulty = true })
+                if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
                 if (r.stats.profile.size >= 2) {
                     ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub)
                 }

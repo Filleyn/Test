@@ -506,6 +506,7 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
                         length_m, gain / FT_PER_M, loss / FT_PER_M,
                         name_index.get(nm, -1), kinds.index(info["kind"]),
                         simplify(seg),
+                        routing_bin.sac_index(info["sac_scale"]),
                     ))
                 start = i
 
@@ -538,6 +539,8 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
         "graph_edges": len(edges),
         "graph_miles": round(sum(e[2] for e in edges) * MI_PER_M, 1),
         "graph_mb_unpacked": round(graph_bytes / 1e6, 1),
+        "graph_sac_miles": {name: round(sum(e[2] for e in edges if e[8] == i + 1) * MI_PER_M, 1)
+                            for i, name in enumerate(routing_bin.SAC_SCALE)},
         "has_elevation": elev.ds is not None,
         "trail_names_sample": named[:25],
     }

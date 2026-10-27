@@ -14,8 +14,81 @@ import kotlin.math.roundToInt
 /** A point you placed while planning. [followTrails] is how the leg *to* this point was drawn. */
 data class RoutePoint(val lat: Double, val lon: Double, val followTrails: Boolean, val waypointName: String? = null)
 
-/** The line from one route point to the next. */
-data class RouteLeg(val coords: List<DoubleArray>, val lengthM: Double, val names: List<String>, val onTrail: Boolean)
+/**
+ * The line from one route point to the next. [kindM] is metres on trail, track and road;
+ * straight-line legs count as off-trail. [sacMax]/[sacRatedM] come from the trails' SAC ratings.
+ */
+data class RouteLeg(
+    val coords: List<DoubleArray>, val lengthM: Double, val names: List<String>, val onTrail: Boolean,
+    val kindM: DoubleArray = DoubleArray(3), val sacMax: Int = 0, val sacRatedM: Double = 0.0,
+)
+
+/** What a route crosses, for the difficulty rating. Metres. */
+data class RouteTerrain(
+    val trailM: Double = 0.0, val trackM: Double = 0.0, val roadM: Double = 0.0, val offTrailM: Double = 0.0,
+    val sacMax: Int = 0, val sacRatedM: Double = 0.0,
+) {
+    companion object {
+        fun of(legs: List<RouteLeg>) = RouteTerrain(
+            trailM = legs.sumOf { it.kindM[0] }, trackM = legs.sumOf { it.kindM[1] }, roadM = legs.sumOf { it.kindM[2] },
+            offTrailM = legs.filter { !it.onTrail }.sumOf { it.lengthM } +
+                legs.filter { it.onTrail }.sumOf { (it.lengthM - it.kindM.sum()).coerceAtLeast(0.0) },
+            sacMax = legs.maxOfOrNull { it.sacMax } ?: 0,
+            sacRatedM = legs.sumOf { it.sacRatedM },
+        )
+    }
+}
+
+/**
+ * How hard a route is. The headline is the Shenandoah National Park rating,
+ * √(feet of climb × 2 × miles), used by the Park Service and many hiking guides.
+ * The rest covers what that number leaves out.
+ */
+data class Difficulty(
+    val score: Double,
+    val label: String,
+    val level: Int, // 0 easiest … 4 very strenuous
+    val steepestGradePct: Double?,
+    val steepestAtM: Double?,
+    val highPointFt: Double?,
+    val terrain: RouteTerrain?,
+) {
+    companion object {
+        val LABELS = listOf("Easiest", "Moderate", "Moderately strenuous", "Strenuous", "Very strenuous")
+        val SAC = listOf(
+            "Not rated",
+            "T1 hiking: well-made trail, easy footing",
+            "T2 mountain hiking: some steep or rough sections, sure footing helps",
+            "T3 demanding mountain hiking: exposed spots, may need hands for balance",
+            "T4 alpine hiking: route-finding, easy scrambling, snow possible",
+            "T5 demanding alpine: scrambling, glacier or snow gear possible",
+            "T6 difficult alpine: climbing skills needed",
+        )
+
+        /** The Shenandoah score and its level (0–4) from distance and climb alone. */
+        fun rating(distanceM: Double, gainM: Double): Pair<Double, Int> {
+            val score = kotlin.math.sqrt(gainM * Geo.FT_PER_M * 2 * (distanceM / Geo.M_PER_MI))
+            return score to when { score < 50 -> 0; score < 100 -> 1; score < 150 -> 2; score < 200 -> 3; else -> 4 }
+        }
+
+        fun of(stats: RouteStats, terrain: RouteTerrain?): Difficulty {
+            val (score, level) = rating(stats.distanceM, stats.gainM)
+            // Steepest grade held over at least a tenth of a mile.
+            var steepest: Double? = null
+            var steepAt: Double? = null
+            val p = stats.profile
+            var j = 0
+            for (i in p.indices) {
+                if (j < i) j = i
+                while (j < p.size && p[j].first - p[i].first < 160.0) j++
+                if (j >= p.size) break
+                val g = kotlin.math.abs(p[j].second - p[i].second) / (p[j].first - p[i].first) * 100
+                if (steepest == null || g > steepest) { steepest = g; steepAt = p[i].first }
+            }
+            return Difficulty(score, LABELS[level], level, steepest, steepAt, p.maxOfOrNull { it.second }?.let { it * Geo.FT_PER_M }, terrain)
+        }
+    }
+}
 
 /** Totals and the elevation profile for a route. Distances metres, elevation metres. */
 data class RouteStats(
@@ -103,6 +176,7 @@ data class SavedRoute(
     val stats: RouteStats,
     val via: List<String>,
     val color: String = RouteColors.DEFAULT,
+    val terrain: RouteTerrain? = null,
 )
 
 data class RouteSummary(
@@ -134,6 +208,10 @@ class RouteStore(context: Context) {
         val o = JSONObject().put("id", r.id).put("name", r.name).put("created", r.createdAt)
             .put("distance", r.stats.distanceM).put("gain", r.stats.gainM).put("loss", r.stats.lossM)
             .put("via", JSONArray(r.via)).put("color", r.color)
+            .put("terrain", r.terrain?.let { t ->
+                JSONObject().put("trail", t.trailM).put("track", t.trackM).put("road", t.roadM).put("off", t.offTrailM)
+                    .put("sac", t.sacMax).put("sacRated", t.sacRatedM)
+            } ?: JSONObject.NULL)
             .put("points", JSONArray().apply {
                 r.points.forEach { p ->
                     put(JSONObject().put("lat", p.lat).put("lon", p.lon).put("trail", p.followTrails).put("wp", p.waypointName ?: JSONObject.NULL))
@@ -164,6 +242,10 @@ class RouteStore(context: Context) {
                 (0 until pf.length()).map { i -> pf.getJSONArray(i).let { it.getDouble(0) to it.getDouble(1) } }),
             (0 until via.length()).map { via.getString(it) },
             o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT },
+            o.optJSONObject("terrain")?.let { t ->
+                RouteTerrain(t.optDouble("trail"), t.optDouble("track"), t.optDouble("road"), t.optDouble("off"),
+                    t.optInt("sac"), t.optDouble("sacRated"))
+            },
         )
     }.getOrNull()
 

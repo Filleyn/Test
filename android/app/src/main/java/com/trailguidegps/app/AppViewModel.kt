@@ -414,7 +414,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         coords += routed.coords
         val offEnd = dist(snapNew.lat, snapNew.lon, point.lat, point.lon)
         if (offEnd > 15) { coords += doubleArrayOf(point.lat, point.lon); len += offEnd }
-        return Triple(point, RouteLeg(coords, len, routed.names, onTrail = true), null)
+        return Triple(point, RouteLeg(coords, len, routed.names, onTrail = true, routed.kindM, routed.sacMax, routed.sacRatedM), null)
     }
 
     fun savePlan(name: String, color: String = com.trailguidegps.app.data.RouteColors.DEFAULT) {
@@ -424,7 +424,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val saved = withContext(Dispatchers.IO) {
                 val coords = ArrayList<DoubleArray>()
                 st.legs.forEach { leg -> leg.coords.forEach { c -> if (coords.lastOrNull()?.let { it[0] == c[0] && it[1] == c[1] } != true) coords += c } }
-                SavedRoute(RouteStore.newId(), name.ifBlank { "Route" }, System.currentTimeMillis(), st.points, coords, st.stats, st.via, color)
+                SavedRoute(RouteStore.newId(), name.ifBlank { "Route" }, System.currentTimeMillis(), st.points, coords, st.stats, st.via, color,
+                    com.trailguidegps.app.data.RouteTerrain.of(st.legs))
                     .also { routes.save(it) }
             }
             _plan.value = PlanState()
@@ -479,6 +480,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun hideAllRoutes() = setShown(emptyList(), null)
+
+    /** Puts every saved route on the map, so any of them can be tapped. */
+    fun showAllRoutes() {
+        viewModelScope.launch {
+            val all = withContext(Dispatchers.IO) { routes.summaries.value.mapNotNull { routes.load(it.id) } }
+            setShown(all, _shownRoute.value?.let { f -> all.firstOrNull { it.id == f.id } } ?: all.firstOrNull())
+        }
+    }
 
     private fun updateShown(id: String, change: (SavedRoute) -> SavedRoute) {
         val list = _shownRoutes.value.map { if (it.id == id) change(it) else it }

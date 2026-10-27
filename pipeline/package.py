@@ -139,6 +139,9 @@ def main():
             lines.append(f"- {'✅' if found else '⚠️'} Trail matching \"{a.expect_trail}\" {'found' if found else 'not found by name (it may be unnamed in OpenStreetMap)'}")
         if a.expect_trail and "routing.bin.gz" in have:
             lines.append("- " + route_check(os.path.join(a.dir, "routing.bin.gz"), os.path.join(a.dir, "trails.geojson"), a.expect_trail))
+        if stats.get("graph_sac_miles"):
+            lines.append("- Trail difficulty tags (SAC scale) on: " +
+                         ", ".join(f"{k.replace('_', ' ')} {v:,} mi" for k, v in stats["graph_sac_miles"].items()))
         if stats.get("places_by_kind"):
             kinds = stats["places_by_kind"]
             lines.append("- Places: " + ", ".join(f"{k} {v:,}" for k, v in kinds.items()))

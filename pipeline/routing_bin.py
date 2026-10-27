@@ -6,7 +6,7 @@ fixed-width little-endian arrays that can be read without parsing:
 
   header (256 bytes)
     0   magic "TGRG"
-    4   u32 version (1)
+    4   u32 version (2; version 1 had no e_sac)
     8   u32 vertex count V
     12  u32 edge count E
     16  u32 coordinate count C
@@ -16,7 +16,7 @@ fixed-width little-endian arrays that can be read without parsing:
     32  f64 grid cell size (degrees)
     40  f64 grid min latitude
     48  f64 grid min longitude
-    56  u64[17] byte offset of each section, in SECTIONS order
+    56  u64[18] byte offset of each section, in SECTIONS order
 
   sections (each 8-byte aligned)
     vlat, vlon        i32[V]   vertex latitude / longitude, degrees * 1e6
@@ -32,6 +32,8 @@ fixed-width little-endian arrays that can be read without parsing:
     cell_start        i32[R*C+1] CSR offsets into cell_edges (row-major grid)
     cell_edges        i32[...] edges passing through each grid cell
     names             u32 count, then per name: u16 byte length + UTF-8
+    e_sac             u8[E]    hiking difficulty from OpenStreetMap's sac_scale:
+                               0 not rated, 1 hiking (T1) ... 6 difficult alpine hiking (T6)
 """
 import gzip
 import math
@@ -40,13 +42,21 @@ import struct
 import numpy as np
 
 MAGIC = b"TGRG"
-VERSION = 1
+VERSION = 2
 HEADER_SIZE = 256
 CELL_DEG = 0.01
 SECTIONS = [
     "vlat", "vlon", "adj_start", "adj_edges", "e_from", "e_to", "e_len", "e_gain", "e_loss",
-    "e_name", "e_kind", "geom_start", "c_lat", "c_lon", "cell_start", "cell_edges", "names",
+    "e_name", "e_kind", "geom_start", "c_lat", "c_lon", "cell_start", "cell_edges", "names", "e_sac",
 ]
+SAC_SCALE = ["hiking", "mountain_hiking", "demanding_mountain_hiking", "alpine_hiking",
+             "demanding_alpine_hiking", "difficult_alpine_hiking"]
+
+
+def sac_index(value):
+    """1-6 for an OpenStreetMap sac_scale value, 0 if missing or unknown."""
+    v = (value or "").strip().lower()
+    return SAC_SCALE.index(v) + 1 if v in SAC_SCALE else 0
 KINDS = ["trail", "track", "road"]
 
 
@@ -70,7 +80,7 @@ def _cells_for_edge(coords, min_lat, min_lon, rows, cols):
 
 
 def build(vertices, edges, names, bbox):
-    """vertices: [(lon, lat)]; edges: [(from, to, len_m, gain_m, loss_m, name_idx, kind_idx, [(lon, lat), ...])]."""
+    """vertices: [(lon, lat)]; edges: [(from, to, len_m, gain_m, loss_m, name_idx, kind_idx, [(lon, lat), ...], sac)]."""
     nv, ne = len(vertices), len(edges)
     vlat = np.array([round(v[1] * 1e6) for v in vertices], dtype="<i4")
     vlon = np.array([round(v[0] * 1e6) for v in vertices], dtype="<i4")
@@ -81,6 +91,7 @@ def build(vertices, edges, names, bbox):
     e_loss = np.array([e[4] for e in edges], dtype="<f4")
     e_name = np.array([e[5] for e in edges], dtype="<i4")
     e_kind = np.array([e[6] for e in edges], dtype="u1")
+    e_sac = np.array([e[8] if len(e) > 8 else 0 for e in edges], dtype="u1")
 
     geom_start = np.zeros(ne + 1, dtype="<i4")
     lat_list, lon_list = [], []
@@ -127,7 +138,7 @@ def build(vertices, edges, names, bbox):
         "e_len": e_len.tobytes(), "e_gain": e_gain.tobytes(), "e_loss": e_loss.tobytes(),
         "e_name": e_name.tobytes(), "e_kind": e_kind.tobytes(), "geom_start": geom_start.tobytes(),
         "c_lat": c_lat.tobytes(), "c_lon": c_lon.tobytes(), "cell_start": cell_start.tobytes(),
-        "cell_edges": cell_edges.tobytes(), "names": bytes(name_bytes),
+        "cell_edges": cell_edges.tobytes(), "names": bytes(name_bytes), "e_sac": e_sac.tobytes(),
     }
     body = bytearray()
     offsets = []
