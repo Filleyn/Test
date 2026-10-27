@@ -116,6 +116,7 @@ private val layerNames = linkedMapOf(
     "landmanager" to "Land manager (Forest Service, BLM, state…)",
     "forests" to "National forest and reservation boundaries",
     "wilderness" to "Wilderness and other special areas",
+    "fires" to "Active wildfires (updates when online)",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -239,6 +240,29 @@ fun MapScreen(
                     return@addOnMapClickListener true
                 }
                 selectedWaypointId = null
+                // A wildfire: name, size, containment, and where closures are posted.
+                val fireHit = m.queryRenderedFeatures(point, MapStyle.LAYER_FIRE_POINTS, MapStyle.LAYER_FIRE_FILL).firstOrNull()
+                if (fireHit != null) {
+                    fun fp(vararg keys: String): String? = keys.firstNotNullOfOrNull { k ->
+                        if (fireHit.hasProperty(k) && !fireHit.getProperty(k).isJsonNull) fireHit.getProperty(k).asString else null
+                    }
+                    val name = (fp("IncidentName", "poly_IncidentName") ?: "Unnamed").trim()
+                    val acres = fp("poly_GISAcres", "IncidentSize")?.toDoubleOrNull()
+                    val pct = fp("PercentContained", "attr_PercentContained")?.toDoubleOrNull()
+                    val updated = fp("ModifiedOnDateTime_dt", "attr_ModifiedOnDateTime_dt")?.toLongOrNull()
+                    val fmt = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US)
+                    val parts = listOfNotNull(
+                        "Wildfire",
+                        acres?.let { "%,d acres".format(it.roundToInt()) },
+                        pct?.let { "${it.roundToInt()}% contained" },
+                        updated?.let { "updated ${fmt.format(java.util.Date(it))}" },
+                        vm.fires.data.value?.let { "data as of ${fmt.format(java.util.Date(it.fetchedAt))}" },
+                        "closures often reach well beyond the fire",
+                    )
+                    vm.select(Selected("$name Fire", parts.joinToString(" · "), latLng.latitude, latLng.longitude,
+                        link = "Fire closures on InciWeb" to com.trailguidegps.app.data.FireStore.INCIWEB_OREGON))
+                    return@addOnMapClickListener true
+                }
                 // Tapping one of the routes on the map shows its details.
                 val routeHit = m.queryRenderedFeatures(point, MapStyle.LAYER_SHOWN_ROUTE_HIT).firstOrNull()
                 if (routeHit != null && routeHit.hasProperty("id")) {
@@ -256,10 +280,13 @@ fun MapScreen(
                                 if (f.hasProperty(k) && !f.getProperty(k).isJsonNull) f.getProperty(k).asString else null
                             }
                         }
-                    val land = com.trailguidegps.app.data.PublicLand.describe(
-                        propsOf(MapStyle.LAYER_SPECIAL_FILL), propsOf(MapStyle.LAYER_BOUNDARY_HIT), propsOf(MapStyle.LAYER_LAND_FILL),
-                    )
-                    vm.select(land?.let { (title, sub) -> Selected(title, sub, latLng.latitude, latLng.longitude) })
+                    val bProps = propsOf(MapStyle.LAYER_BOUNDARY_HIT)
+                    val lProps = propsOf(MapStyle.LAYER_LAND_FILL)
+                    val land = com.trailguidegps.app.data.PublicLand.describe(propsOf(MapStyle.LAYER_SPECIAL_FILL), bProps, lProps)
+                    vm.select(land?.let { (title, sub) ->
+                        Selected(title, sub, latLng.latitude, latLng.longitude,
+                            link = com.trailguidegps.app.data.PublicLand.alertsLink(bProps, lProps))
+                    })
                     return@addOnMapClickListener land != null
                 }
                 vm.select(hit.let { f ->
@@ -365,6 +392,12 @@ fun MapScreen(
             ?.setGeoJson(RouteStore.routesGeoJson(shownRoutes, shownRoute?.id))
     }
     LaunchedEffect(shownRoute?.id, plan.active) { profileMark = null }
+    val fireData by vm.fires.data.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { vm.refreshFires() }
+    LaunchedEffect(style, fireData) {
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_FIRE_PERIMS)?.setGeoJson(fireData?.perimeters ?: com.trailguidegps.app.data.FireStore.EMPTY)
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_FIRE_POINTS)?.setGeoJson(fireData?.points ?: com.trailguidegps.app.data.FireStore.EMPTY)
+    }
     // While off route, a dashed line from you back to the nearest point on it.
     LaunchedEffect(style, routeFollow?.offRoute, routeFollow?.nearest, fix) {
         val f = routeFollow
@@ -685,6 +718,17 @@ fun MapScreen(
                         )
                     }
                 }
+                val fStatus by vm.firesStatus.collectAsStateWithLifecycle()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        fStatus ?: fireData?.let {
+                            "Wildfires: ${it.count} in and around Oregon, as of " +
+                                java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it.fetchedAt))
+                        } ?: "Wildfires: not downloaded yet. Connect to update.",
+                        fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { vm.refreshFires(force = true) }) { Text("Update", color = TG.Accent, fontSize = 13.sp) }
+                }
                 HorizontalDivider(Modifier.padding(vertical = 12.dp), color = TG.Line)
                 Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -820,6 +864,12 @@ private fun BottomPanel(
                             val d = Geo.distanceM(f.lat, f.lon, selected.lat, selected.lon)
                             val dir = Geo.compassPoint(Geo.bearingDeg(f.lat, f.lon, selected.lat, selected.lon))
                             Text("${Geo.formatDistance(d)} $dir of you (straight line)", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        selected.link?.let { (label, url) ->
+                            val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                            TextButton(onClick = { runCatching { uri.openUri(url) } }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                                Text("$label ↗ (needs a connection)", color = TG.Accent, fontSize = 14.sp)
+                            }
                         }
                     }
                     if (selected.isWater && selected.osmId != null) {

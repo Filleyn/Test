@@ -28,6 +28,27 @@ object PublicLand {
         "XA" to "Closed to the public", "UK" to "Public access unknown",
     )
 
+    /** Official alerts and closures pages. Forest Service addresses checked October 2026. */
+    private val FOREST_ALERTS = linkedMapOf(
+        "Deschutes" to "deschutes", "Willamette" to "willamette", "Mt. Hood" to "mthood", "Mount Hood" to "mthood",
+        "Ochoco" to "ochoco", "Crooked River" to "ochoco", "Umpqua" to "umpqua", "Rogue River" to "rogue-siskiyou",
+        "Siskiyou" to "rogue-siskiyou", "Fremont" to "fremont-winema", "Winema" to "fremont-winema", "Malheur" to "malheur",
+        "Umatilla" to "umatilla", "Wallowa" to "wallowa-whitman", "Whitman" to "wallowa-whitman", "Siuslaw" to "siuslaw",
+    )
+
+    /** A "check alerts" link for the agency that manages this land, or null. */
+    fun alertsLink(boundary: Map<String, String?>?, land: Map<String, String?>?): Pair<String, String>? {
+        val forest = listOfNotNull(boundary?.get("name"), land?.get("name"))
+            .firstNotNullOfOrNull { n -> FOREST_ALERTS.entries.firstOrNull { n.contains(it.key, ignoreCase = true) && n.contains("National", true) } }
+        if (forest != null) return "Forest alerts and closures" to "https://www.fs.usda.gov/r06/${forest.value}/alerts"
+        return when (land?.get("mgr")) {
+            "BLM" -> "BLM alerts and closures" to "https://www.blm.gov/alerts"
+            "SPR" -> "State park alerts" to "https://stateparks.oregon.gov/"
+            "SDOL", "SLB", "OTHS", "SFW" -> "Oregon fire restrictions" to "https://www.oregon.gov/odf/fire/pages/restrictions.aspx"
+            else -> null
+        }
+    }
+
     /** "National forest" for a PROC boundary, depending on who manages it. */
     fun boundaryKind(des: String?, mgr: String?): String = when {
         des == "TRIBL" -> "Tribal land (reservation)"

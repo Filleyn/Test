@@ -171,6 +171,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val lon: Double,
         val osmId: String? = null,
         val isWater: Boolean = false,
+        /** An official page to check, as (label, web address). */
+        val link: Pair<String, String>? = null,
     )
     private val _selected = MutableStateFlow<SelectedPlace?>(null)
     val selected: StateFlow<SelectedPlace?> = _selected.asStateFlow()
@@ -247,6 +249,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 PaceSuggestion(Pace.fit(hikes, _pace.value), hikes.size)
             }
+        }
+    }
+
+    // ---- Wildfires (online, phase 6) ----
+
+    val fires = com.trailguidegps.app.data.FireStore(app)
+    private val _firesStatus = MutableStateFlow<String?>(null)
+    val firesStatus: StateFlow<String?> = _firesStatus.asStateFlow()
+
+    /** Fetches current fires if the copy is old (or [force]); quietly does nothing offline. */
+    fun refreshFires(force: Boolean = false) {
+        if (!force && !fires.stale()) return
+        viewModelScope.launch {
+            _firesStatus.value = "Updating…"
+            _firesStatus.value = runCatching { fires.refresh() }.fold(
+                onSuccess = { null },
+                onFailure = { if (force) "Couldn't update: no connection?" else null },
+            )
         }
     }
 

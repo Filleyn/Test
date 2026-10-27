@@ -47,6 +47,7 @@ object MapStyle {
     ) + PLACE_GROUPS.associate { g -> g.id to g.layers } + linkedMapOf(
         "landmanager" to listOf(LAYER_LAND_FILL),
         "forests" to listOf(LAYER_BOUNDARY_HIT, "boundary-line", "boundary-line-labels", "boundary-point-labels"),
+        "fires" to listOf(LAYER_FIRE_FILL, "fire-line", LAYER_FIRE_POINTS, "fire-labels"),
         "wilderness" to listOf(LAYER_SPECIAL_FILL, "special-line", "special-line-other", "special-line-labels", "special-point-labels"),
     )
 
@@ -97,6 +98,8 @@ object MapStyle {
             .put(SRC_PLAN_POINTS, emptyGeoJson())
             .put(SRC_PROFILE_MARK, emptyGeoJson())
             .put(SRC_OFF_ROUTE, emptyGeoJson())
+            .put(SRC_FIRE_PERIMS, emptyGeoJson())
+            .put(SRC_FIRE_POINTS, emptyGeoJson())
             .put(SRC_RECORDING, emptyGeoJson())
             .put(SRC_WAYPOINTS, emptyGeoJson())
 
@@ -284,6 +287,16 @@ object MapStyle {
             .put("circle-color", arr("match", arr("get", "role"), "start", "#2E8B57", "end", ROUTE_PURPLE, "#FFFFFF"))
             .put("circle-stroke-color", arr("match", arr("get", "role"), "mid", ROUTE_PURPLE, "#FFFFFF"))
             .put("circle-stroke-width", 3))
+        // Current wildfires (online data, last copy kept): orange areas, flame-red dots.
+        layer(LAYER_FIRE_FILL, "fill", SRC_FIRE_PERIMS, paint = JSONObject().put("fill-color", "#E65100").put("fill-opacity", 0.28))
+        layer("fire-line", "line", SRC_FIRE_PERIMS, paint = JSONObject().put("line-color", "#B71C1C").put("line-width", 1.8))
+        layer(LAYER_FIRE_POINTS, "circle", SRC_FIRE_POINTS, paint = JSONObject()
+            .put("circle-radius", byZoom(5, 4, 12, 8)).put("circle-color", "#D32F2F")
+            .put("circle-stroke-color", "#FFFFFF").put("circle-stroke-width", 2))
+        layer("fire-labels", "symbol", SRC_FIRE_POINTS, paint = halo("#FFFFFF", "#B71C1C"),
+            layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 11).put("text-offset", arr(0, 1.2))
+                .put("text-anchor", "top").put("text-optional", true)
+                .put("text-field", arr("concat", arr("get", "IncidentName"), " Fire")), minzoom = 7.0)
         layer("off-route", "line", SRC_OFF_ROUTE, paint = JSONObject().put("line-color", "#C62828").put("line-width", 3)
             .put("line-dasharray", arr(1.5, 1.5)), layout = JSONObject().put("line-cap", "round"))
         // Where you're pressing on the elevation graph.
@@ -315,6 +328,10 @@ object MapStyle {
     const val SRC_PLAN_POINTS = "user-plan-points"
     const val SRC_PROFILE_MARK = "user-profile-mark"
     const val SRC_OFF_ROUTE = "user-off-route"
+    const val SRC_FIRE_PERIMS = "fires-perimeters"
+    const val SRC_FIRE_POINTS = "fires-points"
+    const val LAYER_FIRE_FILL = "fire-fill"
+    const val LAYER_FIRE_POINTS = "fire-points"
     const val ROUTE_PURPLE = "#6B3FA0"
     const val SRC_RECORDING = "user-recording"
     const val SRC_WAYPOINTS = "user-waypoints"
