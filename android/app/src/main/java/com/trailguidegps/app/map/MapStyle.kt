@@ -11,14 +11,29 @@ import org.json.JSONObject
 object MapStyle {
     const val GROUND = "#EFEEE2"
 
+    /** A kind of place drawn with icons, switched on and off as one group. */
+    class PlaceGroup(val id: String, val kinds: List<String>, val iconMinZoom: Double? = null, val labels: Boolean = true)
+
+    val PLACE_GROUPS = listOf(
+        PlaceGroup("campsites", listOf("campsite")),
+        PlaceGroup("trailheads", listOf("trailhead")),
+        // Restrooms are everywhere in towns, so they only show when zoomed in.
+        PlaceGroup("restrooms", listOf("toilets"), iconMinZoom = 13.0, labels = false),
+        PlaceGroup("other", listOf("shelter", "viewpoint", "waterfall", "hot_spring", "pass", "saddle")),
+    )
+
+    /** Layers you can tap for details. */
+    val TAP_LAYERS: Array<String> = (listOf("water-points", "peaks", "trail-hit", "trail-hit-unnamed") +
+        PLACE_GROUPS.map { "places-${it.id}" }).toTypedArray()
+
     /** Layer groups the layers sheet can switch on and off. */
-    val GROUPS = linkedMapOf(
+    val GROUPS: Map<String, List<String>> = linkedMapOf(
         "hillshade" to listOf("hillshade"),
         "contours" to listOf("contours-minor", "contours-major", "contour-labels"),
         "trails" to listOf("trail", "trail-names", "trail-hit", "trail-hit-unnamed"),
         "water" to listOf("water-points", "water-labels"),
-        "places" to listOf("places", "place-labels", "peaks", "peak-labels"),
-    )
+        "peaks" to listOf("peaks", "peak-labels"),
+    ) + PLACE_GROUPS.associate { g -> g.id to listOfNotNull("places-${g.id}", if (g.labels) "place-labels-${g.id}" else null) }
 
     private const val REGULAR = "NotoSans-Regular"
     private const val MEDIUM = "NotoSans-Medium"
@@ -118,13 +133,20 @@ object MapStyle {
                 .put("text-field", arr("case", arr("has", "ele_ft"),
                     arr("concat", arr("coalesce", arr("get", "name"), "Peak"), "\n", arr("to-string", arr("get", "ele_ft")), " ft"),
                     arr("coalesce", arr("get", "name"), ""))))
-        layer("places", "symbol", "pois", filter = inKind(ICON_KINDS),
-            layout = JSONObject().put("icon-image", arr("concat", "poi-", arr("get", "kind")))
-                .put("icon-allow-overlap", true).put("icon-size", 1))
-        layer("place-labels", "symbol", "pois", filter = arr("all", arr("has", "name"), inKind(ICON_KINDS)),
-            paint = halo("#FFFFFF", "#23271F"),
-            layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 11).put("text-offset", arr(0, 1.1))
-                .put("text-anchor", "top").put("text-field", arr("get", "name")), minzoom = 12.5)
+        // One layer per place group so each can be switched on and off on its own.
+        PLACE_GROUPS.forEach { g ->
+            layer("places-${g.id}", "symbol", "pois", filter = inKind(g.kinds),
+                layout = JSONObject().put("icon-image", arr("concat", "poi-", arr("get", "kind")))
+                    .put("icon-allow-overlap", true).put("icon-size", 1),
+                minzoom = g.iconMinZoom)
+            if (g.labels) {
+                layer("place-labels-${g.id}", "symbol", "pois", filter = arr("all", arr("has", "name"), inKind(g.kinds)),
+                    paint = halo("#FFFFFF", "#23271F"),
+                    layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 11).put("text-offset", arr(0, 1.1))
+                        .put("text-anchor", "top").put("text-field", arr("get", "name")).put("text-optional", true),
+                    minzoom = 12.5)
+            }
+        }
         layer("water-points", "symbol", "water", layout = JSONObject()
             .put("icon-image", arr("case", arr("==", arr("get", "seasonal"), true), "water-seasonal",
                 arr("match", arr("get", "kind"), "drinking_water", "water-tap", "water_point", "water-point", "well", "water-well", "water-spring")))
@@ -159,9 +181,6 @@ object MapStyle {
             .put("layers", layers)
             .toString()
     }
-
-    /** Place kinds drawn with an icon; lakes and towns are labelled by the base map instead. */
-    val ICON_KINDS = listOf("campsite", "trailhead", "toilets", "shelter", "viewpoint", "waterfall", "hot_spring", "pass", "saddle")
 
     const val SRC_SHOWN_TRACK = "user-shown-track"
     const val SRC_RECORDING = "user-recording"

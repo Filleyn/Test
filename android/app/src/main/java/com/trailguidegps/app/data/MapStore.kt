@@ -68,10 +68,31 @@ class MapStore(context: Context) {
         }
     }
 
+    /** File name → SHA-256 from a manifest, so unchanged files can be reused. */
+    private fun checksums(manifest: File): Map<String, String> = runCatching {
+        val files = JSONObject(manifest.readText()).getJSONArray("files")
+        (0 until files.length()).associate { i ->
+            val f = files.getJSONObject(i)
+            f.getString("name") to f.getString("sha256")
+        }
+    }.getOrDefault(emptyMap())
+
+    /** Hard-links (or copies) an unchanged installed file into the new download folder. */
+    private fun reuse(from: File, to: File): Boolean = runCatching {
+        to.delete()
+        try {
+            java.nio.file.Files.createLink(to.toPath(), from.toPath())
+        } catch (e: Exception) {
+            from.copyTo(to, overwrite = true)
+        }
+        to.length() == from.length()
+    }.getOrDefault(false)
+
     /**
-     * Downloads every file into a temporary folder, then swaps it in, so a failed
-     * download never leaves a half-updated map. An interrupted download of the same
-     * release picks up where it stopped instead of starting over.
+     * Downloads the release into a temporary folder, then swaps it in, so a failed
+     * download never leaves a half-updated map. Files that haven't changed since
+     * the installed version are reused instead of downloaded again, and an
+     * interrupted download of the same release picks up where it stopped.
      */
     suspend fun download(release: Release, onProgress: (file: String, done: Long, total: Long) -> Unit) =
         withContext(Dispatchers.IO) {
@@ -82,39 +103,32 @@ class MapStore(context: Context) {
             }
             tmp.mkdirs()
             tagFile.writeText(release.tag)
-            val total = release.totalBytes
-            var done = release.assets.sumOf { a -> File(tmp, a.name).length().coerceAtMost(a.size) }
+
+            // Fetch the new manifest first (a few KB) and compare checksums.
+            release.assets.firstOrNull { it.name == "manifest.json" }?.let { m ->
+                val target = File(tmp, m.name)
+                if (target.length() != m.size) fetch(m, target, 0L) { _ -> }
+            }
+            val newSums = checksums(File(tmp, "manifest.json"))
+            val oldSums = checksums(file("manifest.json"))
             for (asset in release.assets) {
+                if (asset.name == "manifest.json") continue
                 val target = File(tmp, asset.name)
-                val have = if (target.exists()) target.length() else 0L
-                if (have == asset.size) continue
-                val conn = (URL(asset.url).openConnection() as HttpURLConnection).apply {
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "TrailGuideGPS")
-                    if (have in 1 until asset.size) setRequestProperty("Range", "bytes=$have-")
-                    connectTimeout = 15000
-                    readTimeout = 60000
+                val installed = file(asset.name)
+                val sum = newSums[asset.name]
+                if (target.length() != asset.size && sum != null && oldSums[asset.name] == sum &&
+                    installed.exists() && installed.length() == asset.size
+                ) {
+                    reuse(installed, target)
                 }
-                try {
-                    val code = conn.responseCode
-                    val append = code == 206
-                    if (code != 200 && code != 206) error("Download of ${asset.name} failed (HTTP $code)")
-                    if (!append) done -= have
-                    conn.inputStream.use { input ->
-                        java.io.FileOutputStream(target, append).use { out ->
-                            val buf = ByteArray(256 * 1024)
-                            while (true) {
-                                val n = input.read(buf)
-                                if (n < 0) break
-                                out.write(buf, 0, n)
-                                done += n
-                                onProgress(asset.name, done, total)
-                            }
-                        }
-                    }
-                } finally {
-                    conn.disconnect()
-                }
+            }
+
+            val toFetch = release.assets.filter { File(tmp, it.name).length() != it.size }
+            val total = toFetch.sumOf { it.size }
+            var done = toFetch.sumOf { a -> File(tmp, a.name).length().coerceAtMost(a.size) }
+            for (asset in toFetch) {
+                val target = File(tmp, asset.name)
+                done = fetch(asset, target, done) { d -> onProgress(asset.name, d, total) }
                 if (target.length() != asset.size) error("${asset.name} didn't finish downloading. Try again to resume.")
             }
             val missing = REQUIRED.filter { !File(tmp, it).exists() }
@@ -124,6 +138,41 @@ class MapStore(context: Context) {
             // Remove map files for other regions (for example the earlier test area).
             dir.parentFile?.listFiles()?.filter { it.isDirectory && it != dir }?.forEach { it.deleteRecursively() }
         }
+
+    /** Downloads one file, resuming a partial one. Returns the updated running byte count. */
+    private fun fetch(asset: Asset, target: File, doneBefore: Long, onBytes: (Long) -> Unit): Long {
+        var done = doneBefore
+        val have = if (target.exists()) target.length() else 0L
+        if (have == asset.size) return done
+        val conn = (URL(asset.url).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "TrailGuideGPS")
+            if (have in 1 until asset.size) setRequestProperty("Range", "bytes=$have-")
+            connectTimeout = 15000
+            readTimeout = 60000
+        }
+        try {
+            val code = conn.responseCode
+            val append = code == 206
+            if (code != 200 && code != 206) error("Download of ${asset.name} failed (HTTP $code)")
+            if (!append) done -= have
+            conn.inputStream.use { input ->
+                java.io.FileOutputStream(target, append).use { out ->
+                    val buf = ByteArray(256 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        done += n
+                        onBytes(done)
+                    }
+                }
+            }
+        } finally {
+            conn.disconnect()
+        }
+        return done
+    }
 
     companion object {
         val REQUIRED = listOf(

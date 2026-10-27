@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -99,7 +102,11 @@ private val layerNames = linkedMapOf(
     "contours" to "Contour lines (40 ft)",
     "trails" to "Trails and tracks",
     "water" to "Water sources",
-    "places" to "Campsites, trailheads and peaks",
+    "campsites" to "Campsites",
+    "trailheads" to "Trailheads",
+    "peaks" to "Peaks",
+    "restrooms" to "Restrooms (when zoomed in)",
+    "other" to "Other places: viewpoints, waterfalls, shelters, hot springs",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,7 +146,11 @@ fun MapScreen(
     var editingNoteFor by remember { mutableStateOf<Selected?>(null) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val statusTopPx = WindowInsets.statusBars.getTop(density)
-    val layerOn = remember { mutableStateMapOf<String, Boolean>().apply { MapStyle.GROUPS.keys.forEach { put(it, true) } } }
+    // Layer switches are remembered between launches.
+    val layerPrefs = remember { context.getSharedPreferences("layers", android.content.Context.MODE_PRIVATE) }
+    val layerOn = remember {
+        mutableStateMapOf<String, Boolean>().apply { MapStyle.GROUPS.keys.forEach { put(it, layerPrefs.getBoolean(it, true)) } }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -182,7 +193,7 @@ fun MapScreen(
                     return@addOnMapClickListener true
                 }
                 selectedWaypointId = null
-                val hit = m.queryRenderedFeatures(point, "water-points", "places", "peaks", "trail-hit", "trail-hit-unnamed").firstOrNull()
+                val hit = m.queryRenderedFeatures(point, *MapStyle.TAP_LAYERS).firstOrNull()
                 vm.select(hit?.let { f ->
                     fun prop(key: String): String? =
                         if (f.hasProperty(key) && !f.getProperty(key).isJsonNull) f.getProperty(key).asString else null
@@ -196,8 +207,12 @@ fun MapScreen(
                     val parts = mutableListOf(kindLabels[kind] ?: kind)
                     prop("ele_ft")?.toDoubleOrNull()?.let { parts += "%,d ft".format(it.roundToInt()) }
                     if (prop("seasonal") == "true") parts += "may be seasonal"
-                    prop("last_edit")?.let { parts += "map data edited $it" }
                     val geomPoint = f.geometry() as? org.maplibre.geojson.Point
+                    vm.features.value?.nearTown(
+                        geomPoint?.latitude() ?: latLng.latitude, geomPoint?.longitude() ?: latLng.longitude,
+                        exclude = if (kind == "town") name else null,
+                    )?.let { parts += it }
+                    prop("last_edit")?.let { parts += "map data edited $it" }
                     Selected(
                         name, parts.joinToString(" · "),
                         geomPoint?.latitude() ?: latLng.latitude, geomPoint?.longitude() ?: latLng.longitude,
@@ -446,16 +461,17 @@ fun MapScreen(
 
     if (showLayers) {
         ModalBottomSheet(onDismissRequest = { showLayers = false }, containerColor = Color.White) {
-            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
                 Text("Map layers", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
                 Spacer(Modifier.height(8.dp))
                 layerNames.forEach { (group, label) ->
-                    Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(label, fontSize = 16.sp, color = TG.Ink, modifier = Modifier.weight(1f))
+                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, fontSize = 16.sp, color = TG.Ink, modifier = Modifier.weight(1f).padding(end = 12.dp))
                         Switch(
                             checked = layerOn[group] != false,
                             onCheckedChange = { on ->
                                 layerOn[group] = on
+                                layerPrefs.edit().putBoolean(group, on).apply()
                                 style?.let { s -> setVisible(s, MapStyle.GROUPS[group].orEmpty(), on) }
                             },
                             colors = SwitchDefaults.colors(checkedTrackColor = TG.Accent),

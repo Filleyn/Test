@@ -25,6 +25,9 @@ class Features private constructor(
         val seasonal: Boolean = false,
         val lastEdit: String? = null,
         val isWater: Boolean = false,
+        /** For towns: city, town, village or hamlet. */
+        val place: String? = null,
+        val population: Int? = null,
     ) {
         val label: String get() = name ?: (Features.KIND_LABELS[kind] ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() })
     }
@@ -35,6 +38,35 @@ class Features private constructor(
 
     /** Every point, including unnamed water sources, for "nearest" lists and search. */
     val allPoints: List<Point> get() = points
+
+    /** Towns, for "14 mi NE of Sisters" style labels. */
+    private val towns: List<Point> = points.filter { it.kind == "town" && it.name != null }
+
+    /**
+     * Where a point is, relative to a town people would recognise: the nearest
+     * city or town within 30 mi, else the nearest village within 15 mi, else
+     * the nearest place of any size. Null if nothing is within 60 mi.
+     */
+    fun nearTown(lat: Double, lon: Double, exclude: String? = null): String? {
+        if (towns.isEmpty()) return null
+        val knownSizes = towns.any { it.place != null }
+        fun rank(t: Point): Int = when {
+            !knownSizes -> 1
+            t.place == "city" || t.place == "town" || (t.population ?: 0) >= 1000 -> 1
+            t.place == "village" -> 2
+            else -> 3
+        }
+        val withDist = towns.asSequence()
+            .filter { it.name != exclude }
+            .map { it to Geo.distanceM(lat, lon, it.lat, it.lon) }
+        val pick = withDist.filter { rank(it.first) == 1 && it.second <= 48_000 }.minByOrNull { it.second }
+            ?: withDist.filter { rank(it.first) <= 2 && it.second <= 24_000 }.minByOrNull { it.second }
+            ?: withDist.filter { it.second <= 96_000 }.minByOrNull { it.second }
+            ?: return null
+        val (t, d) = pick
+        return if (d < 1200) "in ${t.name}"
+        else "${Geo.formatDistance(d)} ${Geo.compassPoint(Geo.bearingDeg(t.lat, t.lon, lat, lon))} of ${t.name}"
+    }
 
     /** Named trails grouped by name; one trail name often spans many map segments. */
     val trailsByName: Map<String, List<Trail>> by lazy { trails.groupBy { it.name } }
@@ -91,7 +123,7 @@ class Features private constructor(
 
         val KIND_LABELS = mapOf(
             "spring" to "Spring", "water_point" to "Water point", "drinking_water" to "Drinking water",
-            "well" to "Well", "campsite" to "Campsite", "trailhead" to "Trailhead", "toilets" to "Toilets",
+            "well" to "Well", "campsite" to "Campsite", "trailhead" to "Trailhead", "toilets" to "Restroom",
             "viewpoint" to "Viewpoint", "peak" to "Peak", "lake" to "Lake", "town" to "Town",
             "waterfall" to "Waterfall", "hot_spring" to "Hot spring", "saddle" to "Saddle", "pass" to "Pass",
             "shelter" to "Shelter", "trail" to "Trail", "track" to "Track",
@@ -112,6 +144,7 @@ class Features private constructor(
                             label, props["kind"] ?: "", coords[0][1], coords[0][0],
                             osmId = props["osm_id"], seasonal = props["seasonal"] == "true",
                             lastEdit = props["last_edit"], isWater = isWater,
+                            place = props["place"], population = props["population"]?.toDoubleOrNull()?.toInt(),
                         )
                     }
                 }

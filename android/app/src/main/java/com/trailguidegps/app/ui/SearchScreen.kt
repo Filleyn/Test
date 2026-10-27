@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,7 +61,7 @@ private val kindColors = mapOf(
     "spring" to 0xFF2E7DBF, "drinking_water" to 0xFF0D47A1, "water_point" to 0xFF00838F, "well" to 0xFF455A64,
     "campsite" to 0xFFB4491A, "trailhead" to 0xFF2E7D4F, "trail" to 0xFFB5462A, "peak" to 0xFF5A4636,
     "lake" to 0xFF4A8FC7, "town" to 0xFF23271F, "waterfall" to 0xFF1565C0, "hot_spring" to 0xFFC2185B,
-    "shelter" to 0xFF6D4C41, "viewpoint" to 0xFF5E35B1,
+    "shelter" to 0xFF6D4C41, "viewpoint" to 0xFF5E35B1, "toilets" to 0xFF00695C,
 )
 
 /** Offline search: trails, water sources and places from the downloaded maps. */
@@ -175,8 +176,9 @@ private fun ResultRow(r: SearchResult, note: String?, onClick: () -> Unit) {
             Text(r.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
             val parts = mutableListOf(Features.KIND_LABELS[r.kind] ?: r.kind)
             if (r.point?.seasonal == true) parts += "seasonal"
-            note?.let { parts += it }
-            Text(parts.joinToString(" · "), fontSize = 13.sp, color = TG.Muted, maxLines = 1)
+            r.near?.let { parts += it }
+            Text(parts.joinToString(" · "), fontSize = 13.sp, color = TG.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            note?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         val ref = r.distanceM
         Column(horizontalAlignment = Alignment.End) {

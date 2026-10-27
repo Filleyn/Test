@@ -10,6 +10,8 @@ data class SearchResult(
     val lon: Double,
     val distanceM: Double,
     val point: Features.Point? = null,
+    /** "14 mi NE of Sisters", filled in for the results shown. */
+    val near: String? = null,
 )
 
 /** Offline search over the named places and trails in the map files. */
@@ -48,7 +50,8 @@ object Search {
             }
             hits += s to SearchResult(name, "trail", bestLat, bestLon, best)
         }
-        return hits.sortedWith(compareBy({ it.first }, { it.second.distanceM })).take(LIMIT).map { it.second }
+        return hits.sortedWith(compareBy({ it.first }, { it.second.distanceM })).take(LIMIT)
+            .map { it.second.withNear(features) }
     }
 
     /** Closest points of the given kinds, nearest first, within [maxM]. */
@@ -59,7 +62,11 @@ object Search {
             .filter { it.distanceM <= maxM }
             .sortedBy { it.distanceM }
             .take(n)
+            .map { it.withNear(features) }
             .toList()
 
     val WATER_KINDS = setOf("spring", "drinking_water", "water_point", "well")
+
+    private fun SearchResult.withNear(f: Features) =
+        copy(near = f.nearTown(lat, lon, exclude = if (kind == "town") name else null))
 }

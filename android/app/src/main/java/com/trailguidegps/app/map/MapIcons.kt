@@ -29,7 +29,7 @@ object MapIcons {
         put("water-seasonal", 0xFF7FB3DE.toInt(), dashed = true) { c, s, p -> drop(c, s, p) }
         put("poi-campsite", 0xFFB4491A.toInt()) { c, s, p -> tent(c, s, p) }
         put("poi-trailhead", 0xFF2E7D4F.toInt()) { c, s, p -> letters(c, s, p, "TH") }
-        put("poi-toilets", 0xFF6B716A.toInt()) { c, s, p -> letters(c, s, p, "WC") }
+        put("poi-toilets", 0xFF00695C.toInt()) { c, s, p -> restroom(c, s, p) }
         put("poi-shelter", 0xFF6D4C41.toInt()) { c, s, p -> house(c, s, p) }
         put("poi-viewpoint", 0xFF5E35B1.toInt()) { c, s, p -> star(c, s, p) }
         put("poi-waterfall", 0xFF1565C0.toInt()) { c, s, p -> waves(c, s, p) }
@@ -70,6 +70,18 @@ object MapIcons {
 
     private fun tapBar(c: Canvas, s: Float, p: Paint) {
         c.drawRect(s * 0.30f, s * 0.84f, s * 0.70f, s * 0.88f, p)
+    }
+
+    /** The standard restroom sign: a simple standing figure. */
+    private fun restroom(c: Canvas, s: Float, p: Paint) {
+        c.drawCircle(s * 0.5f, s * 0.27f, s * 0.075f, p)
+        val body = Path().apply {
+            moveTo(s * 0.38f, s * 0.38f); lineTo(s * 0.62f, s * 0.38f); lineTo(s * 0.62f, s * 0.58f)
+            lineTo(s * 0.57f, s * 0.58f); lineTo(s * 0.57f, s * 0.78f); lineTo(s * 0.52f, s * 0.78f)
+            lineTo(s * 0.52f, s * 0.60f); lineTo(s * 0.48f, s * 0.60f); lineTo(s * 0.48f, s * 0.78f)
+            lineTo(s * 0.43f, s * 0.78f); lineTo(s * 0.43f, s * 0.58f); lineTo(s * 0.38f, s * 0.58f); close()
+        }
+        c.drawPath(body, p)
     }
 
     private fun tent(c: Canvas, s: Float, p: Paint) {

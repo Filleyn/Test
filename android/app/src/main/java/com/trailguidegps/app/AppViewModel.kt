@@ -153,6 +153,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val p = r.point
         val parts = mutableListOf(Features.KIND_LABELS[r.kind] ?: r.kind)
         if (p?.seasonal == true) parts += "may be seasonal"
+        r.near?.let { parts += it }
         p?.lastEdit?.let { parts += "map data edited $it" }
         _selected.value = SelectedPlace(r.name, parts.joinToString(" · "), r.lat, r.lon, p?.osmId, p?.isWater == true)
         focusOn(listOf(r.lat to r.lon))
