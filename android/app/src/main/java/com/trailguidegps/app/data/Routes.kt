@@ -151,6 +151,49 @@ data class Pace(val mph: Double = 2.0, val climbMinPer1000Ft: Int = 30, val brea
     }
 
     companion object {
+        /** One recorded hike, as the pace fit sees it. Distance m, climb m, times in minutes. */
+        data class Hike(val distanceM: Double, val gainM: Double, val movingMin: Double, val totalMin: Double)
+
+        /**
+         * Works out a pace from recorded hikes: moving time ≈ miles ÷ mph + climb × minutes per
+         * 1,000 ft, fitted by least squares; breaks from stopped time. Needs 3 hikes of a mile or
+         * more. Falls back to keeping the current climb setting if the fit isn't believable.
+         */
+        fun fit(hikes: List<Hike>, current: Pace): Pace? {
+            val hs = hikes.filter { it.distanceM >= Geo.M_PER_MI && it.movingMin >= 20 }
+            if (hs.size < 3) return null
+            val x1 = hs.map { it.distanceM / Geo.M_PER_MI * 60 }      // × (1 / mph)
+            val x2 = hs.map { it.gainM * Geo.FT_PER_M / 1000 }         // × minutes per 1,000 ft
+            val y = hs.map { it.movingMin }
+            val s11 = x1.indices.sumOf { x1[it] * x1[it] }
+            val s12 = x1.indices.sumOf { x1[it] * x2[it] }
+            val s22 = x2.indices.sumOf { x2[it] * x2[it] }
+            val s1y = x1.indices.sumOf { x1[it] * y[it] }
+            val s2y = x2.indices.sumOf { x2[it] * y[it] }
+            val det = s11 * s22 - s12 * s12
+            var mph: Double
+            var climb: Double
+            if (det > 1e-6) {
+                val a = (s1y * s22 - s2y * s12) / det
+                climb = (s11 * s2y - s12 * s1y) / det
+                mph = if (a > 0) 1 / a else 0.0
+            } else { mph = 0.0; climb = -1.0 }
+            if (climb !in 5.0..60.0 || mph !in 1.0..3.5) {
+                climb = current.climbMinPer1000Ft.toDouble()
+                val a = x1.indices.sumOf { x1[it] * (y[it] - climb * x2[it]) } / s11
+                mph = if (a > 0) 1 / a else return null
+                if (mph !in 0.8..4.0) return null
+            }
+            val moving = hs.sumOf { it.movingMin }
+            val stopped = hs.sumOf { (it.totalMin - it.movingMin).coerceAtLeast(0.0) }
+            val breaks = (stopped / moving * 60).coerceIn(0.0, 20.0)
+            return Pace(
+                mph = (mph * 10).roundToInt() / 10.0,
+                climbMinPer1000Ft = ((climb / 5).roundToInt() * 5).coerceIn(0, 60),
+                breakMinPerHour = ((breaks / 5).roundToInt() * 5).coerceIn(0, 20),
+            )
+        }
+
         fun load(context: Context): Pace {
             val p = context.getSharedPreferences("pace", Context.MODE_PRIVATE)
             return Pace(p.getFloat("mph", 2.0f).toDouble(), p.getInt("climb", 30), p.getInt("breaks", 10))

@@ -226,6 +226,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         else "Following \"${r.name}\". Off-route alerts are off in Settings."
     }
 
+    /** A pace worked out from your recorded hikes, and how many hikes it used. */
+    data class PaceSuggestion(val pace: Pace?, val hikes: Int)
+    private val _paceSuggestion = MutableStateFlow<PaceSuggestion?>(null)
+    val paceSuggestion: StateFlow<PaceSuggestion?> = _paceSuggestion.asStateFlow()
+
+    /** Looks at saved tracks (with times) and fits a pace. Climb comes from the map's elevation, like route estimates. */
+    fun suggestPace() {
+        viewModelScope.launch {
+            _paceSuggestion.value = withContext(Dispatchers.Default) {
+                val hikes = tracks.summaries.value
+                    .filter { it.stats.distanceM >= com.trailguidegps.app.geo.Geo.M_PER_MI && it.stats.movingMs >= 20 * 60_000 }
+                    .mapNotNull { s ->
+                        val pts = tracks.load(s.id)?.second ?: return@mapNotNull null
+                        val coords = pts.map { doubleArrayOf(it.lat, it.lon) }
+                        val gain = RouteStats.compute(coords, s.stats.distanceM, terrain).gainM.takeIf { terrain != null } ?: s.stats.gainM
+                        val avgMph = s.stats.distanceM / com.trailguidegps.app.geo.Geo.M_PER_MI / (s.stats.movingMs / 3_600_000.0)
+                        if (avgMph !in 0.5..4.5) return@mapNotNull null // imported tracks without real times
+                        Pace.Companion.Hike(s.stats.distanceM, gain, s.stats.movingMs / 60_000.0, s.stats.totalMs / 60_000.0)
+                    }
+                PaceSuggestion(Pace.fit(hikes, _pace.value), hikes.size)
+            }
+        }
+    }
+
     fun stopFollowing() {
         val app = getApplication<Application>()
         com.trailguidegps.app.route.RouteFollower.stop(app)

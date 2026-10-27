@@ -15,6 +15,12 @@ data class Settings(
     val keepScreenOn: Boolean = false,
     /** Look for new map files when the app opens (needs a connection; does nothing offline). */
     val checkUpdatesOnLaunch: Boolean = true,
+    /** Fewer GPS fixes while recording or following (every 15 s instead of 5 s). */
+    val batterySaver: Boolean = false,
+    /** Warn at 20% and 10% battery while recording or following. */
+    val lowBatteryWarning: Boolean = true,
+    /** Switch to battery saver by itself at 20%. */
+    val autoSaverAtLow: Boolean = true,
 ) {
     companion object {
         val OFF_ROUTE_CHOICES = listOf(100, 250, 500, 1000)
@@ -31,6 +37,9 @@ class SettingsStore(context: Context) {
         offRouteFt = prefs.getInt("offRouteFt", 250),
         keepScreenOn = prefs.getBoolean("keepScreenOn", false),
         checkUpdatesOnLaunch = prefs.getBoolean("checkUpdatesOnLaunch", true),
+        batterySaver = prefs.getBoolean("batterySaver", false),
+        lowBatteryWarning = prefs.getBoolean("lowBatteryWarning", true),
+        autoSaverAtLow = prefs.getBoolean("autoSaverAtLow", true),
     )
 
     fun update(change: (Settings) -> Settings) {
@@ -38,6 +47,8 @@ class SettingsStore(context: Context) {
         prefs.edit()
             .putBoolean("offRouteAlerts", s.offRouteAlerts).putInt("offRouteFt", s.offRouteFt)
             .putBoolean("keepScreenOn", s.keepScreenOn).putBoolean("checkUpdatesOnLaunch", s.checkUpdatesOnLaunch)
+            .putBoolean("batterySaver", s.batterySaver).putBoolean("lowBatteryWarning", s.lowBatteryWarning)
+            .putBoolean("autoSaverAtLow", s.autoSaverAtLow)
             .apply()
         _value.value = s
     }

@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trailguidegps.app.AppViewModel
 import com.trailguidegps.app.BuildConfig
+import com.trailguidegps.app.data.Pace
 import com.trailguidegps.app.data.Settings
 
 /** All the app's settings in one place. */
@@ -80,6 +81,16 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
                 vm.settings.update { it.copy(keepScreenOn = on) }
             }
 
+            Section("Battery")
+            ToggleRow("Battery saver", "GPS every 15 seconds instead of 5 while recording or following. Tracks are a little less detailed.",
+                s.batterySaver) { on -> vm.settings.update { it.copy(batterySaver = on) } }
+            ToggleRow("Low battery warning", "A notification at 20% and 10% while recording or following.", s.lowBatteryWarning) { on ->
+                vm.settings.update { it.copy(lowBatteryWarning = on) }
+            }
+            ToggleRow("Switch to battery saver at 20%", "Only while recording or following, and only until you stop.", s.autoSaverAtLow) { on ->
+                vm.settings.update { it.copy(autoSaverAtLow = on) }
+            }
+
             Section("Time estimates")
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -88,6 +99,30 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
                         fontSize = 12.sp, color = TG.Muted)
                 }
                 TextButton(onClick = { showPace = true }) { Text("Change", color = TG.Accent) }
+            }
+            val suggestion by vm.paceSuggestion.collectAsStateWithLifecycle()
+            androidx.compose.runtime.LaunchedEffect(Unit) { vm.suggestPace() }
+            suggestion?.let { sg ->
+                val p = sg.pace
+                if (p == null) {
+                    Text(
+                        if (sg.hikes < 3) "Record ${3 - sg.hikes} more hike${if (3 - sg.hikes == 1) "" else "s"} of a mile or more and the app can suggest a pace from how you actually hike."
+                        else "Your recorded hikes didn't give a believable pace yet. A few more will help.",
+                        fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp, modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                } else if (p != pace) {
+                    Column(Modifier.fillMaxWidth().background(Color(0xFFF2F4EF), RoundedCornerShape(10.dp)).padding(12.dp)) {
+                        Text("From your ${sg.hikes} recorded hikes", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                        Text("%.1f mph · %d min per 1,000 ft · %d min breaks per hour".format(p.mph, p.climbMinPer1000Ft, p.breakMinPerHour),
+                            fontSize = 14.sp, color = TG.Ink)
+                        Text("Example: 5 mi with 1,000 ft of climb would take ${Pace.format(p.minutes(5 * com.trailguidegps.app.geo.Geo.M_PER_MI, 1000 / com.trailguidegps.app.geo.Geo.FT_PER_M))} " +
+                            "instead of ${Pace.format(pace.minutes(5 * com.trailguidegps.app.geo.Geo.M_PER_MI, 1000 / com.trailguidegps.app.geo.Geo.FT_PER_M))}.",
+                            fontSize = 12.sp, color = TG.Muted)
+                        TextButton(onClick = { vm.setPace(p) }) { Text("Use this pace", color = TG.Accent, fontWeight = FontWeight.SemiBold) }
+                    }
+                } else {
+                    Text("Your pace matches your ${sg.hikes} recorded hikes.", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(bottom = 6.dp))
+                }
             }
 
             Section("Maps")
