@@ -79,6 +79,7 @@ def main():
     ap.add_argument("--regions-file", required=True)
     ap.add_argument("--expect-trail", default="", help="Trail name to look for, e.g. Pinnacles")
     ap.add_argument("--summary", required=True, help="Where to write the Markdown report")
+    ap.add_argument("--publiclands-stats", default="", help="Stats from build_publiclands.py, if it ran")
     a = ap.parse_args()
 
     region = json.load(open(a.regions_file))[a.region]
@@ -156,6 +157,15 @@ def main():
             lines.append(f"- {'✅' if hits else '⚠️'} Places named like \"{want}\": {shown or 'none'}")
         if stats.get("trail_names_sample"):
             lines.append(f"- Named trails seen: {', '.join(stats['trail_names_sample'])}")
+    pl = json.load(open(a.publiclands_stats)) if a.publiclands_stats and os.path.exists(a.publiclands_stats) else None
+    if pl and "publiclands.pmtiles" in have:
+        c = pl["counts"]
+        lines.append(f"- ✅ Public land: {c['land']:,} land areas, {c['boundary']:,} boundaries, {c['special']:,} wilderness and special areas")
+        lines.append("- Managers: " + ", ".join(f"{k} {v:,}" for k, v in list(pl["Mang_Name"].items())[:12]))
+        lines.append(f"- National forests: {', '.join(pl['forests'])}")
+        lines.append(f"- Wilderness areas ({len(pl['wilderness'])}): {', '.join(pl['wilderness'][:12])}…")
+    else:
+        lines.append("- ⚠️ Public land layer not built (PAD-US source unavailable?); the app works without it")
     lines += ["", "Open the .pmtiles files at https://pmtiles.io to check them visually.", ""]
     with open(a.summary, "w") as f:
         f.write("\n".join(lines))

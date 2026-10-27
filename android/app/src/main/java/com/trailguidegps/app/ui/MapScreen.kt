@@ -113,6 +113,9 @@ private val layerNames = linkedMapOf(
     "shelters" to "Shelters and huts",
     "restrooms" to "Restrooms (when zoomed in)",
     "other" to "Other places: viewpoints, hot springs, passes",
+    "landmanager" to "Land manager (Forest Service, BLM, state…)",
+    "forests" to "National forest and reservation boundaries",
+    "wilderness" to "Wilderness and other special areas",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -169,7 +172,9 @@ fun MapScreen(
     // Layer switches are remembered between launches.
     val layerPrefs = remember { context.getSharedPreferences("layers", android.content.Context.MODE_PRIVATE) }
     val layerOn = remember {
-        mutableStateMapOf<String, Boolean>().apply { MapStyle.GROUPS.keys.forEach { put(it, layerPrefs.getBoolean(it, true)) } }
+        mutableStateMapOf<String, Boolean>().apply {
+            MapStyle.GROUPS.keys.forEach { put(it, layerPrefs.getBoolean(it, it !in MapStyle.DEFAULT_OFF)) }
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -232,7 +237,22 @@ fun MapScreen(
                     return@addOnMapClickListener true
                 }
                 val hit = m.queryRenderedFeatures(point, *MapStyle.TAP_LAYERS).firstOrNull()
-                vm.select(hit?.let { f ->
+                if (hit == null) {
+                    // Nothing else here: say whose land it is, if a land layer is on.
+                    fun propsOf(layer: String): Map<String, String?>? = m.queryRenderedFeatures(point, layer)
+                        .maxByOrNull { f -> if (f.hasProperty("acres")) -(f.getNumberProperty("acres")?.toDouble() ?: 0.0) else 0.0 }
+                        ?.let { f ->
+                            listOf("name", "mgr", "mgr_type", "des", "access").associateWith { k ->
+                                if (f.hasProperty(k) && !f.getProperty(k).isJsonNull) f.getProperty(k).asString else null
+                            }
+                        }
+                    val land = com.trailguidegps.app.data.PublicLand.describe(
+                        propsOf(MapStyle.LAYER_SPECIAL_FILL), propsOf(MapStyle.LAYER_BOUNDARY_HIT), propsOf(MapStyle.LAYER_LAND_FILL),
+                    )
+                    vm.select(land?.let { (title, sub) -> Selected(title, sub, latLng.latitude, latLng.longitude) })
+                    return@addOnMapClickListener land != null
+                }
+                vm.select(hit.let { f ->
                     fun prop(key: String): String? =
                         if (f.hasProperty(key) && !f.getProperty(key).isJsonNull) f.getProperty(key).asString else null
                     val kind = prop("kind") ?: when {
@@ -258,7 +278,7 @@ fun MapScreen(
                         osmId = prop("osm_id"), isWater = isWater,
                     )
                 })
-                hit != null
+                true
             }
             map = m
         }

@@ -157,11 +157,21 @@ jobs:
             --bbox="${{ steps.region.outputs.bbox }}" --dem "$WORK/dem-region.tif" --out "$OUT" \
             --roads "${{ steps.region.outputs.roads }}"
 
+      - name: Build public land layer (PAD-US)
+        # If the source is down the rest of the maps still publish; the app treats this file as optional.
+        continue-on-error: true
+        run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
+          python3 pipeline/build_publiclands.py --state "$(python3 -c "import json;print(json.load(open('pipeline/regions.json'))['$REGION'].get('state','OR'))")" \
+            --work "$WORK/publiclands" --out "$OUT/publiclands.pmtiles" --stats "$WORK/publiclands-stats.json" \
+            --max-zoom 12
+
       - name: Write manifest and check report
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/package.py --dir "$OUT" --region "$REGION" \
             --regions-file pipeline/regions.json --expect-trail "${{ steps.region.outputs.expect_trail }}" \
+            --publiclands-stats "$WORK/publiclands-stats.json" \
             --summary "$WORK/summary.md"
           cat "$WORK/summary.md" >> "$GITHUB_STEP_SUMMARY"
 

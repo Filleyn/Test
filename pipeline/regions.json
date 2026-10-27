@@ -13,7 +13,8 @@
     "terrain_max_zoom": 14,
     "contour_max_zoom": 14,
     "roads": "all",
-    "expect_trail": "Pinnacles"
+    "expect_trail": "Pinnacles",
+    "state": "OR"
   },
   "oregon": {
     "title": "All of Oregon",
@@ -33,6 +34,7 @@
     "expect_places": [
       "Twin Lakes",
       "Deschutes River"
-    ]
+    ],
+    "state": "OR"
   }
 }

@@ -44,7 +44,28 @@ object MapStyle {
         "trails" to listOf("trail", "trail-names", "trail-hit", "trail-hit-unnamed"),
         "water" to listOf("water-points", "water-labels"),
         "peaks" to listOf("peaks", "peak-labels"),
-    ) + PLACE_GROUPS.associate { g -> g.id to g.layers }
+    ) + PLACE_GROUPS.associate { g -> g.id to g.layers } + linkedMapOf(
+        "landmanager" to listOf(LAYER_LAND_FILL),
+        "forests" to listOf(LAYER_BOUNDARY_HIT, "boundary-line", "boundary-line-labels", "boundary-point-labels"),
+        "wilderness" to listOf(LAYER_SPECIAL_FILL, "special-line", "special-line-other", "special-line-labels", "special-point-labels"),
+    )
+
+    /** Layer groups that start switched off. */
+    val DEFAULT_OFF = setOf("landmanager")
+
+    /** Tap these (in order) for who manages the land, when nothing else was tapped. */
+    val LAND_TAP_LAYERS = arrayOf(LAYER_SPECIAL_FILL, LAYER_BOUNDARY_HIT, LAYER_LAND_FILL)
+
+    /** Fill colors by land manager, the usual public-land map colors. */
+    private val MANAGER_COLORS = linkedMapOf(
+        "USFS" to "#7FB843", "BLM" to "#F5C83A", "NPS" to "#A98BD4", "FWS" to "#F49C7A",
+        "USBR" to "#F7D9A8", "USACE" to "#C792D8", "DOD" to "#E88A8A", "OTHF" to "#B8A79A",
+        "TRIB" to "#D2A46C", "NGO" to "#B5B5B5", "PVT" to "#B5B5B5",
+    )
+    private val MANAGER_TYPE_COLORS = linkedMapOf(
+        "FED" to "#B8A79A", "STAT" to "#5DA9E9", "LOC" to "#8FA6B5", "DIST" to "#8FA6B5",
+        "TRIB" to "#D2A46C", "JNT" to "#7FC8BF",
+    )
 
     private const val REGULAR = "NotoSans-Regular"
     private const val MEDIUM = "NotoSans-Medium"
@@ -63,6 +84,12 @@ object MapStyle {
                 .put("encoding", "mapbox").put("tileSize", 256))
             .put("water", JSONObject().put("type", "geojson").put("data", gj("water.geojson")))
             .put("pois", JSONObject().put("type", "geojson").put("data", gj("pois.geojson")))
+            .apply {
+                if (store.file("publiclands.pmtiles").exists()) {
+                    put("publiclands", JSONObject().put("type", "vector").put("url", pm("publiclands.pmtiles"))
+                        .put("attribution", "Public land: USGS PAD-US"))
+                }
+            }
             // Your own data, filled in by the app after the style loads.
             .put(SRC_SHOWN_TRACK, emptyGeoJson())
             .put(SRC_SHOWN_ROUTE, emptyGeoJson())
@@ -76,7 +103,8 @@ object MapStyle {
         val trails = arr("path", "track")
         val layers = JSONArray()
         fun layer(id: String, type: String, source: String? = null, sourceLayer: String? = null,
-                  filter: Any? = null, paint: JSONObject? = null, layout: JSONObject? = null, minzoom: Double? = null) {
+                  filter: Any? = null, paint: JSONObject? = null, layout: JSONObject? = null, minzoom: Double? = null,
+                  maxzoom: Double? = null) {
             val l = JSONObject().put("id", id).put("type", type)
             source?.let { l.put("source", it) }
             sourceLayer?.let { l.put("source-layer", it) }
@@ -84,6 +112,7 @@ object MapStyle {
             paint?.let { l.put("paint", it) }
             layout?.let { l.put("layout", it) }
             minzoom?.let { l.put("minzoom", it) }
+            maxzoom?.let { l.put("maxzoom", it) }
             layers.put(l)
         }
         fun inClass(values: JSONArray) = arr("in", arr("get", "class"), arr("literal", values))
@@ -101,6 +130,23 @@ object MapStyle {
             JSONObject().put("fill-color", "#E6E0D2"))
         layer("park", "line", "topo", "park", paint = JSONObject().put("line-color", "#5E8A4A")
             .put("line-width", 1.5).put("line-dasharray", arr(3, 2)).put("line-opacity", 0.7))
+        // Public land: who manages it, under the hillshade so the terrain still reads.
+        val hasLand = store.file("publiclands.pmtiles").exists()
+        if (hasLand) {
+            val mgrColor = JSONArray().put("match").put(arr("get", "mgr")).apply {
+                MANAGER_COLORS.forEach { (k, v) -> put(k); put(v) }
+                put(JSONArray().put("match").put(arr("get", "mgr_type")).apply {
+                    MANAGER_TYPE_COLORS.forEach { (k, v) -> put(k); put(v) }
+                    put("#C8C8C8")
+                })
+            }
+            layer(LAYER_LAND_FILL, "fill", "publiclands", "land", paint = JSONObject()
+                .put("fill-color", mgrColor).put("fill-opacity", byZoom(6, 0.45, 13, 0.3)))
+            layer(LAYER_SPECIAL_FILL, "fill", "publiclands", "special", paint = JSONObject()
+                .put("fill-color", "#2E5E1E").put("fill-opacity", 0.07))
+            layer(LAYER_BOUNDARY_HIT, "fill", "publiclands", "boundary", paint = JSONObject()
+                .put("fill-color", "#000000").put("fill-opacity", 0))
+        }
         layer("hillshade", "hillshade", "terrain", paint = JSONObject()
             .put("hillshade-exaggeration", 0.45).put("hillshade-shadow-color", "#4E4232")
             .put("hillshade-highlight-color", "#FFFFFF").put("hillshade-accent-color", "#6B5A44"))
@@ -111,6 +157,17 @@ object MapStyle {
         layer("water", "fill", "topo", "water", paint = JSONObject().put("fill-color", "#A9CFEA"))
         layer("waterway", "line", "topo", "waterway", paint = JSONObject().put("line-color", "#4A8FC7")
             .put("line-width", arr("match", arr("get", "class"), "river", 2.5, 1)))
+        if (hasLand) {
+            // National forest, park, refuge and reservation boundaries; wilderness and similar areas.
+            layer("boundary-line", "line", "publiclands", "boundary", paint = JSONObject()
+                .put("line-color", arr("match", arr("get", "des"), "TRIBL", "#8A5A2B", "#3E6B2A"))
+                .put("line-width", byZoom(6, 1.2, 12, 3.0)).put("line-opacity", 0.75).put("line-dasharray", arr(5, 2)))
+            // Wilderness solid, study areas and the rest dashed (dash patterns can't vary per feature).
+            layer("special-line", "line", "publiclands", "special", arr("==", arr("get", "des"), "WA"), JSONObject()
+                .put("line-color", "#2E5E1E").put("line-width", byZoom(6, 1.2, 12, 2.6)))
+            layer("special-line-other", "line", "publiclands", "special", arr("!=", arr("get", "des"), "WA"), JSONObject()
+                .put("line-color", "#2E5E1E").put("line-width", byZoom(6, 0.8, 12, 1.8)).put("line-dasharray", arr(3, 2)))
+        }
         layer("road-casing", "line", "topo", "transportation", inClass(roads),
             JSONObject().put("line-color", "#FFFFFF").put("line-width", byZoom(10, 2, 15, 7)))
         layer("road", "line", "topo", "transportation", inClass(roads),
@@ -138,6 +195,26 @@ object MapStyle {
             halo("#FFFFFF", "#8E3218"),
             JSONObject().put("symbol-placement", "line").put("text-font", arr(MEDIUM))
                 .put("text-size", 12).put("text-field", arr("get", "name")), minzoom = 12.0)
+        if (hasLand) {
+            val upper = arr("upcase", arr("get", "name"))
+            // Names along the boundary when zoomed in, one name in the middle when zoomed out.
+            layer("boundary-line-labels", "symbol", "publiclands", "boundary", arr("has", "name"),
+                halo("#FFFFFF", "#2F5520", 1.6),
+                JSONObject().put("symbol-placement", "line").put("symbol-spacing", 500).put("text-font", arr(MEDIUM))
+                    .put("text-size", 11).put("text-letter-spacing", 0.06).put("text-field", upper), minzoom = 10.0)
+            layer("special-line-labels", "symbol", "publiclands", "special", arr("has", "name"),
+                halo("#FFFFFF", "#2E5E1E", 1.6),
+                JSONObject().put("symbol-placement", "line").put("symbol-spacing", 450).put("text-font", arr(ITALIC))
+                    .put("text-size", 11).put("text-field", arr("get", "name")), minzoom = 11.0)
+            layer("boundary-point-labels", "symbol", "publiclands", "labels", arr("==", arr("get", "layer"), "boundary"),
+                halo("#FFFFFF", "#2F5520", 1.6),
+                JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 12).put("text-letter-spacing", 0.06)
+                    .put("text-field", upper).put("text-max-width", 8), minzoom = 6.0, maxzoom = 10.0)
+            layer("special-point-labels", "symbol", "publiclands", "labels", arr("==", arr("get", "layer"), "special"),
+                halo("#FFFFFF", "#2E5E1E", 1.6),
+                JSONObject().put("text-font", arr(ITALIC)).put("text-size", 11).put("text-field", arr("get", "name"))
+                    .put("text-max-width", 8), minzoom = 8.0, maxzoom = 11.0)
+        }
         layer("place-names", "symbol", "topo", "place", paint = halo("#FFFFFF", "#23271F"),
             layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 13).put("text-field", arr("get", "name")))
         layer("peaks", "circle", "topo", "mountain_peak", paint = JSONObject().put("circle-radius", 4)
@@ -238,6 +315,9 @@ object MapStyle {
     const val SRC_RECORDING = "user-recording"
     const val SRC_WAYPOINTS = "user-waypoints"
     const val LAYER_WAYPOINTS = "user-waypoints"
+    const val LAYER_LAND_FILL = "land-fill"
+    const val LAYER_SPECIAL_FILL = "special-fill"
+    const val LAYER_BOUNDARY_HIT = "boundary-hit"
 
     private fun emptyGeoJson() = JSONObject().put("type", "geojson")
         .put("data", JSONObject().put("type", "FeatureCollection").put("features", JSONArray()))
