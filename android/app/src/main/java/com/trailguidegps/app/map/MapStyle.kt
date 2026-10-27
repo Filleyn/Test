@@ -164,11 +164,18 @@ object MapStyle {
             .put("attribution", "Imagery: USGS The National Map"))
         val hidden = JSONObject().put("visibility", "none")
         val rasterPaint = JSONObject().put("raster-fade-duration", 0)
+        // Oregon's 1-ft 2024 imagery, online, when zoomed in; drawn over saved areas so it's the sharpest when you have signal.
+        sources.put("satellite-online-hd", JSONObject().put("type", "raster")
+            .put("tiles", arr(com.trailguidegps.app.data.SatelliteStore.OREGON_TEMPLATE))
+            .put("tileSize", 256).put("minzoom", 15).put("maxzoom", 19)
+            .put("attribution", "Imagery: Oregon Statewide Imagery Program 2024"))
         layer("satellite-online", "raster", "satellite-online", paint = rasterPaint, layout = hidden)
         satelliteAreas.forEach { (id, f) ->
             sources.put("sat-$id", JSONObject().put("type", "raster").put("url", "pmtiles://file://" + f.absolutePath).put("tileSize", 256))
             layer("satellite-$id", "raster", "sat-$id", paint = JSONObject(rasterPaint.toString()), layout = JSONObject(hidden.toString()))
         }
+        layer("satellite-online-hd", "raster", "satellite-online-hd", paint = JSONObject(rasterPaint.toString()),
+            layout = JSONObject(hidden.toString()), minzoom = 15.0)
         layer("contours-minor", "line", "contours", "contours", arr("==", arr("get", "major"), 0),
             JSONObject().put("line-color", "#B88A5B").put("line-width", 0.6).put("line-opacity", 0.5))
         layer("contours-major", "line", "contours", "contours", arr("==", arr("get", "major"), 1),

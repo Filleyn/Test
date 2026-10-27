@@ -58,6 +58,16 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Detail levels: the zoom saved down to, and its label. */
+val DETAIL_CHOICES = listOf(16 to "Good · 6 ft", 17 to "Sharp · 3 ft", 18 to "Sharpest · 1.4 ft")
+
+fun detailLabel(z: Int) = when {
+    z >= 18 -> "sharpest detail (Oregon 2024)"
+    z == 17 -> "sharp detail (Oregon 2024)"
+    z == 16 -> "good detail (USGS)"
+    else -> "standard detail (USGS)"
+}
+
 private fun mb(bytes: Long) = if (bytes >= 1e9) "%.1f GB".format(bytes / 1e9) else "%,d MB".format((bytes / 1e6).toLong().coerceAtLeast(1))
 
 /** Bottom panel while framing an area to save: name, detail level, size estimate. */
@@ -72,13 +82,13 @@ fun SatSelectPanel(
 ) {
     var name by remember(replacing) { mutableStateOf(replacing?.name ?: "") }
     var named by remember(replacing) { mutableStateOf(replacing != null) }
-    var detail by remember(replacing) { mutableIntStateOf(replacing?.maxZoom ?: 16) }
+    var detail by remember(replacing) { mutableIntStateOf(replacing?.maxZoom ?: 17) }
     // Suggest a name from the nearest town until you type one.
     LaunchedEffect(bounds?.let { (it[1] + it[3]) / 2 * 100 }?.toInt(), bounds?.let { (it[0] + it[2]) / 2 * 100 }?.toInt()) {
         if (!named && bounds != null) name = suggestName((bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2) ?: name
     }
     val tiles = bounds?.let { PmTilesWriter.countFor(it[0], it[1], it[2], it[3], SatelliteStore.MIN_ZOOM, detail) } ?: 0
-    val bytes = tiles * SatelliteStore.AVG_TILE_BYTES
+    val bytes = bounds?.let { SatelliteStore.estimateBytes(it[0], it[1], it[2], it[3], detail) } ?: 0
     val tooBig = tiles > SatelliteStore.MAX_TILES
     val noRoom = bytes * 13 / 10 > freeBytes
 
@@ -88,14 +98,22 @@ fun SatSelectPanel(
             label = { Text("Area name") }, modifier = Modifier.fillMaxWidth(),
         )
         Text("Detail", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.padding(top = 10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(15 to "Standard (about 12 ft)", 16 to "High (about 6 ft)").forEach { (z, label) ->
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            DETAIL_CHOICES.forEach { (z, label) ->
                 FilterChip(
-                    selected = detail == z, onClick = { detail = z }, label = { Text(label, fontSize = 13.sp) },
+                    selected = detail == z, onClick = { detail = z }, label = { Text(label, fontSize = 12.sp) },
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Accent, selectedLabelColor = Color.White),
                 )
             }
         }
+        Text(
+            when (detail) {
+                16 -> "USGS imagery, mixed dates. Quickest to download."
+                17 -> "Oregon 2024 imagery (flown summer 2024). Trails and campsites are easy to make out."
+                else -> "Oregon 2024 imagery at full detail: individual trees and rocks. About 4 times the size of Sharp."
+            },
+            fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(top = 2.dp),
+        )
         if (bounds != null) {
             val midLat = (bounds[1] + bounds[3]) / 2
             val wMi = Geo.distanceM(midLat, bounds[0], midLat, bounds[2]) / Geo.M_PER_MI
@@ -105,7 +123,7 @@ fun SatSelectPanel(
                 fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.padding(top = 8.dp),
             )
             when {
-                tooBig -> Text("Too big to save in one go (limit about ${mb(SatelliteStore.MAX_TILES * SatelliteStore.AVG_TILE_BYTES)}). Zoom in, use Standard detail, or save it as two areas.",
+                tooBig -> Text("Too many tiles to save in one go (limit ${"%,d".format(SatelliteStore.MAX_TILES)}). Zoom in, pick less detail, or save it as two areas.",
                     fontSize = 13.sp, color = TG.Danger)
                 noRoom -> Text("Not enough free space on the phone (${mb(freeBytes)} free).", fontSize = 13.sp, color = TG.Danger)
                 else -> Text("Downloads over your connection; Wi-Fi is best. Tiles you've already saved aren't downloaded again.",
@@ -144,7 +162,7 @@ fun SatelliteScreen(vm: AppViewModel, onClose: () -> Unit) {
         }
         Text(
             "Satellite imagery shows online anywhere when the Satellite layer is on. Areas saved here also show with no signal. " +
-                "Imagery: USGS The National Map (public domain).",
+                "Imagery: USGS The National Map, and the Oregon Statewide Imagery Program's 1-ft 2024 imagery.",
             fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
         HorizontalDivider(color = TG.Line, modifier = Modifier.padding(top = 8.dp))
@@ -152,7 +170,7 @@ fun SatelliteScreen(vm: AppViewModel, onClose: () -> Unit) {
             Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("No areas saved yet", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
                 Spacer(Modifier.height(6.dp))
-                Text("Tap Add area, then frame the place you're going. A 5 × 5 mile area at high detail is about 60 MB.",
+                Text("Tap Add area, then frame the place you're going. A 5 × 5 mile area is about 13 MB at Good detail, 31 MB at Sharp and 120 MB at Sharpest.",
                     fontSize = 14.sp, color = TG.Muted, lineHeight = 20.sp)
             }
         } else {
@@ -210,7 +228,7 @@ private fun SatRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(a.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
-            val detail = if (a.maxZoom >= 16) "high detail" else "standard detail"
+            val detail = detailLabel(a.maxZoom)
             val status = when (a.status) {
                 SatArea.STATUS_READY -> "${mb(a.bytes)} · $detail · saved $date"
                 SatArea.STATUS_DOWNLOADING -> "Downloading ${if (a.total > 0) a.done * 100 / a.total else 0}% (${a.done} of ${a.total} tiles)"

@@ -141,7 +141,7 @@ class SatelliteStore private constructor(context: Context) {
         val done = AtomicInteger(0)
         val failures = AtomicInteger(0)
         val missing = AtomicInteger(0)
-        val gate = Semaphore(PARALLEL)
+        val gate = Semaphore(if (area.maxZoom > MAX_IMAGERY_ZOOM) PARALLEL_OREGON else PARALLEL)
         try {
             coroutineScope {
                 tiles.chunked(200).forEach { batch ->
@@ -154,11 +154,13 @@ class SatelliteStore private constructor(context: Context) {
                                 val none = File(partDir, "${t.z}_${t.x}_${t.y}.none")
                                 if (!f.exists() && !none.exists()) {
                                     val reused = donors.firstNotNullOfOrNull { (a, pm) ->
-                                        if (t.z <= a.maxZoom && inside(t, a)) runCatching { pm.tile(t.z, t.x, t.y) }.getOrNull() else null
+                                        // Only reuse imagery from the same source at this zoom, so an area doesn't mix the two.
+                                        if (t.z <= a.maxZoom && usesOregon(t.z, a.maxZoom) == usesOregon(t.z, area.maxZoom) && inside(t, a))
+                                            runCatching { pm.tile(t.z, t.x, t.y) }.getOrNull() else null
                                     }
                                     when {
                                         reused != null -> writeAtomically(f, reused)
-                                        else -> when (val r = fetch(t)) {
+                                        else -> when (val r = fetch(t, area.maxZoom)) {
                                             null -> failures.incrementAndGet()
                                             NOT_FOUND -> { none.createNewFile(); missing.incrementAndGet() }
                                             else -> { writeAtomically(f, r); failures.set(0) }
@@ -195,7 +197,7 @@ class SatelliteStore private constructor(context: Context) {
         }
         val out = file(current)
         PmTilesWriter.write(out, have, PmTilesWriter.TYPE_JPEG, area.west, area.south, area.east, area.north,
-            area.name, "Imagery: USGS The National Map")
+            area.name, if (area.maxZoom > MAX_IMAGERY_ZOOM) "Imagery: Oregon Statewide Imagery Program 2024, USGS" else "Imagery: USGS The National Map")
         partDir.deleteRecursively()
         save(current.copy(status = SatArea.STATUS_READY, done = tiles.size, bytes = out.length(),
             note = if (missing.get() > 0) "${missing.get()} tiles had no imagery" else null))
@@ -209,10 +211,11 @@ class SatelliteStore private constructor(context: Context) {
         tmp.renameTo(f)
     }
 
-    /** Tile bytes, [NOT_FOUND] if USGS has no imagery there, or null on a network problem. */
-    private fun fetch(t: TileXyz): ByteArray? {
+    /** Tile bytes, [NOT_FOUND] if there's no imagery there, or null on a network problem. */
+    private fun fetch(t: TileXyz, maxZoom: Int): ByteArray? {
+        val url = if (usesOregon(t.z, maxZoom)) oregonUrl(t) else "$TILE_URL/${t.z}/${t.y}/${t.x}"
         repeat(3) { attempt ->
-            val c = runCatching { URL("$TILE_URL/${t.z}/${t.y}/${t.x}").openConnection() as HttpURLConnection }.getOrNull() ?: return null
+            val c = runCatching { URL(url).openConnection() as HttpURLConnection }.getOrNull() ?: return null
             try {
                 c.connectTimeout = 15_000
                 c.readTimeout = 30_000
@@ -244,13 +247,43 @@ class SatelliteStore private constructor(context: Context) {
 
     companion object {
         const val TILE_URL = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile"
+        /**
+         * Oregon Statewide Imagery Program 2024: 1-ft imagery of the whole state, flown June–August 2024.
+         * Its tile grid doesn't line up with web-map tiles, so each tile is requested by its exact box.
+         */
+        const val OREGON_URL = "https://imagery.oregonexplorer.info/arcgis/rest/services/OSIP_2024/OSIP_2024_WM/ImageServer/exportImage"
+        /** The same request with MapLibre filling in each tile's box, for viewing online. */
+        const val OREGON_TEMPLATE = "$OREGON_URL?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=jpg&compression=75&f=image"
         const val MIN_ZOOM = 8
+        /** USGS imagery stops here (about 6 ft per pixel). */
         const val MAX_IMAGERY_ZOOM = 16
-        /** Average USGS tile size measured over Oregon, for size estimates. */
+        /** Oregon's 1-ft imagery is sharp to here (about 1.4 ft per pixel). */
+        const val MAX_OREGON_ZOOM = 18
+        /** Average tile sizes measured over Oregon, for size estimates. */
         const val AVG_TILE_BYTES = 25_000L
-        /** About 750 MB; bigger areas should be split up. */
-        const val MAX_TILES = 30_000L
+        const val AVG_OREGON_BYTES = 16_000L
+        /** About 750 MB at USGS detail; bigger areas should be split up. */
+        const val MAX_TILES = 40_000L
         private const val PARALLEL = 6
+        /** Oregon's server draws each image on request, so ask gently. */
+        private const val PARALLEL_OREGON = 4
+
+        /** Detail beyond USGS uses Oregon's imagery from zoom 13 up; lower zooms stay USGS (quick, few tiles). */
+        fun usesOregon(z: Int, maxZoom: Int) = maxZoom > MAX_IMAGERY_ZOOM && z >= 13
+
+        fun oregonUrl(t: TileXyz): String {
+            val e = 20037508.342789244
+            val size = 2 * e / (1 shl t.z)
+            val b = listOf(-e + t.x * size, e - (t.y + 1) * size, -e + (t.x + 1) * size, e - t.y * size)
+                .joinToString(",") { "%.3f".format(java.util.Locale.US, it) }
+            return "$OREGON_URL?bbox=$b&bboxSR=3857&imageSR=3857&size=256,256&format=jpg&compression=75&f=image"
+        }
+
+        /** Estimated download size for an area. */
+        fun estimateBytes(west: Double, south: Double, east: Double, north: Double, maxZoom: Int): Long =
+            (MIN_ZOOM..maxZoom).sumOf { z ->
+                PmTilesWriter.countFor(west, south, east, north, z, z) * (if (usesOregon(z, maxZoom)) AVG_OREGON_BYTES else AVG_TILE_BYTES)
+            }
         private val NOT_FOUND = ByteArray(0)
 
         @Volatile private var instance: SatelliteStore? = null
