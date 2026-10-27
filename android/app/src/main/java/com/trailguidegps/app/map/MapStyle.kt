@@ -185,10 +185,13 @@ object MapStyle {
         layer("shown-track", "line", SRC_SHOWN_TRACK, paint = JSONObject().put("line-color", "#8E3218").put("line-width", 4),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         // Routes are purple: saved routes solid, the route being planned on top with straight legs dashed.
-        layer("shown-route-casing", "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 7.5),
+        // The route whose details are in the bottom panel draws a little wider.
+        val focusWidth = { on: Double, off: Double -> arr("case", arr("==", arr("get", "focus"), true), on, off) }
+        layer("shown-route-casing", "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", focusWidth(8.0, 6.0)),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer(LAYER_SHOWN_ROUTE_HIT, "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#000000").put("line-opacity", 0).put("line-width", 20))
         layer("shown-route", "line", SRC_SHOWN_ROUTE, paint = JSONObject()
-            .put("line-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("line-width", 4.5),
+            .put("line-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("line-width", focusWidth(5.0, 3.5)),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer("plan-casing", "line", SRC_PLAN, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
@@ -227,6 +230,7 @@ object MapStyle {
 
     const val SRC_SHOWN_TRACK = "user-shown-track"
     const val SRC_SHOWN_ROUTE = "user-shown-route"
+    const val LAYER_SHOWN_ROUTE_HIT = "shown-route-hit"
     const val SRC_PLAN = "user-plan"
     const val SRC_PLAN_POINTS = "user-plan-points"
     const val SRC_PROFILE_MARK = "user-profile-mark"

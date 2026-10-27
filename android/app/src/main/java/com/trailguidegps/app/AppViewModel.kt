@@ -428,38 +428,76 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     .also { routes.save(it) }
             }
             _plan.value = PlanState()
-            _shownRoute.value = saved
+            setShown(_shownRoutes.value + saved, saved)
             _message.value = "Saved \"${saved.name}\"."
         }
     }
 
-    /** A saved route drawn on the map. */
+    /** Saved routes drawn on the map, and the one whose details show in the bottom panel. */
+    private val _shownRoutes = MutableStateFlow<List<SavedRoute>>(emptyList())
+    val shownRoutes: StateFlow<List<SavedRoute>> = _shownRoutes.asStateFlow()
     private val _shownRoute = MutableStateFlow<SavedRoute?>(null)
     val shownRoute: StateFlow<SavedRoute?> = _shownRoute.asStateFlow()
+    private val shownPrefs = app.getSharedPreferences("shown_routes", android.content.Context.MODE_PRIVATE)
 
+    init {
+        // Bring back the routes that were on the map last time.
+        viewModelScope.launch {
+            val ids = shownPrefs.getString("ids", "").orEmpty().split(",").filter { it.isNotBlank() }
+            val loaded = withContext(Dispatchers.IO) { ids.mapNotNull { routes.load(it) } }
+            if (loaded.isNotEmpty() && _shownRoutes.value.isEmpty()) {
+                _shownRoutes.value = loaded
+                _shownRoute.value = loaded.firstOrNull { it.id == shownPrefs.getString("focus", null) } ?: loaded.last()
+            }
+        }
+    }
+
+    private fun setShown(list: List<SavedRoute>, focus: SavedRoute?) {
+        _shownRoutes.value = list
+        _shownRoute.value = focus
+        shownPrefs.edit().putString("ids", list.joinToString(",") { it.id }).putString("focus", focus?.id).apply()
+    }
+
+    /** Adds a saved route to the map (keeping any others) and shows its details. */
     fun showRoute(id: String) {
         viewModelScope.launch {
             val r = withContext(Dispatchers.IO) { routes.load(id) } ?: return@launch
-            _shownRoute.value = r
+            setShown(_shownRoutes.value.filter { it.id != id } + r, r)
             focusOn(r.coords.map { it[0] to it[1] })
         }
     }
 
-    fun hideRoute() { _shownRoute.value = null }
+    /** Shows the details of a route already on the map (after tapping its line). */
+    fun focusRoute(id: String) {
+        _shownRoutes.value.firstOrNull { it.id == id }?.let { setShown(_shownRoutes.value, it) }
+    }
+
+    /** Takes a route off the map; with no id, the one in the bottom panel. */
+    fun hideRoute(id: String? = _shownRoute.value?.id) {
+        val rest = _shownRoutes.value.filter { it.id != id }
+        setShown(rest, if (_shownRoute.value?.id == id) rest.lastOrNull() else _shownRoute.value)
+    }
+
+    fun hideAllRoutes() = setShown(emptyList(), null)
+
+    private fun updateShown(id: String, change: (SavedRoute) -> SavedRoute) {
+        val list = _shownRoutes.value.map { if (it.id == id) change(it) else it }
+        setShown(list, _shownRoute.value?.let { f -> list.firstOrNull { it.id == f.id } })
+    }
 
     fun deleteRoute(id: String) {
         routes.delete(id)
-        if (_shownRoute.value?.id == id) _shownRoute.value = null
+        hideRoute(id)
     }
 
     fun setRouteColor(id: String, color: String) {
         routes.setColor(id, color)
-        if (_shownRoute.value?.id == id) _shownRoute.value = _shownRoute.value?.copy(color = color)
+        updateShown(id) { it.copy(color = color) }
     }
 
     fun renameRoute(id: String, name: String) {
         routes.rename(id, name)
-        if (_shownRoute.value?.id == id) _shownRoute.value = _shownRoute.value?.copy(name = name)
+        updateShown(id) { it.copy(name = name) }
     }
 
     private fun friendly(e: Exception): String = when (e) {

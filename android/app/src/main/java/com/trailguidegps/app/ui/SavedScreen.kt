@@ -73,6 +73,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     val tracks by vm.tracks.summaries.collectAsStateWithLifecycle()
     val routes by vm.routes.summaries.collectAsStateWithLifecycle()
     val pace by vm.pace.collectAsStateWithLifecycle()
+    val shownRoutes by vm.shownRoutes.collectAsStateWithLifecycle()
     var renamingRoute by remember { mutableStateOf<RouteSummary?>(null) }
     var recoloring by remember { mutableStateOf<RouteSummary?>(null) }
     val fix by vm.tracker.fix.collectAsStateWithLifecycle()
@@ -132,9 +133,11 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             } else {
                 LazyColumn(Modifier.weight(1f)) {
                     items(routes, key = { it.id }) { r ->
+                        val onMap = shownRoutes.any { it.id == r.id }
                         RouteRow(
-                            r, pace,
+                            r, pace, onMap,
                             onShow = { vm.showRoute(r.id); onClose() },
+                            onHide = { vm.hideRoute(r.id) },
                             onRename = { renamingRoute = r },
                             onColor = { recoloring = r },
                             onExport = { share(r.name, emptyList(), emptyList(), listOf(r.id)) },
@@ -247,7 +250,10 @@ private fun TrackRow(t: TrackSummary, onShow: () -> Unit, onRename: () -> Unit, 
 }
 
 @Composable
-private fun RouteRow(r: RouteSummary, pace: Pace, onShow: () -> Unit, onRename: () -> Unit, onColor: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
+private fun RouteRow(
+    r: RouteSummary, pace: Pace, onMap: Boolean,
+    onShow: () -> Unit, onHide: () -> Unit, onRename: () -> Unit, onColor: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 22.dp, height = 4.dp).background(routeColor(r.color), RoundedCornerShape(2.dp)))
         Spacer(Modifier.width(12.dp))
@@ -260,9 +266,14 @@ private fun RouteRow(r: RouteSummary, pace: Pace, onShow: () -> Unit, onRename: 
                 ),
                 fontSize = 13.sp, color = TG.Muted,
             )
-            Text("Planned ${dateFmt.format(Date(r.createdAt))}", fontSize = 12.sp, color = TG.Muted)
+            Text("Planned ${dateFmt.format(Date(r.createdAt))}" + if (onMap) " · on the map" else "", fontSize = 12.sp,
+                color = if (onMap) routeColor(r.color) else TG.Muted, fontWeight = if (onMap) FontWeight.SemiBold else FontWeight.Normal)
         }
-        RowMenu(listOf("Show on map" to onShow, "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete))
+        RowMenu(listOfNotNull(
+            "Show on map" to onShow,
+            if (onMap) "Hide from map" to onHide else null,
+            "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete,
+        ))
     }
 }
 

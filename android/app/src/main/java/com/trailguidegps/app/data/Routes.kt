@@ -234,6 +234,20 @@ class RouteStore(context: Context) {
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
         }
 
+        /** Several saved routes, each in its own color; the one in the bottom panel is marked "focus". */
+        fun routesGeoJson(routes: List<SavedRoute>, focusId: String?): String {
+            val features = JSONArray()
+            // The focused route last so it draws on top.
+            routes.sortedBy { it.id == focusId }.filter { it.coords.size >= 2 }.forEach { r ->
+                val c = JSONArray()
+                r.coords.forEach { c.put(JSONArray().put(it[1]).put(it[0])) }
+                features.put(JSONObject().put("type", "Feature")
+                    .put("properties", JSONObject().put("id", r.id).put("color", r.color).put("focus", r.id == focusId))
+                    .put("geometry", JSONObject().put("type", "LineString").put("coordinates", c)))
+            }
+            return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
+        }
+
         fun lineGeoJson(coords: List<DoubleArray>, color: String = RouteColors.DEFAULT): String {
             val c = JSONArray()
             coords.forEach { c.put(JSONArray().put(it[1]).put(it[0])) }

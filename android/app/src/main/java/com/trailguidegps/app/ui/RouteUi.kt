@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -144,19 +147,20 @@ fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier, color: Co
 /** A row of color dots to pick a route color. */
 @Composable
 fun RouteColorPicker(selected: String, onPick: (String) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+    // The dots share the row's width equally and stay round, however narrow the dialog is.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         RouteColors.ALL.forEach { (name, hex) ->
             val c = Color(android.graphics.Color.parseColor(hex))
             val isSel = hex.equals(selected, true)
             Box(
-                Modifier.size(40.dp)
+                Modifier.weight(1f).widthIn(max = 44.dp).aspectRatio(1f)
+                    .clip(CircleShape).clickable { onPick(hex) }
                     .semantics { contentDescription = "$name${if (isSel) ", selected" else ""}" }
                     .background(if (isSel) TG.Ink else Color.Transparent, CircleShape)
                     .padding(3.dp)
                     .background(Color.White, CircleShape)
                     .padding(2.dp)
-                    .background(c, CircleShape)
-                    .clickable { onPick(hex) },
+                    .background(c, CircleShape),
             )
         }
     }

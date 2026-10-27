@@ -143,6 +143,7 @@ fun MapScreen(
     val pace by vm.pace.collectAsStateWithLifecycle()
     val routingReady by vm.routingReady.collectAsStateWithLifecycle()
     val shownRoute by vm.shownRoute.collectAsStateWithLifecycle()
+    val shownRoutes by vm.shownRoutes.collectAsStateWithLifecycle()
     var showPace by remember { mutableStateOf(false) }
     var showWaypointPicker by remember { mutableStateOf(false) }
     var askSaveRoute by remember { mutableStateOf(false) }
@@ -223,6 +224,13 @@ fun MapScreen(
                     return@addOnMapClickListener true
                 }
                 selectedWaypointId = null
+                // Tapping one of the routes on the map shows its details.
+                val routeHit = m.queryRenderedFeatures(point, MapStyle.LAYER_SHOWN_ROUTE_HIT).firstOrNull()
+                if (routeHit != null && routeHit.hasProperty("id")) {
+                    vm.focusRoute(routeHit.getStringProperty("id"))
+                    vm.select(null)
+                    return@addOnMapClickListener true
+                }
                 val hit = m.queryRenderedFeatures(point, *MapStyle.TAP_LAYERS).firstOrNull()
                 vm.select(hit?.let { f ->
                     fun prop(key: String): String? =
@@ -322,9 +330,9 @@ fun MapScreen(
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PLAN)?.setGeoJson(RouteStore.legsGeoJson(plan.legs))
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PLAN_POINTS)?.setGeoJson(RouteStore.pointsGeoJson(plan.points))
     }
-    LaunchedEffect(style, shownRoute) {
+    LaunchedEffect(style, shownRoutes, shownRoute?.id) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SHOWN_ROUTE)
-            ?.setGeoJson(shownRoute?.let { RouteStore.lineGeoJson(it.coords, it.color) } ?: RouteStore.lineGeoJson(emptyList()))
+            ?.setGeoJson(RouteStore.routesGeoJson(shownRoutes, shownRoute?.id))
     }
     LaunchedEffect(shownRoute?.id, plan.active) { profileMark = null }
     LaunchedEffect(style, profileMark) {
@@ -548,6 +556,8 @@ fun MapScreen(
                 onSaved = onOpenSaved,
                 onRoute = { vm.startPlanning() },
                 shownRoute = shownRoute,
+                shownRouteCount = shownRoutes.size,
+                onHideAllRoutes = { vm.hideAllRoutes() },
                 pace = pace,
                 onHideRoute = { vm.hideRoute() },
                 onRouteScrub = { d -> profileMark = d?.let { dist -> shownRoute?.let { RouteStore.pointAt(it.coords, dist) } } },
@@ -695,6 +705,8 @@ private fun BottomPanel(
     onSaved: () -> Unit,
     onRoute: () -> Unit,
     shownRoute: SavedRoute?,
+    shownRouteCount: Int,
+    onHideAllRoutes: () -> Unit,
     pace: Pace,
     onHideRoute: () -> Unit,
     onRouteScrub: (Double?) -> Unit,
@@ -836,6 +848,12 @@ private fun BottomPanel(
                 }
                 if (r.stats.profile.size >= 2) {
                     ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub)
+                }
+                if (shownRouteCount > 1) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${shownRouteCount} routes on the map · tap one to see it", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f))
+                        TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 12.sp, color = TG.Accent) }
+                    }
                 }
             }
             shownTrackName?.let { name ->
