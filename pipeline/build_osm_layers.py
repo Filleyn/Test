@@ -16,8 +16,9 @@ import gzip
 import json
 import math
 import os
+import re
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import osmium
 
@@ -63,6 +64,22 @@ POI_TAGS = [
     ("place", "village", "town"),
     ("place", "hamlet", "town"),
 ]
+
+
+# Many trailheads are only mapped as a parking lot named "... Trailhead".
+TRAILHEAD_NAME = re.compile(r"trail\s*head|\bTH\b", re.I)
+# Kinds that are also mapped as areas (a campground outline, a restroom building).
+AREA_POI_KINDS = {"trailhead", "campsite", "toilets", "shelter", "viewpoint", "waterfall", "hot_spring"}
+
+
+def poi_kind(tags):
+    """The app's place kind for these tags, or None."""
+    kind = match_tag(tags, POI_TAGS)
+    if kind:
+        return kind
+    if tags.get("amenity") == "parking" and TRAILHEAD_NAME.search(tags.get("name", "")):
+        return "trailhead"
+    return None
 
 
 def haversine_m(lon1, lat1, lon2, lat2):
@@ -243,14 +260,31 @@ def read_route_relations(pbf):
     return way_routes
 
 
-def read_lakes(pbf, bbox):
-    """Named lakes and reservoirs as label points, from water areas (ways and multipolygons)."""
+def read_lakes(pbf, bbox, area_pois=None):
+    """Named lakes and reservoirs as label points, from water areas (ways and multipolygons).
+
+    Also collects places mapped as areas (campgrounds, trailhead parking, restroom
+    buildings) into [area_pois] as points at their centre.
+    """
     lakes = []
     seen = set()
     for obj in osmium.FileProcessor(pbf).with_areas():
         if not obj.is_area():
             continue
         tags = obj.tags
+        if area_pois is not None:
+            kind = poi_kind(tags)
+            if kind in AREA_POI_KINDS:
+                ring = max(obj.outer_rings(), key=lambda r: len(r), default=None)
+                pts = [(n.lon, n.lat) for n in ring if n.location.valid()] if ring is not None else []
+                if pts:
+                    lon = sum(p[0] for p in pts) / len(pts)
+                    lat = sum(p[1] for p in pts) / len(pts)
+                    if in_bbox(lon, lat, bbox):
+                        area_pois.append(feature("Point", [round(lon, 6), round(lat, 6)], {
+                            "kind": kind, "name": tags.get("name"), "ele_ft": None,
+                            "osm_id": f"{'w' if obj.from_way() else 'r'}{obj.orig_id()}",
+                        }))
         if tags.get("natural") != "water" and tags.get("landuse") != "reservoir":
             continue
         name = tags.get("name")
@@ -279,6 +313,80 @@ def read_lakes(pbf, bbox):
             "osm_id": f"{'w' if obj.from_way() else 'r'}{obj.orig_id()}",
         }))
     return lakes
+
+
+FOOT_TRAILS = {"path", "footway", "bridleway"}
+
+
+def derive_trailheads(ways, pois, radius_m=400):
+    """Adds a trailhead where a named footpath ends at a road, when none is mapped
+    within [radius_m]. Many trailheads exist on the ground but not in OpenStreetMap.
+    Returns how many were added."""
+    # Ends of named foot trails.
+    ends = {}
+    for wi, (_, refs, coords, info) in enumerate(ways):
+        if info["kind"] == "trail" and info["highway"] in FOOT_TRAILS and info["name"]:
+            for ref, xy in ((refs[0], coords[0]), (refs[-1], coords[-1])):
+                ends.setdefault(ref, (xy, info["name"]))
+    # Which ways touch each of those ends.
+    touching = defaultdict(list)
+    for wi, (_, refs, _, _) in enumerate(ways):
+        for r in refs:
+            if r in ends:
+                touching[r].append(wi)
+    cell = 0.005
+    grid = defaultdict(list)
+    for p in pois:
+        if p["properties"]["kind"] == "trailhead":
+            lon, lat = p["geometry"]["coordinates"]
+            grid[(int(lon / cell), int(lat / cell))].append((lon, lat))
+
+    def near_existing(lon, lat):
+        cx, cy = int(lon / cell), int(lat / cell)
+        return any(haversine_m(lon, lat, x, y) < radius_m
+                   for dx in (-1, 0, 1) for dy in (-1, 0, 1) for x, y in grid.get((cx + dx, cy + dy), ()))
+
+    added = 0
+    for ref in sorted(ends):
+        (lon, lat), name = ends[ref]
+        infos = [ways[wi][3] for wi in touching[ref]]
+        continues = sum(1 for i in infos if i["name"] == name and i["kind"] == "trail") > 1
+        meets_road = any(i["kind"] in ("track", "road") for i in infos)
+        if continues or not meets_road or near_existing(lon, lat):
+            continue
+        pois.append(feature("Point", [round(lon, 6), round(lat, 6)], {
+            "kind": "trailhead", "name": f"{name} trailhead", "ele_ft": None, "derived": True,
+            "osm_id": f"n{ref}",
+        }))
+        grid[(int(lon / cell), int(lat / cell))].append((lon, lat))
+        added += 1
+    return added
+
+
+def merge_area_pois(pois, area_pois, radius_m=150):
+    """Adds area places unless the same kind is already mapped as a point close by
+    (a trailhead sign next to its parking lot, say). Returns how many were added per kind."""
+    cell = 0.002
+    grid = defaultdict(list)
+    for p in pois:
+        lon, lat = p["geometry"]["coordinates"]
+        grid[(p["properties"]["kind"], int(lon / cell), int(lat / cell))].append((lon, lat))
+    added = defaultdict(int)
+    for a in area_pois:
+        lon, lat = a["geometry"]["coordinates"]
+        kind = a["properties"]["kind"]
+        cx, cy = int(lon / cell), int(lat / cell)
+        near = any(
+            haversine_m(lon, lat, x, y) < radius_m
+            for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+            for x, y in grid.get((kind, cx + dx, cy + dy), ())
+        )
+        if near:
+            continue
+        pois.append(a)
+        grid[(kind, cx, cy)].append((lon, lat))
+        added[kind] += 1
+    return dict(added)
 
 
 def in_bbox(lon, lat, bbox):
@@ -315,7 +423,7 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
                     "osm_id": f"n{obj.id}",
                     "last_edit": obj.timestamp.strftime("%Y-%m-%d"),
                 }))
-            pkind = match_tag(tags, POI_TAGS)
+            pkind = poi_kind(tags)
             if pkind:
                 ele = tags.get("ele")
                 ele_ft = None
@@ -405,7 +513,10 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
 
     write_geojson("water.geojson", water)
     write_geojson("trails.geojson", trails)
-    lakes = read_lakes(pbf, bbox)
+    area_pois = []
+    lakes = read_lakes(pbf, bbox, area_pois)
+    added_areas = merge_area_pois(pois, area_pois)
+    added_areas["trailhead (trail meets road)"] = derive_trailheads(ways, pois)
     pois.extend(lakes)
     write_geojson("pois.geojson", pois)
     graph_bytes = routing_bin.write(os.path.join(out_dir, "routing.bin.gz"), vertices, edges, names, bbox)
@@ -419,6 +530,8 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
         "named_trails": len(named),
         "pois": len(pois),
         "lakes": len(lakes),
+        "places_by_kind": dict(sorted(Counter(p["properties"]["kind"] for p in pois).items())),
+        "places_added_from_areas": added_areas,
         "graph_vertices": len(vertices),
         "graph_edges": len(edges),
         "graph_miles": round(sum(e[2] for e in edges) * MI_PER_M, 1),

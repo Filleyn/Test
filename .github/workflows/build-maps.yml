@@ -94,6 +94,8 @@ jobs:
             n/man_made=water_well n/tourism=camp_site,viewpoint,alpine_hut \
             n/waterway=waterfall n/natural=hot_spring,saddle n/mountain_pass=yes n/amenity=shelter \
             n/place=city,town,village,hamlet wr/natural=water wr/landuse=reservoir \
+            wr/highway=trailhead wr/tourism=camp_site,viewpoint,alpine_hut wr/amenity=toilets,shelter \
+            nwr/amenity=parking w/waterway=waterfall wr/natural=hot_spring \
             r/route=hiking,foot \
             -o "$WORK/filtered.osm.pbf" --overwrite
           osmium fileinfo -e "$WORK/region.osm.pbf" | grep -E "Number of (nodes|ways|relations)" || true

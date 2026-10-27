@@ -12,11 +12,20 @@ object MapStyle {
     const val GROUND = "#EFEEE2"
 
     /** A kind of place drawn with icons, switched on and off as one group. */
-    class PlaceGroup(val id: String, val kinds: List<String>, val iconMinZoom: Double? = null, val labels: Boolean = true)
+    class PlaceGroup(
+        val id: String, val kinds: List<String>, val iconMinZoom: Double? = null, val labels: Boolean = true,
+        /** Places the map build worked out itself (a trail meeting a road) show only from this zoom. */
+        val derivedMinZoom: Double? = null,
+    ) {
+        val layers: List<String> get() = listOfNotNull(
+            "places-$id", if (derivedMinZoom != null) "places-$id-derived" else null,
+            if (labels) "place-labels-$id" else null,
+        )
+    }
 
     val PLACE_GROUPS = listOf(
         PlaceGroup("campsites", listOf("campsite")),
-        PlaceGroup("trailheads", listOf("trailhead")),
+        PlaceGroup("trailheads", listOf("trailhead"), derivedMinZoom = 11.0),
         // Restrooms are everywhere in towns, so they only show when zoomed in.
         PlaceGroup("restrooms", listOf("toilets"), iconMinZoom = 13.0, labels = false),
         PlaceGroup("waterfalls", listOf("waterfall")),
@@ -26,7 +35,7 @@ object MapStyle {
 
     /** Layers you can tap for details. */
     val TAP_LAYERS: Array<String> = (listOf("water-points", "peaks", "trail-hit", "trail-hit-unnamed") +
-        PLACE_GROUPS.map { "places-${it.id}" }).toTypedArray()
+        PLACE_GROUPS.flatMap { g -> g.layers.filter { it.startsWith("places-") } }).toTypedArray()
 
     /** Layer groups the layers sheet can switch on and off. */
     val GROUPS: Map<String, List<String>> = linkedMapOf(
@@ -35,7 +44,7 @@ object MapStyle {
         "trails" to listOf("trail", "trail-names", "trail-hit", "trail-hit-unnamed"),
         "water" to listOf("water-points", "water-labels"),
         "peaks" to listOf("peaks", "peak-labels"),
-    ) + PLACE_GROUPS.associate { g -> g.id to listOfNotNull("places-${g.id}", if (g.labels) "place-labels-${g.id}" else null) }
+    ) + PLACE_GROUPS.associate { g -> g.id to g.layers }
 
     private const val REGULAR = "NotoSans-Regular"
     private const val MEDIUM = "NotoSans-Medium"
@@ -140,11 +149,17 @@ object MapStyle {
                     arr("concat", arr("coalesce", arr("get", "name"), "Peak"), "\n", arr("to-string", arr("get", "ele_ft")), " ft"),
                     arr("coalesce", arr("get", "name"), ""))))
         // One layer per place group so each can be switched on and off on its own.
+        val notDerived = arr("!", arr("has", "derived"))
         PLACE_GROUPS.forEach { g ->
-            layer("places-${g.id}", "symbol", "pois", filter = inKind(g.kinds),
-                layout = JSONObject().put("icon-image", arr("concat", "poi-", arr("get", "kind")))
-                    .put("icon-allow-overlap", true).put("icon-size", 1),
-                minzoom = g.iconMinZoom)
+            val icon = JSONObject().put("icon-image", arr("concat", "poi-", arr("get", "kind")))
+                .put("icon-allow-overlap", true).put("icon-size", 1)
+            if (g.derivedMinZoom != null) {
+                layer("places-${g.id}", "symbol", "pois", filter = arr("all", inKind(g.kinds), notDerived), layout = icon, minzoom = g.iconMinZoom)
+                layer("places-${g.id}-derived", "symbol", "pois", filter = arr("all", inKind(g.kinds), arr("has", "derived")),
+                    layout = JSONObject(icon.toString()), minzoom = g.derivedMinZoom)
+            } else {
+                layer("places-${g.id}", "symbol", "pois", filter = inKind(g.kinds), layout = icon, minzoom = g.iconMinZoom)
+            }
             if (g.labels) {
                 layer("place-labels-${g.id}", "symbol", "pois", filter = arr("all", arr("has", "name"), inKind(g.kinds)),
                     paint = halo("#FFFFFF", "#23271F"),

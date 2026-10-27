@@ -139,6 +139,18 @@ def main():
             lines.append(f"- {'✅' if found else '⚠️'} Trail matching \"{a.expect_trail}\" {'found' if found else 'not found by name (it may be unnamed in OpenStreetMap)'}")
         if a.expect_trail and "routing.bin.gz" in have:
             lines.append("- " + route_check(os.path.join(a.dir, "routing.bin.gz"), os.path.join(a.dir, "trails.geojson"), a.expect_trail))
+        if stats.get("places_by_kind"):
+            kinds = stats["places_by_kind"]
+            lines.append("- Places: " + ", ".join(f"{k} {v:,}" for k, v in kinds.items()))
+            if stats.get("places_added_from_areas"):
+                lines.append("- Added from areas and trailhead parking lots: " +
+                             ", ".join(f"{k} {v:,}" for k, v in sorted(stats["places_added_from_areas"].items())))
+        for want in region.get("expect_places", []):
+            pois = json.load(open(os.path.join(a.dir, "pois.geojson")))["features"] if "pois.geojson" in have else []
+            hits = [p["properties"] for p in pois if want.lower() in (p["properties"].get("name") or "").lower()
+                    and p["properties"].get("kind") in ("trailhead", "campsite")]
+            shown = ", ".join(sorted({f"{h['name']} ({h['kind']})" for h in hits})[:8])
+            lines.append(f"- {'✅' if hits else '⚠️'} Places named like \"{want}\": {shown or 'none'}")
         if stats.get("trail_names_sample"):
             lines.append(f"- Named trails seen: {', '.join(stats['trail_names_sample'])}")
     lines += ["", "Open the .pmtiles files at https://pmtiles.io to check them visually.", ""]

@@ -237,6 +237,7 @@ fun MapScreen(
                     val parts = mutableListOf(kindLabels[kind] ?: kind)
                     prop("ele_ft")?.toDoubleOrNull()?.let { parts += "%,d ft".format(it.roundToInt()) }
                     if (prop("seasonal") == "true") parts += "may be seasonal"
+                    if (f.hasProperty("derived")) parts += "where the trail meets a road"
                     val geomPoint = f.geometry() as? org.maplibre.geojson.Point
                     vm.features.value?.nearTown(
                         geomPoint?.latitude() ?: latLng.latitude, geomPoint?.longitude() ?: latLng.longitude,

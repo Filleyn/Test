@@ -29,6 +29,10 @@
     "terrain_max_zoom": 12,
     "contour_max_zoom": 13,
     "roads": "minor",
-    "expect_trail": "Pacific Crest"
+    "expect_trail": "Pacific Crest",
+    "expect_places": [
+      "Twin Lakes",
+      "Deschutes River"
+    ]
   }
 }
