@@ -1,0 +1,47 @@
+name: Inspect public land data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq gdal-bin
+      - name: Look at PAD-US for Oregon
+        run: |
+          set -x
+          python3 pipeline/fetch_padus.py --state OR --list | head -70 > files.txt || true
+          python3 pipeline/fetch_padus.py --state OR --out padus.zip
+          mkdir padus && unzip -q padus.zip -d padus && find padus -maxdepth 2 | head
+          GDB=$(find padus -name "*.gdb" -type d | head -1)
+          {
+            echo "## Files"; cat files.txt
+            echo "## Layers"; ogrinfo -ro -so "$GDB" | tail -n +2
+            for L in $(ogrinfo -ro -so "$GDB" | sed -n 's/^[0-9]*: \([^ ]*\).*/\1/p'); do
+              echo "## $L"; ogrinfo -ro -so "$GDB" "$L" | grep -E "Feature Count|Geometry|: (String|Integer|Real)" | head -60
+              for F in Mang_Name Mang_Type Des_Tp Pub_Access; do
+                echo "### $L $F"
+                ogrinfo -ro -q "$GDB" -sql "SELECT $F, COUNT(*) AS n FROM \"$L\" GROUP BY $F" 2>/dev/null | grep -E "^  $F|^  n " | paste - - | head -40
+              done
+            done
+            echo "## Forest and wilderness names"
+            for L in $(ogrinfo -ro -so "$GDB" | sed -n 's/^[0-9]*: \([^ ]*\).*/\1/p'); do
+              ogrinfo -ro -q "$GDB" -sql "SELECT Unit_Nm, Des_Tp FROM \"$L\" WHERE Unit_Nm LIKE '%Deschutes%' OR Unit_Nm LIKE '%Jefferson%'" 2>/dev/null | grep -E "Unit_Nm|Des_Tp" | paste - - | sed "s/^/$L: /" | head -20
+            done
+          } > result.md 2>&1
+          cat result.md >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          text = open("result.md").read()
+          chunks, cur = [], ""
+          for line in text.splitlines(True):
+              if len(cur) + len(line) > 3500:
+                  chunks.append(cur); cur = ""
+              cur += line
+          chunks.append(cur)
+          for i, c in enumerate(chunks[:9]):
+              esc = c.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::notice title=Result part {i + 1:02d}::{esc}")
+          PY
