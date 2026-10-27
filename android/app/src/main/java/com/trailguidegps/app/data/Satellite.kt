@@ -169,6 +169,7 @@ class SatelliteStore private constructor(context: Context) {
                             } }
                         }
                     }.awaitAll()
+                    if (get(area.id) == null) return@coroutineScope // deleted while downloading
                     current = current.copy(done = done.get())
                     save(current)
                     onProgress(current)
