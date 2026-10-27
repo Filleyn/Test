@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trailguidegps.app.AppViewModel
+import com.trailguidegps.app.data.Pace
+import com.trailguidegps.app.data.RouteSummary
 import com.trailguidegps.app.data.TrackSummary
 import com.trailguidegps.app.data.Waypoint
 import com.trailguidegps.app.geo.Geo
@@ -69,6 +71,9 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     val context = LocalContext.current
     val waypoints by vm.waypoints.items.collectAsStateWithLifecycle()
     val tracks by vm.tracks.summaries.collectAsStateWithLifecycle()
+    val routes by vm.routes.summaries.collectAsStateWithLifecycle()
+    val pace by vm.pace.collectAsStateWithLifecycle()
+    var renamingRoute by remember { mutableStateOf<RouteSummary?>(null) }
     val fix by vm.tracker.fix.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var renaming by remember { mutableStateOf<TrackSummary?>(null) }
@@ -79,8 +84,8 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         if (uri != null) vm.importGpx(uri)
     }
 
-    fun share(fileName: String, wps: List<Waypoint>, trackIds: List<String>) {
-        val uri = vm.exportGpx(fileName, wps, trackIds) ?: return
+    fun share(fileName: String, wps: List<Waypoint>, trackIds: List<String>, routeIds: List<String> = emptyList()) {
+        val uri = vm.exportGpx(fileName, wps, trackIds, routeIds) ?: return
         val send = Intent(Intent.ACTION_SEND)
             .setType("application/gpx+xml")
             .putExtra(Intent.EXTRA_STREAM, uri)
@@ -99,7 +104,8 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             indicator = { pos -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(pos[tab]), color = TG.Accent) },
         ) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Tracks (${tracks.size})") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Waypoints (${waypoints.size})") })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Routes (${routes.size})") })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Waypoints (${waypoints.size})", maxLines = 1) })
         }
 
         if (tab == 0) {
@@ -114,6 +120,23 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                             onRename = { renaming = t },
                             onExport = { share(t.name, emptyList(), listOf(t.id)) },
                             onDelete = { deleting = t.name to { vm.deleteTrack(t.id) } },
+                        )
+                        HorizontalDivider(color = TG.Line)
+                    }
+                }
+            }
+        } else if (tab == 1) {
+            if (routes.isEmpty()) {
+                Empty("No routes yet", "Tap Route on the map, then tap along the trails to plan one. It works offline.")
+            } else {
+                LazyColumn(Modifier.weight(1f)) {
+                    items(routes, key = { it.id }) { r ->
+                        RouteRow(
+                            r, pace,
+                            onShow = { vm.showRoute(r.id); onClose() },
+                            onRename = { renamingRoute = r },
+                            onExport = { share(r.name, emptyList(), emptyList(), listOf(r.id)) },
+                            onDelete = { deleting = r.name to { vm.deleteRoute(r.id) } },
                         )
                         HorizontalDivider(color = TG.Line)
                     }
@@ -139,9 +162,9 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             }
         }
 
-        if (tracks.isNotEmpty() || waypoints.isNotEmpty()) {
+        if (tracks.isNotEmpty() || waypoints.isNotEmpty() || routes.isNotEmpty()) {
             OutlinedButton(
-                onClick = { share("TrailGuide backup", waypoints, tracks.map { it.id }) },
+                onClick = { share("TrailGuide backup", waypoints, tracks.map { it.id }, routes.map { it.id }) },
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().padding(16.dp).height(48.dp),
             ) { Text("Export everything as GPX", color = TG.Ink, fontWeight = FontWeight.SemiBold) }
@@ -156,6 +179,17 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
             confirmButton = { TextButton(onClick = { if (name.isNotBlank()) vm.tracks.rename(t.id, name.trim()); renaming = null }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+        )
+    }
+
+    renamingRoute?.let { r ->
+        var name by remember(r.id) { mutableStateOf(r.name) }
+        AlertDialog(
+            onDismissRequest = { renamingRoute = null },
+            title = { Text("Rename route") },
+            text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = { TextButton(onClick = { if (name.isNotBlank()) vm.renameRoute(r.id, name.trim()); renamingRoute = null }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { renamingRoute = null }) { Text("Cancel") } },
         )
     }
 
@@ -194,6 +228,26 @@ private fun TrackRow(t: TrackSummary, onShow: () -> Unit, onRename: () -> Unit, 
                 ),
                 fontSize = 13.sp, color = TG.Muted,
             )
+        }
+        RowMenu(listOf("Show on map" to onShow, "Rename" to onRename, "Export GPX" to onExport, "Delete" to onDelete))
+    }
+}
+
+@Composable
+private fun RouteRow(r: RouteSummary, pace: Pace, onShow: () -> Unit, onRename: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(width = 22.dp, height = 4.dp).background(RoutePurple, RoundedCornerShape(2.dp)))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(r.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+            Text(
+                "%.1f mi · +%,d ft · −%,d ft · est %s".format(
+                    r.distanceM / Geo.M_PER_MI, (r.gainM * Geo.FT_PER_M).roundToInt(), (r.lossM * Geo.FT_PER_M).roundToInt(),
+                    Pace.format(pace.minutes(r.distanceM, r.gainM)),
+                ),
+                fontSize = 13.sp, color = TG.Muted,
+            )
+            Text("Planned ${dateFmt.format(Date(r.createdAt))}", fontSize = 12.sp, color = TG.Muted)
         }
         RowMenu(listOf("Show on map" to onShow, "Rename" to onRename, "Export GPX" to onExport, "Delete" to onDelete))
     }

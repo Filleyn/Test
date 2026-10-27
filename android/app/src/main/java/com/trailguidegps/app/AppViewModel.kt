@@ -6,6 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.trailguidegps.app.data.Features
 import com.trailguidegps.app.data.Gpx
 import com.trailguidegps.app.data.MapStore
+import com.trailguidegps.app.data.Pace
+import com.trailguidegps.app.data.RouteLeg
+import com.trailguidegps.app.data.RoutePoint
+import com.trailguidegps.app.data.RouteStats
+import com.trailguidegps.app.data.RouteStore
+import com.trailguidegps.app.data.SavedRoute
+import com.trailguidegps.app.data.Terrain
+import com.trailguidegps.app.route.RouteGraph
 import com.trailguidegps.app.data.SearchResult
 import com.trailguidegps.app.data.TrackPoint
 import com.trailguidegps.app.data.WaterNotes
@@ -89,6 +97,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _mapVersion.value += 1
                 _update.value = null
                 loadFeatures()
+                loadRouting()
                 _download.value = DownloadState.UpToDate(release.tag)
             } catch (e: Exception) {
                 _download.value = DownloadState.Error(friendly(e))
@@ -236,9 +245,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) {
                     waypoints.addAll(imp.waypoints)
                     imp.tracks.forEach { (n, pts) -> tracks.save(n, pts) }
+                    imp.routes.forEach { (n, pts) ->
+                        val coords = pts.map { doubleArrayOf(it.lat, it.lon) }
+                        val dist = coords.zipWithNext { a, b -> com.trailguidegps.app.geo.Geo.distanceM(a[0], a[1], b[0], b[1]) }.sum()
+                        routes.save(SavedRoute(
+                            RouteStore.newId(), n, System.currentTimeMillis(),
+                            listOfNotNull(pts.firstOrNull(), pts.lastOrNull()).map { RoutePoint(it.lat, it.lon, true) },
+                            coords, RouteStats.compute(coords, dist, terrain), emptyList(),
+                        ))
+                    }
                 }
-                _message.value = "Imported ${imp.waypoints.size} waypoints and ${imp.tracks.size} tracks."
-                val pts = imp.waypoints.map { it.lat to it.lon } + imp.tracks.flatMap { t -> t.second.map { it.lat to it.lon } }
+                _message.value = "Imported ${imp.waypoints.size} waypoints, ${imp.routes.size} routes and ${imp.tracks.size} tracks."
+                val pts = imp.waypoints.map { it.lat to it.lon } + imp.tracks.flatMap { t -> t.second.map { it.lat to it.lon } } +
+                    imp.routes.flatMap { r -> r.second.map { it.lat to it.lon } }
                 focusOn(pts)
             }.onFailure {
                 _message.value = "That file couldn't be read as GPX."
@@ -247,16 +266,195 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Writes a GPX file to the app's share folder and returns a link other apps can open. */
-    fun exportGpx(fileName: String, wps: List<Waypoint>, trackIds: List<String>): android.net.Uri? {
+    fun exportGpx(fileName: String, wps: List<Waypoint>, trackIds: List<String>, routeIds: List<String> = emptyList()): android.net.Uri? {
         val app = getApplication<Application>()
         return runCatching {
             val trk = trackIds.mapNotNull { tracks.load(it) }
+            val rte = routeIds.mapNotNull { routes.load(it) }.map { it.name to it.coords }
             val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
             val safe = fileName.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "TrailGuide" }
             val file = java.io.File(dir, "$safe.gpx")
-            file.writeText(Gpx.write(wps, trk))
+            file.writeText(Gpx.write(wps, trk, rte))
             androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", file)
         }.getOrNull()
+    }
+
+    // ---- Route planning (phase 5) ----
+
+    val routes = RouteStore(app)
+    @Volatile private var graph: RouteGraph? = null
+    @Volatile private var terrain: Terrain? = null
+
+    /** null while loading, true when the trail network is ready, false if it isn't downloaded. */
+    private val _routingReady = MutableStateFlow<Boolean?>(null)
+    val routingReady: StateFlow<Boolean?> = _routingReady.asStateFlow()
+
+    private val _pace = MutableStateFlow(Pace.load(app))
+    val pace: StateFlow<Pace> = _pace.asStateFlow()
+    fun setPace(p: Pace) { Pace.save(getApplication(), p); _pace.value = p }
+
+    init { loadRouting() }
+
+    /** Opens the trail network and elevation tiles (unpacking the network the first time). */
+    fun loadRouting() {
+        if (!store.isReady()) { _routingReady.value = false; return }
+        viewModelScope.launch(Dispatchers.IO) {
+            _routingReady.value = null
+            terrain = runCatching { Terrain(store.file("terrain.pmtiles")) }.getOrNull()
+            graph = if (store.unpackRouting()) RouteGraph.open(store.routingFile()) else null
+            _routingReady.value = graph != null
+        }
+    }
+
+    /** Elevation in metres from the map's terrain tiles, or null. */
+    fun elevationAt(lat: Double, lon: Double): Double? = runCatching { terrain?.elevationM(lat, lon) }.getOrNull()
+
+    data class PlanState(
+        val active: Boolean = false,
+        val points: List<RoutePoint> = emptyList(),
+        val legs: List<RouteLeg> = emptyList(),
+        val stats: RouteStats = RouteStats.EMPTY,
+        val followTrails: Boolean = true,
+        val busy: Boolean = false,
+    ) {
+        val via: List<String> get() = legs.flatMap { it.names }.fold(mutableListOf()) { acc, n -> if (acc.lastOrNull() != n) acc += n; acc }
+    }
+
+    private val _plan = MutableStateFlow(PlanState())
+    val plan: StateFlow<PlanState> = _plan.asStateFlow()
+    private val planLock = kotlinx.coroutines.sync.Mutex()
+
+    fun startPlanning() {
+        select(null)
+        _plan.value = PlanState(active = true)
+    }
+
+    fun cancelPlanning() { _plan.value = PlanState() }
+
+    fun setFollowTrails(on: Boolean) { _plan.value = _plan.value.copy(followTrails = on) }
+
+    /** Adds a point; the leg to it follows trails when that mode is on and a connection exists. */
+    fun addPlanPoint(lat: Double, lon: Double, waypointName: String? = null) {
+        viewModelScope.launch {
+            planLock.lock()
+            try {
+                val st = _plan.value
+                if (!st.active) return@launch
+                _plan.value = st.copy(busy = true)
+                val (point, leg, note) = withContext(Dispatchers.Default) {
+                    buildLeg(st.points.lastOrNull(), lat, lon, st.followTrails, waypointName)
+                }
+                val legs = if (leg != null) st.legs + leg else st.legs
+                val stats = withContext(Dispatchers.Default) { statsFor(legs) }
+                _plan.value = _plan.value.copy(points = st.points + point, legs = legs, stats = stats, busy = false)
+                note?.let { _message.value = it }
+            } finally {
+                planLock.unlock()
+            }
+        }
+    }
+
+    fun undoPlanPoint() {
+        viewModelScope.launch {
+            planLock.lock()
+            try {
+                val st = _plan.value
+                if (st.points.isEmpty()) return@launch
+                // The first point has no leg; every later point has the leg leading to it.
+                val legs = if (st.points.size > 1) st.legs.dropLast(1) else st.legs
+                val stats = withContext(Dispatchers.Default) { statsFor(legs) }
+                _plan.value = st.copy(points = st.points.dropLast(1), legs = legs, stats = stats)
+            } finally {
+                planLock.unlock()
+            }
+        }
+    }
+
+    private fun statsFor(legs: List<RouteLeg>): RouteStats {
+        if (legs.isEmpty()) return RouteStats.EMPTY
+        val coords = ArrayList<DoubleArray>()
+        legs.forEach { leg -> leg.coords.forEach { c -> if (coords.lastOrNull()?.let { it[0] == c[0] && it[1] == c[1] } != true) coords += c } }
+        return RouteStats.compute(coords, legs.sumOf { it.lengthM }, terrain)
+    }
+
+    private fun straightLeg(a: RoutePoint, b: RoutePoint) = RouteLeg(
+        listOf(doubleArrayOf(a.lat, a.lon), doubleArrayOf(b.lat, b.lon)),
+        com.trailguidegps.app.geo.Geo.distanceM(a.lat, a.lon, b.lat, b.lon), emptyList(), onTrail = false,
+    )
+
+    private fun buildLeg(prev: RoutePoint?, lat: Double, lon: Double, follow: Boolean, wp: String?): Triple<RoutePoint, RouteLeg?, String?> {
+        val g = graph
+        val dist = com.trailguidegps.app.geo.Geo::distanceM
+        val snapNew = if (follow && g != null) g.snap(lat, lon) else null
+        // A tapped point moves onto the trail; a waypoint keeps its exact spot.
+        val point = if (snapNew != null && wp == null) RoutePoint(snapNew.lat, snapNew.lon, follow, wp) else RoutePoint(lat, lon, follow, wp)
+        if (prev == null) {
+            val note = when {
+                follow && g == null -> "The trail network isn't downloaded yet, so routes use straight lines. Check for map updates."
+                follow && snapNew == null -> "No trail within a quarter mile of this point."
+                else -> null
+            }
+            return Triple(point, null, note)
+        }
+        if (!follow) return Triple(point, straightLeg(prev, point), null)
+        if (g == null) {
+            return Triple(point, straightLeg(prev, point), "The trail network isn't downloaded yet, so this part is a straight line.")
+        }
+        val snapPrev = g.snap(prev.lat, prev.lon)
+        val routed = if (snapPrev != null && snapNew != null) g.route(snapPrev, snapNew) else null
+        if (routed == null || snapPrev == null || snapNew == null) {
+            val why = if (snapNew == null || snapPrev == null) "No trail within a quarter mile, so this part is a straight line."
+            else "Couldn't find a trail connection, so this part is a straight line."
+            return Triple(point, straightLeg(prev, point), why)
+        }
+        val coords = ArrayList<DoubleArray>()
+        var len = routed.lengthM
+        val offStart = dist(prev.lat, prev.lon, snapPrev.lat, snapPrev.lon)
+        if (offStart > 15) { coords += doubleArrayOf(prev.lat, prev.lon); len += offStart }
+        coords += routed.coords
+        val offEnd = dist(snapNew.lat, snapNew.lon, point.lat, point.lon)
+        if (offEnd > 15) { coords += doubleArrayOf(point.lat, point.lon); len += offEnd }
+        return Triple(point, RouteLeg(coords, len, routed.names, onTrail = true), null)
+    }
+
+    fun savePlan(name: String) {
+        val st = _plan.value
+        if (st.points.size < 2) return
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                val coords = ArrayList<DoubleArray>()
+                st.legs.forEach { leg -> leg.coords.forEach { c -> if (coords.lastOrNull()?.let { it[0] == c[0] && it[1] == c[1] } != true) coords += c } }
+                SavedRoute(RouteStore.newId(), name.ifBlank { "Route" }, System.currentTimeMillis(), st.points, coords, st.stats, st.via)
+                    .also { routes.save(it) }
+            }
+            _plan.value = PlanState()
+            _shownRoute.value = saved
+            _message.value = "Saved \"${saved.name}\"."
+        }
+    }
+
+    /** A saved route drawn on the map. */
+    private val _shownRoute = MutableStateFlow<SavedRoute?>(null)
+    val shownRoute: StateFlow<SavedRoute?> = _shownRoute.asStateFlow()
+
+    fun showRoute(id: String) {
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) { routes.load(id) } ?: return@launch
+            _shownRoute.value = r
+            focusOn(r.coords.map { it[0] to it[1] })
+        }
+    }
+
+    fun hideRoute() { _shownRoute.value = null }
+
+    fun deleteRoute(id: String) {
+        routes.delete(id)
+        if (_shownRoute.value?.id == id) _shownRoute.value = null
+    }
+
+    fun renameRoute(id: String, name: String) {
+        routes.rename(id, name)
+        if (_shownRoute.value?.id == id) _shownRoute.value = _shownRoute.value?.copy(name = name)
     }
 
     private fun friendly(e: Exception): String = when (e) {

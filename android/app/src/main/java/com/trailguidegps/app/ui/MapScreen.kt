@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -73,6 +74,9 @@ import com.trailguidegps.app.AppViewModel
 import com.trailguidegps.app.DownloadState
 import com.trailguidegps.app.geo.Geo
 import com.trailguidegps.app.location.Fix
+import com.trailguidegps.app.data.Pace
+import com.trailguidegps.app.data.RouteStore
+import com.trailguidegps.app.data.SavedRoute
 import com.trailguidegps.app.data.TrackStore
 import com.trailguidegps.app.data.Waypoint
 import com.trailguidegps.app.map.MapIcons
@@ -133,6 +137,17 @@ fun MapScreen(
     var editing by remember { mutableStateOf<Waypoint?>(null) }
     var selectedWaypointId by remember { mutableStateOf<String?>(null) }
     var askStop by remember { mutableStateOf(false) }
+    val plan by vm.plan.collectAsStateWithLifecycle()
+    val pace by vm.pace.collectAsStateWithLifecycle()
+    val routingReady by vm.routingReady.collectAsStateWithLifecycle()
+    val shownRoute by vm.shownRoute.collectAsStateWithLifecycle()
+    var showPace by remember { mutableStateOf(false) }
+    var showWaypointPicker by remember { mutableStateOf(false) }
+    var askSaveRoute by remember { mutableStateOf(false) }
+    var askDiscardRoute by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = plan.active) {
+        if (plan.points.size >= 2) askDiscardRoute = true else vm.cancelPlanning()
+    }
 
     val mapView = remember { MapView(context).also { it.onCreate(null) } }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -181,11 +196,22 @@ fun MapScreen(
                 if (t != null) vm.mapCenter = t.latitude to t.longitude
             }
             m.addOnMapLongClickListener { latLng ->
-                editing = Waypoint(name = vm.waypoints.nextName(), lat = latLng.latitude, lon = latLng.longitude)
+                if (vm.plan.value.active) return@addOnMapLongClickListener true
+                editing = Waypoint(
+                    name = vm.waypoints.nextName(), lat = latLng.latitude, lon = latLng.longitude,
+                    eleM = vm.elevationAt(latLng.latitude, latLng.longitude),
+                )
                 true
             }
             m.addOnMapClickListener { latLng ->
                 val point = m.projection.toScreenLocation(latLng)
+                if (vm.plan.value.active) {
+                    // Planning: each tap adds a point. Tapping one of your waypoints uses its exact spot.
+                    val wp = m.queryRenderedFeatures(point, MapStyle.LAYER_WAYPOINTS).firstOrNull()
+                        ?.takeIf { it.hasProperty("id") }?.let { vm.waypoints.get(it.getStringProperty("id")) }
+                    if (wp != null) vm.addPlanPoint(wp.lat, wp.lon, wp.name) else vm.addPlanPoint(latLng.latitude, latLng.longitude)
+                    return@addOnMapClickListener true
+                }
                 val wpHit = m.queryRenderedFeatures(point, MapStyle.LAYER_WAYPOINTS).firstOrNull()
                 if (wpHit != null && wpHit.hasProperty("id")) {
                     selectedWaypointId = wpHit.getStringProperty("id")
@@ -287,6 +313,14 @@ fun MapScreen(
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_RECORDING)
             ?.setGeoJson(TrackStore.lineGeoJson(recording?.points.orEmpty()))
     }
+    LaunchedEffect(style, plan.legs, plan.points) {
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PLAN)?.setGeoJson(RouteStore.legsGeoJson(plan.legs))
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PLAN_POINTS)?.setGeoJson(RouteStore.pointsGeoJson(plan.points))
+    }
+    LaunchedEffect(style, shownRoute) {
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SHOWN_ROUTE)
+            ?.setGeoJson(RouteStore.lineGeoJson(shownRoute?.coords.orEmpty()))
+    }
     LaunchedEffect(style, shownTrack) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SHOWN_TRACK)
             ?.setGeoJson(TrackStore.lineGeoJson(shownTrack?.second.orEmpty()))
@@ -353,6 +387,22 @@ fun MapScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            if (plan.active) {
+                Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
+                    Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { if (plan.points.size >= 2) askDiscardRoute = true else vm.cancelPlanning() }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Stop planning", tint = TG.Ink)
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("Plan a route", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+                            Text("Tap the map to add points", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
+                        }
+                        IconButton(onClick = { vm.undoPlanPoint() }, enabled = plan.points.isNotEmpty() && !plan.busy) {
+                            Icon(Icons.Filled.Undo, contentDescription = "Undo last point", tint = if (plan.points.isNotEmpty()) TG.Ink else TG.Line)
+                        }
+                    }
+                }
+            } else {
             Surface(onClick = onOpenSearch, shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Search, contentDescription = null, tint = TG.Muted)
@@ -363,11 +413,18 @@ fun MapScreen(
                     }
                 }
             }
+            }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 RoundButton(onClick = { showLayers = true }, description = "Map layers") {
                     Icon(Icons.Filled.Layers, contentDescription = null, tint = TG.Ink)
                 }
                 SosButton(onClick = onEmergency)
+            }
+        }
+        if (plan.active) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModeChip("Follow trails", plan.followTrails) { vm.setFollowTrails(true) }
+                ModeChip("Straight line", !plan.followTrails) { vm.setFollowTrails(false) }
             }
         }
         val update by vm.update.collectAsStateWithLifecycle()
@@ -434,7 +491,21 @@ fun MapScreen(
                     Icon(Icons.Filled.MyLocation, contentDescription = null, tint = if (following && !headingUp) Color.White else TG.Blue)
                 }
             }
-            BottomPanel(
+            if (plan.active) {
+                Surface(
+                    color = Color.White, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
+                        RoutePlannerPanel(
+                            plan = plan, pace = pace, routingReady = routingReady,
+                            onAddWaypoint = { showWaypointPicker = true },
+                            onSave = { askSaveRoute = true },
+                            onEditPace = { showPace = true },
+                        )
+                    }
+                }
+            } else BottomPanel(
                 fix = fix,
                 hasLocationPermission = hasLocationPermission,
                 gpsOn = vm.tracker.isGpsEnabled(),
@@ -455,6 +526,10 @@ fun MapScreen(
                 onStop = { askStop = true },
                 onPin = { dropPinHere() },
                 onSaved = onOpenSaved,
+                onRoute = { vm.startPlanning() },
+                shownRoute = shownRoute,
+                pace = pace,
+                onHideRoute = { vm.hideRoute() },
                 placeDescription = fix?.let { f -> features?.describe(f.lat, f.lon) },
             )
         }
@@ -476,6 +551,37 @@ fun MapScreen(
             onSave = { vm.waypoints.upsert(it); editing = null; selectedWaypointId = it.id },
             onDelete = { vm.waypoints.delete(w.id); editing = null; selectedWaypointId = null },
             onDismiss = { editing = null },
+        )
+    }
+
+    if (showPace) {
+        PaceDialog(pace, onSave = { vm.setPace(it); showPace = false }, onDismiss = { showPace = false })
+    }
+    if (showWaypointPicker) {
+        val last = plan.points.lastOrNull()
+        WaypointPickerDialog(
+            waypoints, last?.lat ?: fix?.lat, last?.lon ?: fix?.lon,
+            onPick = { w -> showWaypointPicker = false; vm.addPlanPoint(w.lat, w.lon, w.name) },
+            onDismiss = { showWaypointPicker = false },
+        )
+    }
+    if (askSaveRoute) {
+        val first = plan.points.firstOrNull()?.waypointName
+        val last = plan.points.lastOrNull()?.waypointName
+        val suggested = when {
+            first != null && last != null && first != last -> "$first to $last"
+            plan.via.isNotEmpty() -> plan.via.first()
+            else -> "Route ${java.text.SimpleDateFormat("MMM d", java.util.Locale.US).format(java.util.Date())}"
+        }
+        SaveRouteDialog(suggested, onSave = { name -> askSaveRoute = false; vm.savePlan(name) }, onDismiss = { askSaveRoute = false })
+    }
+    if (askDiscardRoute) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { askDiscardRoute = false },
+            title = { Text("Discard this route?") },
+            text = { Text("The points you've placed will be lost.") },
+            confirmButton = { TextButton(onClick = { askDiscardRoute = false; vm.cancelPlanning() }) { Text("Discard", color = TG.Danger) } },
+            dismissButton = { TextButton(onClick = { askDiscardRoute = false }) { Text("Keep planning") } },
         )
     }
 
@@ -506,6 +612,14 @@ fun MapScreen(
                             colors = SwitchDefaults.colors(checkedTrackColor = TG.Accent),
                         )
                     }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 12.dp), color = TG.Line)
+                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Hiking time estimates", fontSize = 16.sp, color = TG.Ink)
+                        Text("%.1f mph · %d min per 1,000 ft · %d min breaks per hour".format(pace.mph, pace.climbMinPer1000Ft, pace.breakMinPerHour), fontSize = 12.sp, color = TG.Muted)
+                    }
+                    TextButton(onClick = { showPace = true }) { Text("Change", color = TG.Accent) }
                 }
                 HorizontalDivider(Modifier.padding(vertical = 12.dp), color = TG.Line)
                 Text("Map data", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Muted)
@@ -558,6 +672,10 @@ private fun BottomPanel(
     onStop: () -> Unit,
     onPin: () -> Unit,
     onSaved: () -> Unit,
+    onRoute: () -> Unit,
+    shownRoute: SavedRoute?,
+    pace: Pace,
+    onHideRoute: () -> Unit,
     placeDescription: String?,
 ) {
     Surface(
@@ -680,6 +798,21 @@ private fun BottomPanel(
                     placeDescription?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 2) }
                 }
             }
+            shownRoute?.let { r ->
+                Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(width = 18.dp, height = 4.dp).background(RoutePurple, RoundedCornerShape(2.dp)))
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(r.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+                        Text(
+                            "%.1f mi · +%,d ft · %s".format(r.stats.distanceM / Geo.M_PER_MI, (r.stats.gainM * Geo.FT_PER_M).roundToInt(),
+                                Pace.format(pace.minutes(r.stats.distanceM, r.stats.gainM))),
+                            fontSize = 12.sp, color = TG.Muted,
+                        )
+                    }
+                    TextButton(onClick = onHideRoute) { Text("Hide", color = RoutePurple) }
+                }
+            }
             shownTrackName?.let { name ->
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(width = 18.dp, height = 4.dp).background(Color(0xFF8E3218), RoundedCornerShape(2.dp)))
@@ -690,20 +823,24 @@ private fun BottomPanel(
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
                 Button(
-                    onClick = onRecord, shape = RoundedCornerShape(12.dp),
+                    onClick = onRecord, shape = RoundedCornerShape(12.dp), contentPadding = pad,
                     colors = ButtonDefaults.buttonColors(containerColor = TG.Accent, contentColor = Color.White),
-                    modifier = Modifier.weight(1.4f).height(48.dp),
+                    modifier = Modifier.weight(1.25f).height(48.dp),
                 ) {
-                    Box(Modifier.size(10.dp).background(Color.White, CircleShape))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Record", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Box(Modifier.size(9.dp).background(Color.White, CircleShape))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Record", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
-                OutlinedButton(onClick = onPin, shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).height(48.dp)) {
-                    Text("Pin", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                OutlinedButton(onClick = onRoute, shape = RoundedCornerShape(12.dp), contentPadding = pad, modifier = Modifier.weight(1f).height(48.dp)) {
+                    Text("Route", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = RoutePurple, maxLines = 1)
                 }
-                OutlinedButton(onClick = onSaved, shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).height(48.dp)) {
-                    Text("Saved", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                OutlinedButton(onClick = onPin, shape = RoundedCornerShape(12.dp), contentPadding = pad, modifier = Modifier.weight(0.85f).height(48.dp)) {
+                    Text("Pin", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+                }
+                OutlinedButton(onClick = onSaved, shape = RoundedCornerShape(12.dp), contentPadding = pad, modifier = Modifier.weight(1f).height(48.dp)) {
+                    Text("Saved", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
                 }
             }
         }
@@ -715,6 +852,20 @@ private fun StatCell(value: String, label: String, modifier: Modifier = Modifier
     Column(modifier) {
         Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
         Text(label, fontSize = 12.sp, color = TG.Muted)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(20.dp),
+        color = if (selected) RoutePurple else Color.White, shadowElevation = 3.dp,
+        modifier = Modifier.heightIn(min = 40.dp).semantics { contentDescription = "$label${if (selected) ", selected" else ""}" },
+    ) {
+        Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+            Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (selected) Color.White else TG.Ink)
+        }
     }
 }
 

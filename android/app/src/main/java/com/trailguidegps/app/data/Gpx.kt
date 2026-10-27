@@ -10,13 +10,21 @@ import java.util.TimeZone
 
 /** Reads and writes GPX 1.1, the format other hiking apps and Garmin devices use. */
 object Gpx {
-    data class Imported(val waypoints: List<Waypoint>, val tracks: List<Pair<String, List<TrackPoint>>>)
+    data class Imported(
+        val waypoints: List<Waypoint>,
+        val tracks: List<Pair<String, List<TrackPoint>>>,
+        val routes: List<Pair<String, List<TrackPoint>>> = emptyList(),
+    )
 
     private fun iso() = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
 
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
-    fun write(waypoints: List<Waypoint>, tracks: List<Pair<String, List<TrackPoint>>>): String {
+    fun write(
+        waypoints: List<Waypoint>,
+        tracks: List<Pair<String, List<TrackPoint>>>,
+        routes: List<Pair<String, List<DoubleArray>>> = emptyList(),
+    ): String {
         val f = iso()
         val sb = StringBuilder()
         sb.append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
@@ -27,6 +35,11 @@ object Gpx {
             sb.append("<time>${f.format(Date(w.createdAt))}</time><name>${esc(w.name)}</name>")
             if (w.note.isNotBlank()) sb.append("<desc>${esc(w.note)}</desc>")
             sb.append("</wpt>\n")
+        }
+        routes.forEach { (name, coords) ->
+            sb.append("  <rte><name>${esc(name)}</name>\n")
+            coords.forEach { c -> sb.append("""    <rtept lat="${c[0]}" lon="${c[1]}"/>""").append('\n') }
+            sb.append("  </rte>\n")
         }
         tracks.forEach { (name, pts) ->
             sb.append("  <trk><name>${esc(name)}</name><trkseg>\n")
@@ -41,7 +54,7 @@ object Gpx {
         return sb.toString()
     }
 
-    /** Reads waypoints, tracks and routes (routes come in as tracks for now). */
+    /** Reads waypoints, tracks and routes. */
     fun read(input: InputStream): Imported {
         val parser = Xml.newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
@@ -49,6 +62,8 @@ object Gpx {
         val f = iso()
         val waypoints = mutableListOf<Waypoint>()
         val tracks = mutableListOf<Pair<String, List<TrackPoint>>>()
+        val routes = mutableListOf<Pair<String, List<TrackPoint>>>()
+        var inRte = false
 
         var inWpt = false
         var inTrk = false
@@ -74,7 +89,7 @@ object Gpx {
                             ele = null; time = null
                             if (parser.name == "wpt") { inWpt = true; name = null; desc = null }
                         }
-                        "trk", "rte" -> { inTrk = true; trkName = null; trkPts = mutableListOf() }
+                        "trk", "rte" -> { inTrk = true; inRte = parser.name == "rte"; trkName = null; trkPts = mutableListOf() }
                     }
                 }
                 XmlPullParser.TEXT -> text += parser.text
@@ -95,14 +110,18 @@ object Gpx {
                             trkPts += TrackPoint(lat, lon, ele, time ?: fallbackTime)
                         }
                         "trk", "rte" -> {
-                            if (trkPts.size >= 2) tracks += (trkName ?: "Imported track") to trkPts.toList()
+                            if (trkPts.size >= 2) {
+                                if (inRte) routes += (trkName ?: "Imported route") to trkPts.toList()
+                                else tracks += (trkName ?: "Imported track") to trkPts.toList()
+                            }
                             inTrk = false
+                            inRte = false
                         }
                     }
                     text = ""
                 }
             }
         }
-        return Imported(waypoints, tracks)
+        return Imported(waypoints, tracks, routes)
     }
 }

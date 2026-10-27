@@ -54,6 +54,9 @@ object MapStyle {
             .put("pois", JSONObject().put("type", "geojson").put("data", gj("pois.geojson")))
             // Your own data, filled in by the app after the style loads.
             .put(SRC_SHOWN_TRACK, emptyGeoJson())
+            .put(SRC_SHOWN_ROUTE, emptyGeoJson())
+            .put(SRC_PLAN, emptyGeoJson())
+            .put(SRC_PLAN_POINTS, emptyGeoJson())
             .put(SRC_RECORDING, emptyGeoJson())
             .put(SRC_WAYPOINTS, emptyGeoJson())
 
@@ -163,6 +166,24 @@ object MapStyle {
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer("shown-track", "line", SRC_SHOWN_TRACK, paint = JSONObject().put("line-color", "#8E3218").put("line-width", 4),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        // Routes are purple: saved routes solid, the route being planned on top with straight legs dashed.
+        layer("shown-route-casing", "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 7.5),
+            layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer("shown-route", "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", ROUTE_PURPLE).put("line-width", 4.5),
+            layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer("plan-casing", "line", SRC_PLAN, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
+            layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer("plan-trail", "line", SRC_PLAN, filter = arr("==", arr("get", "trail"), true),
+            paint = JSONObject().put("line-color", ROUTE_PURPLE).put("line-width", 4.5),
+            layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        layer("plan-straight", "line", SRC_PLAN, filter = arr("==", arr("get", "trail"), false),
+            paint = JSONObject().put("line-color", ROUTE_PURPLE).put("line-width", 3.5).put("line-dasharray", arr(2, 1.5)),
+            layout = JSONObject().put("line-cap", "round"))
+        layer("plan-points", "circle", SRC_PLAN_POINTS, paint = JSONObject()
+            .put("circle-radius", arr("match", arr("get", "role"), "mid", 6, 8))
+            .put("circle-color", arr("match", arr("get", "role"), "start", "#2E8B57", "end", ROUTE_PURPLE, "#FFFFFF"))
+            .put("circle-stroke-color", arr("match", arr("get", "role"), "mid", ROUTE_PURPLE, "#FFFFFF"))
+            .put("circle-stroke-width", 3))
         layer("recording-casing", "line", SRC_RECORDING, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer("recording", "line", SRC_RECORDING, paint = JSONObject().put("line-color", "#E0661F").put("line-width", 4.5),
@@ -183,6 +204,10 @@ object MapStyle {
     }
 
     const val SRC_SHOWN_TRACK = "user-shown-track"
+    const val SRC_SHOWN_ROUTE = "user-shown-route"
+    const val SRC_PLAN = "user-plan"
+    const val SRC_PLAN_POINTS = "user-plan-points"
+    const val ROUTE_PURPLE = "#6B3FA0"
     const val SRC_RECORDING = "user-recording"
     const val SRC_WAYPOINTS = "user-waypoints"
     const val LAYER_WAYPOINTS = "user-waypoints"

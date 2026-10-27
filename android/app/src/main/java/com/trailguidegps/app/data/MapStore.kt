@@ -87,6 +87,28 @@ class MapStore(context: Context) {
         }
     }
 
+    /** The unpacked trail network the route planner memory-maps. */
+    fun routingFile(): File = file("routing.bin")
+
+    /**
+     * Unpacks routing.bin.gz next to itself (about 2-3 times larger) if it hasn't
+     * been yet. Returns true when routing.bin is ready.
+     */
+    fun unpackRouting(): Boolean {
+        val gz = file("routing.bin.gz")
+        val bin = routingFile()
+        if (!gz.exists()) return bin.exists()
+        if (bin.exists() && bin.lastModified() >= gz.lastModified()) return true
+        val tmp = File(dir, "routing.bin.tmp")
+        return runCatching {
+            java.util.zip.GZIPInputStream(gz.inputStream().buffered()).use { input ->
+                tmp.outputStream().buffered().use { input.copyTo(it, 256 * 1024) }
+            }
+            bin.delete()
+            tmp.renameTo(bin)
+        }.getOrElse { tmp.delete(); false }
+    }
+
     /** File name → SHA-256 from a manifest, so unchanged files can be reused. */
     private fun checksums(manifest: File): Map<String, String> = runCatching {
         val files = JSONObject(manifest.readText()).getJSONArray("files")
@@ -198,7 +220,7 @@ class MapStore(context: Context) {
             "topo.pmtiles", "contours.pmtiles", "terrain.pmtiles",
             "water.geojson", "trails.geojson", "pois.geojson", "manifest.json",
         )
-        val OPTIONAL = listOf("routing-graph.json.gz")
+        val OPTIONAL = listOf("routing.bin.gz")
         private const val TAG_FILE = "release-tag.txt"
     }
 }
