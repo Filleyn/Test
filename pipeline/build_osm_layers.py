@@ -75,6 +75,8 @@ AREA_POI_KINDS = {"trailhead", "campsite", "toilets", "shelter", "viewpoint", "w
 def poi_kind(tags):
     """The app's place kind for these tags, or None."""
     kind = match_tag(tags, POI_TAGS)
+    if kind == "shelter" and tags.get("shelter_type") in ("public_transport", "parking"):
+        return None  # bus stops and carports, not trail shelters
     if kind:
         return kind
     if tags.get("amenity") == "parking" and TRAILHEAD_NAME.search(tags.get("name", "")):
