@@ -1,0 +1,29 @@
+name: Inspect map data
+
+on:
+  workflow_dispatch:
+    inputs:
+      names:
+        description: "Name patterns to look up, separated by ;"
+        default: "Twin Lakes;Deschutes River"
+      bbox:
+        description: "west,south,east,north"
+        default: "-124.7,41.95,-116.45,46.3"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install osmium
+      - name: Download Oregon OpenStreetMap data
+        run: curl -fsSL --retry 3 -o /mnt/or.osm.pbf https://download.geofabrik.de/north-america/us/oregon-latest.osm.pbf || (sudo chown "$USER" /mnt && curl -fsSL --retry 3 -o /mnt/or.osm.pbf https://download.geofabrik.de/north-america/us/oregon-latest.osm.pbf)
+      - name: Look up names
+        env:
+          NAMES: ${{ inputs.names }}
+          BBOX: ${{ inputs.bbox }}
+        run: python3 pipeline/inspect_osm.py --pbf /mnt/or.osm.pbf --bbox="$BBOX" --names "$NAMES" | tee -a "$GITHUB_STEP_SUMMARY"
