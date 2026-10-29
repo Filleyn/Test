@@ -28,7 +28,7 @@ Asked about 2026-10-28; documented only, not built.
 
 ## Publishing on Google Play (discussed 2026-10-28)
 
-Not planned yet. Findings:
+Not decided. If it goes ahead, a sensible order: register as a developer → internal testing with family → ask Oregon GEO about the 2024 imagery → move map files to proper hosting → add more states → 12-tester closed test → public listing. Findings:
 
 - **Account:** one-time US$25 developer account with identity verification. Personal accounts created after November 2023 must run a **closed test with at least 12 testers opted in for 14 days in a row** before production ([Google](https://support.google.com/googleplay/android-developer/answer/14151465)).
 - **Internal testing track:** up to 100 testers, no review wait, installs and auto-updates through the Play Store. A simple way to share with family without going public.
@@ -40,7 +40,7 @@ Not planned yet. Findings:
 
 ## More states (discussed 2026-10-28)
 
-Not planned yet. The map pipeline is already region-driven (`pipeline/regions.json`); the app is not.
+Only if the app is published on Google Play; for personal use, Oregon is enough. The map pipeline is already region-driven (`pipeline/regions.json`); the app is not.
 
 **Pipeline (small):**
 - Add each state to `regions.json` with its bbox, Geofabrik extract, DEM product and PAD-US state code.
