@@ -6,12 +6,14 @@ This repo has two parts:
 
 | Folder | What it is | Status |
 | --- | --- | --- |
-| `pipeline/` + `.github/workflows/build-maps.yml` | Builds the offline map files from open data | Phase 1 done |
-| `android/` + `.github/workflows/build-app.yml` | The Android app (Kotlin, Jetpack Compose, MapLibre) | Phase 2 |
+| `pipeline/` + `.github/workflows/build-maps.yml` | Builds the offline map files from open data | Done (all of Oregon) |
+| `android/` + `.github/workflows/build-app.yml` | The Android app (Kotlin, Jetpack Compose, MapLibre) | All 7 phases done (0.9) |
+
+Ideas for later, Play Store notes and multi-state notes: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Installing the app
 
-Every push to `android/` builds a new APK and publishes it as a release named `app-v0.2.N`.
+Every push to `android/` builds a new APK and publishes it as a release named `app-v<version>.<build number>`.
 
 1. On the Pixel, open the newest `app-v…` release on GitHub and tap the `.apk` file.
 2. Allow your browser to install apps when Android asks (one time).
