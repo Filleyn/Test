@@ -25,6 +25,23 @@ Asked about 2026-10-28; documented only, not built.
 - **Sunrise, sunset and daylight left**, computed offline, with a warning if a route's finish time is after dark.
 - **Weather for a route** (online), at the route's location and elevation.
 - **Backup** of routes, tracks and waypoints to Google Drive.
+- **Trip plan to leave behind:** before a hike, send a text or email to someone at home with the route map link, start point, expected finish time and when to call for help.
+- **"Go to" a point:** a compass arrow and distance to one waypoint or place, for off-trail travel without planning a route.
+- **Photos on waypoints**, kept with the waypoint and included in GPX export.
+- **Battery settings prompt** for phones that kill background apps (Samsung, Xiaomi, OnePlus): send people to set the app to "Unrestricted".
+
+### Other map layers
+Ideas, roughly most useful first. All are public data; each would follow the satellite pattern (online, with optional saved areas) or be built into the offline maps.
+
+- **Forest Service motor vehicle use maps (MVUM):** which forest roads are open to cars, and in which months. Useful for driving to remote trailheads. A national Forest Service map service; verify before building.
+- **Slope angle shading:** colors slopes 30–45° and steeper, computed offline from the elevation data already in the maps. Standard for snow and scrambling.
+- **Past wildfire burn areas:** recent burn scars mean standing dead trees, blowdown and washed-out trail. National fire history perimeters are public.
+- **Classic USGS topo (scanned quads):** the traditional USGS map look, as an alternative base map.
+- **Snow depth (online):** SNOTEL stations and national snow analysis, for early or late season trips.
+- **ODFW hunting units**, for hunting season awareness.
+
+## Done after phase 7
+- 0.9.26: **Driving directions** (opens Google Maps or the phone's maps app) and **Copy coordinates** on every place and waypoint card.
 
 ## Publishing on Google Play (discussed 2026-10-28)
 

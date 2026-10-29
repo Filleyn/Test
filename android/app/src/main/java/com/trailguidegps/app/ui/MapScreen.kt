@@ -923,6 +923,7 @@ private fun BottomPanel(
                     IconButton(onClick = { onEditWaypoint(selectedWaypoint) }) { Icon(Icons.Filled.Edit, contentDescription = "Edit waypoint", tint = TG.Ink) }
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
+                PlaceActions(selectedWaypoint.lat, selectedWaypoint.lon, selectedWaypoint.name)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             } else if (selected != null) {
                 Row(verticalAlignment = Alignment.Top) {
@@ -953,6 +954,7 @@ private fun BottomPanel(
                     }
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
+                PlaceActions(selected.lat, selected.lon, selected.title)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             }
 
@@ -1110,6 +1112,38 @@ private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
         Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
             Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (selected) Color.White else TG.Ink)
         }
+    }
+}
+
+/**
+ * Driving directions in Google Maps (or the phone's maps app), and copying the
+ * coordinates to paste anywhere. Directions need a signal, or Google's own offline maps.
+ */
+@Composable
+private fun PlaceActions(lat: Double, lon: Double, label: String) {
+    val context = LocalContext.current
+    val coords = "%.6f, %.6f".format(java.util.Locale.US, lat, lon)
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = {
+                val dest = android.net.Uri.encode("%.6f,%.6f".format(java.util.Locale.US, lat, lon))
+                val google = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$dest&travelmode=driving"))
+                val any = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("geo:0,0?q=$dest(${android.net.Uri.encode(label)})"))
+                runCatching { context.startActivity(google) }.recoverCatching { context.startActivity(any) }
+            },
+            shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+        ) { Text("Driving directions", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
+        OutlinedButton(
+            onClick = {
+                val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText(label, coords))
+                // Android 13+ shows its own "copied" message.
+                if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(context, "Copied $coords", android.widget.Toast.LENGTH_SHORT).show()
+            },
+            shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+        ) { Text("Copy coordinates", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
     }
 }
 
