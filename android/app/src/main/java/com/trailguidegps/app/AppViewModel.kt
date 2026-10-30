@@ -375,10 +375,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (route.coords.size < 2 || !store.isReady()) { done(null); return }
         val b = org.maplibre.android.geometry.LatLngBounds.Builder()
         route.coords.forEach { b.include(org.maplibre.android.geometry.LatLng(it[0], it[1])) }
-        val bounds = runCatching { b.build() }.getOrNull() ?: run { done(null); return }
+        val raw = runCatching { b.build() }.getOrNull() ?: run { done(null); return }
+        // A margin around the route so it doesn't touch the edges.
+        val padLat = (raw.latitudeNorth - raw.latitudeSouth).coerceAtLeast(0.004) * 0.12
+        val padLon = (raw.longitudeEast - raw.longitudeWest).coerceAtLeast(0.004) * 0.12
+        val bounds = org.maplibre.android.geometry.LatLngBounds.from(
+            raw.latitudeNorth + padLat, raw.longitudeEast + padLon, raw.latitudeSouth - padLat, raw.longitudeWest - padLon,
+        )
         // The offline style, without the layers that are off by default or need a connection.
-        val style = org.json.JSONObject(com.trailguidegps.app.map.MapStyle.build(store))
-        val layers = style.getJSONArray("layers")
+        val styleJson = org.json.JSONObject(com.trailguidegps.app.map.MapStyle.build(store))
+        val layers = styleJson.getJSONArray("layers")
         for (i in 0 until layers.length()) {
             val l = layers.getJSONObject(i)
             val id = l.getString("id")
@@ -390,8 +396,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val h = 300
         val ratio = 2f
         val opts = org.maplibre.android.snapshotter.MapSnapshotter.Options(w, h)
-            .withStyleBuilder(org.maplibre.android.maps.Style.Builder().fromJson(style.toString()))
-            .withRegion(bounds).withPadding(30, 30, 30, 30).withPixelRatio(ratio).withLogo(false)
+            .withStyleBuilder(org.maplibre.android.maps.Style.Builder().fromJson(styleJson.toString()))
+            .withRegion(bounds).withPixelRatio(ratio).withLogo(false)
         val snap = org.maplibre.android.snapshotter.MapSnapshotter(app, opts)
         activeSnapshotter = snap // keep it alive until it answers
         var finished = false
