@@ -77,8 +77,19 @@ TRAILHEAD_NAME = re.compile(r"trail\s*head|\bTH\b", re.I)
 AREA_POI_KINDS = {"trailhead", "campsite", "toilets", "shelter", "viewpoint", "waterfall", "hot_spring", "lookout", "historic"}
 
 
+LOOKOUT_NAME = re.compile(r"\blookout\b", re.I)
+
+
 def poi_kind(tags):
     """The app's place kind for these tags, or None."""
+    # Oregon's fire lookouts are mostly towers named "... Lookout" (tagged as observation
+    # towers), and the rentable ones are often also tagged as campsites: check them first.
+    if tags.get("man_made") == "tower" and (
+            tags.get("tower:type") == "fire_lookout" or tags.get("building") == "fire_lookout"
+            or LOOKOUT_NAME.search(tags.get("name", ""))):
+        return "lookout"
+    if tags.get("building") == "fire_lookout":
+        return "lookout"
     kind = match_tag(tags, POI_TAGS)
     if kind == "shelter" and tags.get("shelter_type") in ("public_transport", "parking"):
         return None  # bus stops and carports, not trail shelters

@@ -99,7 +99,7 @@ jobs:
             n/place=city,town,village,hamlet wr/natural=water wr/landuse=reservoir \
             wr/highway=trailhead wr/tourism=camp_site,viewpoint,alpine_hut wr/amenity=toilets,shelter \
             nwr/amenity=parking w/waterway=waterfall,stream,river,canal wr/natural=hot_spring \
-            nwr/tower:type=fire_lookout nwr/historic=fire_lookout,ruins,archaeological_site,mine,mine_shaft,adit,monument,fort,wreck,homestead,cabin,railway_station \
+            nwr/tower:type=fire_lookout nwr/man_made=tower nwr/building=fire_lookout nwr/historic=fire_lookout,ruins,archaeological_site,mine,mine_shaft,adit,monument,fort,wreck,homestead,cabin,railway_station \
             r/route=hiking,foot \
             -o "$WORK/filtered.osm.pbf" --overwrite
           osmium fileinfo -e "$WORK/region.osm.pbf" | grep -E "Number of (nodes|ways|relations)" || true
