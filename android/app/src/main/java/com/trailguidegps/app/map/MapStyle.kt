@@ -152,7 +152,7 @@ object MapStyle {
             layer(LAYER_SPECIAL_FILL, "fill", "publiclands", "special", paint = JSONObject()
                 .put("fill-color", "#2E5E1E").put("fill-opacity", 0.07))
             layer(LAYER_BOUNDARY_HIT, "fill", "publiclands", "boundary", paint = JSONObject()
-                .put("fill-color", "#000000").put("fill-opacity", 0))
+                .put("fill-color", "#000000").put("fill-opacity", HIT_OPACITY))
         }
         layer("hillshade", "hillshade", "terrain", paint = JSONObject()
             .put("hillshade-exaggeration", 0.45).put("hillshade-shadow-color", "#4E4232")
@@ -207,9 +207,9 @@ object MapStyle {
                 .put("line-dasharray", arr(3, 1.5)))
         // Invisible wide lines so trails are easy to tap (named ones carry their name here).
         layer("trail-hit", "line", "topo", "transportation_name", inClass(trails),
-            JSONObject().put("line-color", "#000000").put("line-opacity", 0).put("line-width", 18))
+            JSONObject().put("line-color", "#000000").put("line-opacity", HIT_OPACITY).put("line-width", 18))
         layer("trail-hit-unnamed", "line", "topo", "transportation", inClass(trails),
-            JSONObject().put("line-color", "#000000").put("line-opacity", 0).put("line-width", 18))
+            JSONObject().put("line-color", "#000000").put("line-opacity", HIT_OPACITY).put("line-width", 18))
         layer("contour-labels", "symbol", "contours", "contours", arr("==", arr("get", "major"), 1),
             halo(GROUND, "#8A6440", 1.4),
             JSONObject().put("symbol-placement", "line").put("text-font", arr(REGULAR))
@@ -296,7 +296,7 @@ object MapStyle {
         val focusWidth = { on: Double, off: Double -> arr("case", arr("==", arr("get", "focus"), true), on, off) }
         layer("shown-route-casing", "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", focusWidth(8.0, 6.0)),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
-        layer(LAYER_SHOWN_ROUTE_HIT, "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#000000").put("line-opacity", 0).put("line-width", 20))
+        layer(LAYER_SHOWN_ROUTE_HIT, "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#000000").put("line-opacity", HIT_OPACITY).put("line-width", 20))
         layer("shown-route", "line", SRC_SHOWN_ROUTE, paint = JSONObject()
             .put("line-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("line-width", focusWidth(5.0, 3.5))
             .put("line-opacity", focusWidth(1.0, 0.55)),
@@ -369,6 +369,11 @@ object MapStyle {
     const val ROUTE_PURPLE = "#6B3FA0"
     const val SRC_RECORDING = "user-recording"
     const val SRC_WAYPOINTS = "user-waypoints"
+    /**
+     * Invisible tap targets must not be fully transparent: MapLibre skips drawing a layer at
+     * opacity 0, and a layer it doesn't draw can't be tapped. 1% is invisible but counts.
+     */
+    private const val HIT_OPACITY = 0.01
     const val LAYER_WAYPOINTS = "user-waypoints"
     const val LAYER_LAND_FILL = "land-fill"
     const val LAYER_SPECIAL_FILL = "special-fill"

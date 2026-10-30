@@ -463,6 +463,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Makes a backup file and hands it to Android's share sheet, so apps that don't
+     * appear in the file picker (OneDrive, email) can take it.
+     */
+    fun shareBackup(onReady: (android.net.Uri) -> Unit) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
+                    val f = java.io.File(dir, backupFileName())
+                    val trk = tracks.summaries.value.mapNotNull { tracks.load(it.id) }
+                    val rte = routes.summaries.value.mapNotNull { routes.load(it.id) }.map { it.name to it.coords }
+                    f.outputStream().use { com.trailguidegps.app.data.Backup.write(app, it, Gpx.write(waypoints.items.value, trk, rte)) }
+                    androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
+                }
+            }
+            r.onSuccess { uri ->
+                val now = System.currentTimeMillis()
+                backupPrefs.edit().putLong("last", now).apply()
+                _lastBackup.value = now
+                onReady(uri)
+            }.onFailure { _message.value = "Backup failed: ${it.message ?: "couldn't write the file"}" }
+        }
+    }
+
     /** Restores a backup file, adding to what's already on the phone. */
     fun restore(uri: android.net.Uri) {
         val app = getApplication<Application>()

@@ -47,6 +47,7 @@ import com.trailguidegps.app.data.Settings
 @Composable
 fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
     val s by vm.settings.value.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val pace by vm.pace.collectAsStateWithLifecycle()
     var showPace by remember { mutableStateOf(false) }
     BackHandler(onBack = onClose)
@@ -144,16 +145,32 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 8.dp)) {
                 androidx.compose.material3.Button(
-                    onClick = { saveBackup.launch(vm.backupFileName()) }, shape = RoundedCornerShape(12.dp),
+                    onClick = {
+                        vm.shareBackup { uri ->
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/zip")
+                                .putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                .putExtra(android.content.Intent.EXTRA_SUBJECT, vm.backupFileName().removeSuffix(".zip"))
+                                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            context.startActivity(android.content.Intent.createChooser(send, "Back up to"))
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = TG.Accent, contentColor = Color.White),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                ) { Text("Back up now") }
+                ) { Text("Back up to…") }
                 androidx.compose.material3.OutlinedButton(
-                    onClick = { openBackup.launch(arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed")) },
+                    onClick = { saveBackup.launch(vm.backupFileName()) },
                     shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                ) { Text("Restore", color = TG.Ink) }
+                ) { Text("Save to a folder", color = TG.Ink) }
             }
-            Text("Restoring adds to what's on the phone; it doesn't delete anything.", fontSize = 12.sp, color = TG.Muted)
+            Text("Back up to… lists OneDrive, Google Drive, email and other apps. Save to a folder puts it on this phone or in Drive's folders.",
+                fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
+            androidx.compose.material3.OutlinedButton(
+                onClick = { openBackup.launch(arrayOf("*/*")) },
+                shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 48.dp),
+            ) { Text("Restore from a backup", color = TG.Ink) }
+            Text("Restoring adds to what's on the phone; it doesn't delete anything. To restore from OneDrive, pick it under Browse in the file picker, " +
+                "or save the file to the phone from the OneDrive app first.", fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
 
             Section("Maps")
             ToggleRow("Check for map updates when the app opens", "Only when you have a connection. You choose when to download.",
