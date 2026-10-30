@@ -51,18 +51,17 @@ class MapStore(context: Context) {
         try {
             if (conn.responseCode != 200) error("GitHub answered ${conn.responseCode}")
             val releases = JSONArray(conn.inputStream.bufferedReader().readText())
-            for (i in 0 until releases.length()) {
-                val r = releases.getJSONObject(i)
-                val tag = r.getString("tag_name")
-                if (!tag.startsWith("maps-$region-")) continue
-                val list = r.getJSONArray("assets")
-                val assets = (0 until list.length()).map { j ->
-                    val a = list.getJSONObject(j)
-                    Asset(a.getString("name"), a.getString("browser_download_url"), a.getLong("size"))
-                }.filter { it.name in REQUIRED || it.name in OPTIONAL }
-                return@withContext Release(tag, assets)
-            }
-            error("No map files found for $region")
+            // GitHub doesn't always list releases newest first, so pick the most recently published.
+            val newest = (0 until releases.length()).map { releases.getJSONObject(it) }
+                .filter { it.getString("tag_name").startsWith("maps-$region-") && !it.optBoolean("draft") }
+                .maxByOrNull { it.optString("published_at").ifBlank { it.optString("created_at") } }
+                ?: error("No map files found for $region")
+            val list = newest.getJSONArray("assets")
+            val assets = (0 until list.length()).map { j ->
+                val a = list.getJSONObject(j)
+                Asset(a.getString("name"), a.getString("browser_download_url"), a.getLong("size"))
+            }.filter { it.name in REQUIRED || it.name in OPTIONAL }
+            return@withContext Release(newest.getString("tag_name"), assets)
         } finally {
             conn.disconnect()
         }
