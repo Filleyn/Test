@@ -49,6 +49,9 @@ class WaypointStore(context: Context) {
 
     fun get(id: String): Waypoint? = _items.value.firstOrNull { it.id == id }
 
+    /** Re-reads the file (after restoring a backup). */
+    fun reload() { _items.value = load() }
+
     private fun load(): List<Waypoint> = runCatching {
         val arr = JSONArray(file.readText())
         (0 until arr.length()).map { i ->

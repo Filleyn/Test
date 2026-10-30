@@ -20,6 +20,9 @@ class WaterNotes(context: Context) {
 
     fun get(id: String?): Note? = id?.let { _notes.value[it] }
 
+    /** Re-reads the file (after restoring a backup). */
+    fun reload() { _notes.value = load() }
+
     fun set(id: String, text: String) {
         val m = _notes.value.toMutableMap()
         if (text.isBlank()) m.remove(id)

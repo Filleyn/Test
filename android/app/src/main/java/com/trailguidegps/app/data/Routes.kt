@@ -305,6 +305,9 @@ class RouteStore(context: Context) {
         _summaries.value = scan()
     }
 
+    /** Re-reads the folder (after restoring a backup). */
+    fun reload() { _summaries.value = scan() }
+
     private fun scan(): List<RouteSummary> = (dir.listFiles { f -> f.name.endsWith(".json") } ?: emptyArray())
         .mapNotNull { f ->
             runCatching {

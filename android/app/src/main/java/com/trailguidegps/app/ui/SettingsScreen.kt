@@ -125,6 +125,36 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
                 }
             }
 
+            Section("Backup")
+            val lastBackup by vm.lastBackup.collectAsStateWithLifecycle()
+            val saveBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip"),
+            ) { uri -> if (uri != null) vm.backup(uri) }
+            val openBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+            ) { uri -> if (uri != null) vm.restore(uri) }
+            Text(
+                "Saves your routes, tracks, waypoints, water notes and settings to one file. Choose where: this phone, " +
+                    "Google Drive, OneDrive or any storage app you have. Maps and satellite areas download again instead.",
+                fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp, modifier = Modifier.padding(top = 6.dp),
+            )
+            Text(
+                "Last backup: " + (lastBackup?.let { java.text.SimpleDateFormat("MMM d, yyyy h:mm a", java.util.Locale.US).format(java.util.Date(it)) } ?: "never"),
+                fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 8.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+                androidx.compose.material3.Button(
+                    onClick = { saveBackup.launch(vm.backupFileName()) }, shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = TG.Accent, contentColor = Color.White),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                ) { Text("Back up now") }
+                androidx.compose.material3.OutlinedButton(
+                    onClick = { openBackup.launch(arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed")) },
+                    shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                ) { Text("Restore", color = TG.Ink) }
+            }
+            Text("Restoring adds to what's on the phone; it doesn't delete anything.", fontSize = 12.sp, color = TG.Muted)
+
             Section("Maps")
             ToggleRow("Check for map updates when the app opens", "Only when you have a connection. You choose when to download.",
                 s.checkUpdatesOnLaunch) { on -> vm.settings.update { it.copy(checkUpdatesOnLaunch = on) } }

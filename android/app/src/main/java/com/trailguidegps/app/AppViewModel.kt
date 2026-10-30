@@ -338,6 +338,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_shownTrack.value?.first == id) _shownTrack.value = null
     }
 
+    // ---- Backup and restore ----
+
+    private val backupPrefs = app.getSharedPreferences("backup", android.content.Context.MODE_PRIVATE)
+    private val _lastBackup = MutableStateFlow(backupPrefs.getLong("last", 0L).takeIf { it > 0 })
+    /** When you last made a backup, or null. */
+    val lastBackup: StateFlow<Long?> = _lastBackup.asStateFlow()
+
+    fun backupFileName() = "TrailGuide backup " + java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()) + ".zip"
+
+    /** Writes the backup to a file you picked (this phone, Google Drive, OneDrive…). */
+    fun backup(uri: android.net.Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    val trk = tracks.summaries.value.mapNotNull { tracks.load(it.id) }
+                    val rte = routes.summaries.value.mapNotNull { routes.load(it.id) }.map { it.name to it.coords }
+                    val gpx = Gpx.write(waypoints.items.value, trk, rte)
+                    app.contentResolver.openOutputStream(uri, "wt")!!.use { com.trailguidegps.app.data.Backup.write(app, it, gpx) }
+                }
+            }
+            r.onSuccess { c ->
+                val now = System.currentTimeMillis()
+                backupPrefs.edit().putLong("last", now).apply()
+                _lastBackup.value = now
+                _message.value = "Backed up ${c.routes} routes, ${c.tracks} tracks and ${c.waypoints} waypoints."
+            }.onFailure { _message.value = "Backup failed: ${it.message ?: "couldn't write the file"}" }
+        }
+    }
+
+    /** Restores a backup file, adding to what's already on the phone. */
+    fun restore(uri: android.net.Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching { app.contentResolver.openInputStream(uri)!!.use { com.trailguidegps.app.data.Backup.restore(app, it) } }
+            }
+            r.onSuccess { c ->
+                waypoints.reload(); tracks.reload(); routes.reload(); waterNotes.reload()
+                _pace.value = Pace.load(app)
+                _message.value = "Restored ${c.routes} routes, ${c.tracks} tracks, ${c.waypoints} waypoints and ${c.notes} water notes."
+            }.onFailure { _message.value = it.message ?: "That file couldn't be restored." }
+        }
+    }
+
     fun importGpx(uri: android.net.Uri) {
         val app = getApplication<Application>()
         viewModelScope.launch {
