@@ -24,9 +24,10 @@ object Search {
         "Trails" to setOf("trail"),
         "Trailheads" to setOf("trailhead"),
         "Campsites" to setOf("campsite", "shelter"),
-        "Water" to setOf("spring", "drinking_water", "water_point", "well", "lake"),
+        "Water" to setOf("spring", "drinking_water", "water_point", "well", "stream", "lake"),
         "Peaks" to setOf("peak", "saddle", "pass", "viewpoint"),
         "Waterfalls" to setOf("waterfall", "hot_spring"),
+        "History" to setOf("lookout", "historic"),
         "Towns" to setOf("town"),
     )
 
@@ -78,7 +79,7 @@ object Search {
             .map { it.withNear(features) }
             .toList()
 
-    val WATER_KINDS = setOf("spring", "drinking_water", "water_point", "well")
+    val WATER_KINDS = setOf("spring", "drinking_water", "water_point", "well", "stream")
 
     private fun SearchResult.withNear(f: Features) =
         copy(near = f.nearTown(lat, lon, exclude = if (kind == "town") name else null))

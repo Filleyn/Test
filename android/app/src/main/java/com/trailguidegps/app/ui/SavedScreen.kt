@@ -80,6 +80,8 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     var renamingRoute by remember { mutableStateOf<RouteSummary?>(null) }
     var recoloring by remember { mutableStateOf<RouteSummary?>(null) }
     var tripPlanFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
+    var waterFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
+    val waterNotes by vm.waterNotes.notes.collectAsStateWithLifecycle()
     val fix by vm.tracker.fix.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var renaming by remember { mutableStateOf<TrackSummary?>(null) }
@@ -136,6 +138,8 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 onRename = { renamingRoute = r },
                 onColor = { recoloring = r },
                 onTripPlan = { tripPlanFor = vm.routes.load(r.id) },
+                onWater = { waterFor = vm.routes.load(r.id) },
+                onReverse = { vm.reverseRoute(r.id) },
                 onMove = { moving = FolderStore.routeKey(r.id) to r.name },
                 onExport = { share(r.name, emptyList(), emptyList(), listOf(r.id)) },
                 onDelete = { deleting = r.name to { vm.deleteRoute(r.id); vm.folders.put(FolderStore.routeKey(r.id), null) } },
@@ -309,6 +313,11 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     }
 
     tripPlanFor?.let { r -> TripPlanDialog(vm, r) { tripPlanFor = null } }
+    waterFor?.let { r ->
+        WaterAlongRouteDialog(vm, r.name, r.coords, waterNotes,
+            onPick = { la, lo -> waterFor = null; vm.showRoute(r.id); vm.focusOn(listOf(la to lo)); onClose() },
+            onDismiss = { waterFor = null })
+    }
 
     recoloring?.let { r ->
         var color by remember(r.id) { mutableStateOf(r.color) }
@@ -442,6 +451,7 @@ private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, o
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?,
     onShow: () -> Unit, onHide: () -> Unit, onRename: () -> Unit, onColor: () -> Unit, onTripPlan: () -> Unit,
+    onWater: () -> Unit, onReverse: () -> Unit,
     onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -465,6 +475,8 @@ private fun RouteRow(
         RowMenu(listOfNotNull(
             "Show on map" to onShow,
             if (onMap) "Hide from map" to onHide else null,
+            "Water along route" to onWater,
+            "Reverse for the hike out" to onReverse,
             "Trip plan (PDF)" to onTripPlan,
             "Move to folder" to onMove,
             "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete,

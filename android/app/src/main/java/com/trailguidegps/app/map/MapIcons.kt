@@ -27,6 +27,9 @@ object MapIcons {
         put("water-point", 0xFF00838F.toInt()) { c, s, p -> drop(c, s, p) }
         put("water-well", 0xFF455A64.toInt()) { c, s, p -> drop(c, s, p) }
         put("water-seasonal", 0xFF7FB3DE.toInt(), dashed = true) { c, s, p -> drop(c, s, p) }
+        put("water-stream", 0xFF3F88C5.toInt()) { c, s, p -> drop(c, s, p) }
+        put("poi-lookout", 0xFFBF360C.toInt()) { c, s, p -> lookout(c, s, p) }
+        put("poi-historic", 0xFF6D4C41.toInt()) { c, s, p -> letters(c, s, p, "H") }
         put("poi-campsite", 0xFFB4491A.toInt()) { c, s, p -> tent(c, s, p) }
         put("poi-trailhead", 0xFF2E7D4F.toInt()) { c, s, p -> letters(c, s, p, "TH") }
         put("poi-toilets", 0xFF00695C.toInt()) { c, s, p -> restroom(c, s, p) }
@@ -89,6 +92,18 @@ object MapIcons {
             moveTo(s * 0.5f, s * 0.24f); lineTo(s * 0.78f, s * 0.74f); lineTo(s * 0.22f, s * 0.74f); close()
         }
         c.drawPath(path, p)
+    }
+
+    /** A fire lookout: a little cab on tall legs. */
+    private fun lookout(c: Canvas, s: Float, p: Paint) {
+        val cab = android.graphics.RectF(s * 0.34f, s * 0.24f, s * 0.66f, s * 0.44f)
+        c.drawRect(cab, p)
+        val roof = Path().apply { moveTo(s * 0.30f, s * 0.26f); lineTo(s * 0.5f, s * 0.16f); lineTo(s * 0.70f, s * 0.26f); close() }
+        c.drawPath(roof, p)
+        val legs = Paint(p).apply { style = Paint.Style.STROKE; strokeWidth = s * 0.05f }
+        c.drawLine(s * 0.38f, s * 0.44f, s * 0.32f, s * 0.78f, legs)
+        c.drawLine(s * 0.62f, s * 0.44f, s * 0.68f, s * 0.78f, legs)
+        c.drawLine(s * 0.35f, s * 0.62f, s * 0.65f, s * 0.62f, legs)
     }
 
     private fun house(c: Canvas, s: Float, p: Paint) {

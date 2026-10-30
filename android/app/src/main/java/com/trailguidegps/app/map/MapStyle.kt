@@ -29,12 +29,14 @@ object MapStyle {
         // Restrooms are everywhere in towns, so they only show when zoomed in.
         PlaceGroup("restrooms", listOf("toilets"), iconMinZoom = 13.0, labels = false),
         PlaceGroup("waterfalls", listOf("waterfall")),
+        PlaceGroup("lookouts", listOf("lookout")),
+        PlaceGroup("history", listOf("historic"), iconMinZoom = 9.0),
         PlaceGroup("shelters", listOf("shelter")),
         PlaceGroup("other", listOf("viewpoint", "hot_spring", "pass", "saddle")),
     )
 
     /** Layers you can tap for details. */
-    val TAP_LAYERS: Array<String> = (listOf("water-points", "peaks", "trail-hit", "trail-hit-unnamed") +
+    val TAP_LAYERS: Array<String> = (listOf("water-points", "water-crossings", "peaks", "trail-hit", "trail-hit-unnamed") +
         PLACE_GROUPS.flatMap { g -> g.layers.filter { it.startsWith("places-") } }).toTypedArray()
 
     /** Layer groups the layers sheet can switch on and off. */
@@ -42,7 +44,7 @@ object MapStyle {
         "hillshade" to listOf("hillshade"),
         "contours" to listOf("contours-minor", "contours-major", "contour-labels"),
         "trails" to listOf("trail", "track", "trail-names", "trail-hit", "trail-hit-unnamed"),
-        "water" to listOf("water-points", "water-labels"),
+        "water" to listOf("water-crossings", "water-points", "water-labels"),
         "peaks" to listOf("peaks", "peak-labels"),
     ) + PLACE_GROUPS.associate { g -> g.id to g.layers } + linkedMapOf(
         "landmanager" to listOf(LAYER_LAND_FILL),
@@ -101,6 +103,9 @@ object MapStyle {
             .put(SRC_PLAN_POINTS, emptyGeoJson())
             .put(SRC_PROFILE_MARK, emptyGeoJson())
             .put(SRC_OFF_ROUTE, emptyGeoJson())
+            .put(SRC_MEASURE, emptyGeoJson())
+            .put(SRC_MEASURE_POINTS, emptyGeoJson())
+            .put(SRC_GOTO, emptyGeoJson())
             .put(SRC_FIRE_PERIMS, emptyGeoJson())
             .put(SRC_FIRE_POINTS, emptyGeoJson())
             .put(SRC_RECORDING, emptyGeoJson())
@@ -275,11 +280,15 @@ object MapStyle {
                     minzoom = 12.5)
             }
         }
-        layer("water-points", "symbol", "water", layout = JSONObject()
+        // Creek crossings: many of them, so only when zoomed in, smaller, and under the other water icons.
+        layer("water-crossings", "symbol", "water", filter = arr("==", arr("get", "kind"), "stream"), layout = JSONObject()
+            .put("icon-image", arr("case", arr("==", arr("get", "seasonal"), true), "water-seasonal", "water-stream"))
+            .put("icon-size", 0.7).put("icon-allow-overlap", true), minzoom = 13.0)
+        layer("water-points", "symbol", "water", filter = arr("!=", arr("get", "kind"), "stream"), layout = JSONObject()
             .put("icon-image", arr("case", arr("==", arr("get", "seasonal"), true), "water-seasonal",
                 arr("match", arr("get", "kind"), "drinking_water", "water-tap", "water_point", "water-point", "well", "water-well", "water-spring")))
             .put("icon-allow-overlap", true).put("icon-size", 1))
-        layer("water-labels", "symbol", "water", paint = halo("#FFFFFF", "#1F5F92"),
+        layer("water-labels", "symbol", "water", filter = arr("!=", arr("get", "kind"), "stream"), paint = halo("#FFFFFF", "#1F5F92"),
             layout = JSONObject().put("text-font", arr(ITALIC)).put("text-size", 11).put("text-offset", arr(0, 1.4))
                 .put("text-anchor", "top")
                 .put("text-field", arr("coalesce", arr("get", "name"),
@@ -331,6 +340,14 @@ object MapStyle {
             layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 11).put("text-offset", arr(0, 1.2))
                 .put("text-anchor", "top").put("text-optional", true)
                 .put("text-field", arr("concat", arr("get", "IncidentName"), " Fire")), minzoom = 7.0)
+        // The measuring tool and the line to a Go to target.
+        layer("measure-casing", "line", SRC_MEASURE, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 5))
+        layer("measure", "line", SRC_MEASURE, paint = JSONObject().put("line-color", "#23271F").put("line-width", 2.5)
+            .put("line-dasharray", arr(2, 1.5)))
+        layer("measure-points", "circle", SRC_MEASURE_POINTS, paint = JSONObject().put("circle-radius", 5)
+            .put("circle-color", "#FFFFFF").put("circle-stroke-color", "#23271F").put("circle-stroke-width", 2.5))
+        layer("goto-line", "line", SRC_GOTO, paint = JSONObject().put("line-color", "#1F4FB4").put("line-width", 3)
+            .put("line-dasharray", arr(1, 1.5)), layout = JSONObject().put("line-cap", "round"))
         layer("off-route", "line", SRC_OFF_ROUTE, paint = JSONObject().put("line-color", "#C62828").put("line-width", 3)
             .put("line-dasharray", arr(1.5, 1.5)), layout = JSONObject().put("line-cap", "round"))
         // Where you're pressing on the elevation graph.
@@ -362,6 +379,9 @@ object MapStyle {
     const val SRC_PLAN_POINTS = "user-plan-points"
     const val SRC_PROFILE_MARK = "user-profile-mark"
     const val SRC_OFF_ROUTE = "user-off-route"
+    const val SRC_MEASURE = "user-measure"
+    const val SRC_MEASURE_POINTS = "user-measure-points"
+    const val SRC_GOTO = "user-goto"
     const val SRC_FIRE_PERIMS = "fires-perimeters"
     const val SRC_FIRE_POINTS = "fires-points"
     const val LAYER_FIRE_FILL = "fire-fill"

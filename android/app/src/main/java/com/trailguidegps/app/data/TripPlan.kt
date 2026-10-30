@@ -119,6 +119,15 @@ object TripPlan {
             form.phones.takeIf { it.isNotBlank() }?.let { "Phone" to it },
             "Start" to dateTime.format(Date(form.startAt)),
             "Expected back" to dateTime.format(Date(form.backBy)),
+            start?.let { s ->
+                val sun = com.trailguidegps.app.geo.Sun.day(s[0], s[1], form.startAt)
+                val back = com.trailguidegps.app.geo.Sun.day(s[0], s[1], form.backBy)
+                val t = SimpleDateFormat("h:mm a", Locale.US)
+                "Daylight" to listOfNotNull(
+                    sun.sunrise?.let { "Sunrise ${t.format(Date(it))}" }, sun.sunset?.let { "sunset ${t.format(Date(it))}" },
+                    back.dusk?.let { d -> if (form.backBy > d) "expected back after dark" else null },
+                ).joinToString(", ")
+            },
             "Vehicle" to form.vehicle.ifBlank { "—" },
             start?.let {
                 "Parked at" to (form.parkedAt.ifBlank { "Route start" } + "\n%.5f, %.5f".format(Locale.US, it[0], it[1]))

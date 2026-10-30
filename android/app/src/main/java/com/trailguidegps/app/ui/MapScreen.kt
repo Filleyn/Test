@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -115,6 +116,8 @@ private val layerNames = linkedMapOf(
     "trailheads" to "Trailheads",
     "peaks" to "Peaks",
     "waterfalls" to "Waterfalls",
+    "lookouts" to "Fire lookouts",
+    "history" to "Historic sites",
     "shelters" to "Shelters and huts",
     "restrooms" to "Restrooms (when zoomed in)",
     "other" to "Other places: viewpoints, hot springs, passes",
@@ -159,6 +162,15 @@ fun MapScreen(
     val shownRoutes by vm.shownRoutes.collectAsStateWithLifecycle()
     val routeFollow by vm.following.collectAsStateWithLifecycle()
     val satSelect by vm.satSelect.collectAsStateWithLifecycle()
+    val measure by vm.measure.collectAsStateWithLifecycle()
+    val goTo by vm.goTo.collectAsStateWithLifecycle()
+    val heading by vm.compass.heading.collectAsStateWithLifecycle()
+    var waterFor by remember { mutableStateOf<Pair<String, List<DoubleArray>>?>(null) }
+    // The compass runs only while a Go to target is set.
+    DisposableEffect(goTo != null) {
+        if (goTo != null) vm.compass.start()
+        onDispose { if (goTo != null) vm.compass.stop() }
+    }
     val satVersion by vm.satellite.version.collectAsStateWithLifecycle()
     val satAreas by vm.satellite.areas.collectAsStateWithLifecycle()
     // The box you frame when saving satellite imagery, in screen pixels, and the map area it covers.
@@ -239,6 +251,10 @@ fun MapScreen(
             }
             m.addOnMapClickListener { latLng ->
                 if (vm.satSelect.value != null) return@addOnMapClickListener true
+                if (vm.measure.value != null) {
+                    vm.addMeasurePoint(latLng.latitude, latLng.longitude)
+                    return@addOnMapClickListener true
+                }
                 val point = m.projection.toScreenLocation(latLng)
                 if (vm.plan.value.active) {
                     // Planning: each tap adds a point. Tapping one of your waypoints uses its exact spot.
@@ -430,6 +446,19 @@ fun MapScreen(
             ?.setGeoJson(RouteStore.routesGeoJson(shownRoutes, shownRoute?.id))
     }
     LaunchedEffect(shownRoute?.id, plan.active) { profileMark = null }
+    LaunchedEffect(style, measure) {
+        val pts = measure.orEmpty()
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_MEASURE)?.setGeoJson(RouteStore.lineGeoJson(pts))
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_MEASURE_POINTS)?.setGeoJson(
+            RouteStore.pointsGeoJson(pts.map { com.trailguidegps.app.data.RoutePoint(it[0], it[1], false) }))
+    }
+    LaunchedEffect(style, goTo, fix) {
+        val t = goTo
+        val me = fix
+        me?.let { vm.compass.setPosition(it.lat, it.lon, it.altitudeM) }
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_GOTO)?.setGeoJson(
+            RouteStore.lineGeoJson(if (t != null && me != null) listOf(doubleArrayOf(me.lat, me.lon), doubleArrayOf(t.lat, t.lon)) else emptyList()))
+    }
     val fireData by vm.fires.data.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refreshFires() }
     LaunchedEffect(style, fireData) {
@@ -529,7 +558,20 @@ fun MapScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (satSelect != null) {
+            if (measure != null) {
+                Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
+                    Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { vm.stopMeasure() }) { Icon(Icons.Filled.Close, contentDescription = "Stop measuring", tint = TG.Ink) }
+                        Column(Modifier.weight(1f)) {
+                            Text("Measure distance", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+                            Text("Tap the map to add points", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
+                        }
+                        IconButton(onClick = { vm.undoMeasure() }, enabled = !measure.isNullOrEmpty()) {
+                            Icon(Icons.Filled.Undo, contentDescription = "Undo last point", tint = if (!measure.isNullOrEmpty()) TG.Ink else TG.Line)
+                        }
+                    }
+                }
+            } else if (satSelect != null) {
                 Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { vm.cancelSatSelect() }) { Icon(Icons.Filled.Close, contentDescription = "Cancel", tint = TG.Ink) }
@@ -640,6 +682,11 @@ fun MapScreen(
                 Modifier.align(Alignment.End).padding(end = 16.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (measure == null && !plan.active && satSelect == null) {
+                    RoundButton(onClick = { vm.startMeasure() }, description = "Measure distance") {
+                        Icon(Icons.Filled.Straighten, contentDescription = null, tint = TG.Ink)
+                    }
+                }
                 RoundButton(onClick = { toggleHeading() }, description = if (headingUp) "Switch to north up" else "Switch to heading up", active = headingUp) {
                     Icon(if (headingUp) Icons.Filled.Navigation else Icons.Filled.Explore, contentDescription = null, tint = if (headingUp) Color.White else TG.Accent)
                 }
@@ -647,7 +694,16 @@ fun MapScreen(
                     Icon(Icons.Filled.MyLocation, contentDescription = null, tint = if (following && !headingUp) Color.White else TG.Blue)
                 }
             }
-            if (satSelect != null) {
+            if (measure != null) {
+                Surface(
+                    color = Color.White, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
+                        MeasurePanel(measure.orEmpty(), onUndo = { vm.undoMeasure() }, onClear = { vm.clearMeasure() }, onDone = { vm.stopMeasure() })
+                    }
+                }
+            } else if (satSelect != null) {
                 Surface(
                     color = Color.White, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
@@ -679,6 +735,7 @@ fun MapScreen(
                             onScrub = { d ->
                                 profileMark = d?.let { RouteStore.pointAt(plan.legs.flatMap { leg -> leg.coords }, it) }
                             },
+                            onWater = { waterFor = "this route" to plan.legs.flatMap { leg -> leg.coords } },
                         )
                     }
                 }
@@ -711,6 +768,12 @@ fun MapScreen(
                 onHideRoute = { vm.hideRoute() },
                 onRouteScrub = { d -> profileMark = d?.let { dist -> shownRoute?.let { RouteStore.pointAt(it.coords, dist) } } },
                 following = routeFollow,
+                goTo = goTo,
+                heading = heading,
+                onGoTo = { name, la, lo -> vm.startGoTo(name, la, lo) },
+                onStopGoTo = { vm.stopGoTo() },
+                onWater = { name, coords -> waterFor = name to coords },
+                onReverse = { id -> vm.reverseRoute(id) },
                 tripVm = vm,
                 onFollow = onStartFollowing,
                 onStopFollowing = { vm.stopFollowing() },
@@ -743,6 +806,14 @@ fun MapScreen(
                 vm.folders.put(com.trailguidegps.app.data.FolderStore.waypointKey(w.id), f)
                 if (f != null) vm.rememberFolder(f)
             },
+        )
+    }
+
+    waterFor?.let { (name, coords) ->
+        WaterAlongRouteDialog(
+            vm, name, coords, waterNotes,
+            onPick = { la, lo -> waterFor = null; vm.focusOn(listOf(la to lo)) },
+            onDismiss = { waterFor = null },
         )
     }
 
@@ -920,6 +991,12 @@ private fun BottomPanel(
     onHideRoute: () -> Unit,
     onRouteScrub: (Double?) -> Unit,
     following: com.trailguidegps.app.route.Following?,
+    goTo: AppViewModel.GoTo?,
+    heading: Float?,
+    onGoTo: (String, Double, Double) -> Unit,
+    onStopGoTo: () -> Unit,
+    onWater: (String, List<DoubleArray>) -> Unit,
+    onReverse: (String) -> Unit,
     tripVm: AppViewModel,
     onFollow: () -> Unit,
     onStopFollowing: () -> Unit,
@@ -954,7 +1031,7 @@ private fun BottomPanel(
                     IconButton(onClick = { onEditWaypoint(selectedWaypoint) }) { Icon(Icons.Filled.Edit, contentDescription = "Edit waypoint", tint = TG.Ink) }
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
-                PlaceActions(selectedWaypoint.lat, selectedWaypoint.lon, selectedWaypoint.name)
+                PlaceActions(selectedWaypoint.lat, selectedWaypoint.lon, selectedWaypoint.name, onGoTo)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             } else if (selected != null) {
                 Row(verticalAlignment = Alignment.Top) {
@@ -990,7 +1067,7 @@ private fun BottomPanel(
                     }
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
-                PlaceActions(selected.lat, selected.lon, selected.title)
+                PlaceActions(selected.lat, selected.lon, selected.title, onGoTo)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             }
 
@@ -1055,8 +1132,13 @@ private fun BottomPanel(
                     val (la, lo) = Geo.decimal(fix.lat, fix.lon)
                     Text("$la, $lo", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
                     Text(statsLine(fix), fontSize = 13.sp, color = TG.Muted)
+                    daylightLine(fix.lat, fix.lon)?.let { Text(it, fontSize = 13.sp, color = TG.Muted) }
                     placeDescription?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 2) }
                 }
+            }
+            goTo?.let { t ->
+                Spacer(Modifier.height(8.dp))
+                GoToPanel(t, fix, heading, pace, elevationAt = { la, lo -> tripVm.elevationAt(la, lo) }, onStop = onStopGoTo)
             }
             following?.let { f ->
                 FollowPanel(f, pace, onStop = onStopFollowing, modifier = Modifier.padding(top = 8.dp))
@@ -1089,11 +1171,15 @@ private fun BottomPanel(
                 if (r.stats.profile.size >= 2) {
                     ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (shownRouteCount > 1) "$shownRouteCount routes on the map · tap a line to switch" else "",
-                        fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f),
-                    )
+                r.coords.firstOrNull()?.let { s ->
+                    afterDarkWarning(s[0], s[1], System.currentTimeMillis(), pace.minutes(r.stats.distanceM, r.stats.gainM))?.let {
+                        Text("If you start now: $it", fontSize = 12.sp, color = Color(0xFF8A4B00), lineHeight = 16.sp)
+                    }
+                }
+                if (shownRouteCount > 1) Text("$shownRouteCount routes on the map · tap a line to switch", fontSize = 12.sp, color = TG.Muted)
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { onWater(r.name, r.coords) }) { Text("Water", fontSize = 13.sp, color = TG.Accent) }
+                    TextButton(onClick = { onReverse(r.id) }) { Text("Reverse", fontSize = 13.sp, color = TG.Accent) }
                     TextButton(onClick = { showTripPlan = true }) { Text("Trip plan", fontSize = 13.sp, color = TG.Accent) }
                     if (shownRouteCount > 1) TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 13.sp, color = TG.Accent) }
                 }
@@ -1160,10 +1246,15 @@ private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
  * coordinates to paste anywhere. Directions need a signal, or Google's own offline maps.
  */
 @Composable
-private fun PlaceActions(lat: Double, lon: Double, label: String) {
+private fun PlaceActions(lat: Double, lon: Double, label: String, onGoTo: (String, Double, Double) -> Unit) {
     val context = LocalContext.current
     val coords = "%.6f, %.6f".format(java.util.Locale.US, lat, lon)
-    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedButton(
+            onClick = { onGoTo(label, lat, lon) }, shape = RoundedCornerShape(12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
+            modifier = Modifier.weight(0.8f).heightIn(min = 44.dp),
+        ) { Text("Go to", fontSize = 14.sp, color = TG.Accent, maxLines = 1) }
         OutlinedButton(
             onClick = {
                 val dest = android.net.Uri.encode("%.6f,%.6f".format(java.util.Locale.US, lat, lon))
@@ -1174,7 +1265,7 @@ private fun PlaceActions(lat: Double, lon: Double, label: String) {
                 runCatching { context.startActivity(google) }.recoverCatching { context.startActivity(any) }
             },
             shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-        ) { Text("Driving directions", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
+        ) { Text("Drive here", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
         OutlinedButton(
             onClick = {
                 val cm = context.getSystemService(android.content.ClipboardManager::class.java)
@@ -1183,7 +1274,7 @@ private fun PlaceActions(lat: Double, lon: Double, label: String) {
                 if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(context, "Copied $coords", android.widget.Toast.LENGTH_SHORT).show()
             },
             shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-        ) { Text("Copy coordinates", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
+        ) { Text("Copy", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
     }
 }
 

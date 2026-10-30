@@ -30,6 +30,8 @@ class Features private constructor(
         val population: Int? = null,
         /** The place's official web page, when mappers added one. */
         val website: String? = null,
+        /** For lakes: size, so distance can be measured to the shore rather than the middle. */
+        val acres: Double? = null,
     ) {
         val label: String get() = name ?: (Features.KIND_LABELS[kind] ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() })
     }
@@ -129,6 +131,7 @@ class Features private constructor(
             "viewpoint" to "Viewpoint", "peak" to "Peak", "lake" to "Lake", "town" to "Town",
             "waterfall" to "Waterfall", "hot_spring" to "Hot spring", "saddle" to "Saddle", "pass" to "Pass",
             "shelter" to "Shelter", "trail" to "Trail", "track" to "Dirt or forest road",
+            "stream" to "Stream crossing", "lookout" to "Fire lookout", "historic" to "Historic site",
         )
 
         private fun key(row: Long, col: Long) = (row shl 32) xor (col and 0xffffffffL)
@@ -147,7 +150,7 @@ class Features private constructor(
                             osmId = props["osm_id"], seasonal = props["seasonal"] == "true",
                             lastEdit = props["last_edit"], isWater = isWater,
                             place = props["place"], population = props["population"]?.toDoubleOrNull()?.toInt(),
-                            website = props["website"],
+                            website = props["website"], acres = props["acres"]?.toDoubleOrNull(),
                         )
                     }
                 }

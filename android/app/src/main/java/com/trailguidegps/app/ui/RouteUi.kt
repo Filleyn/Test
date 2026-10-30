@@ -270,6 +270,11 @@ fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: ()
             }
             Text("%.1f of %.1f mi".format(f.alongM / Geo.M_PER_MI, total / Geo.M_PER_MI), fontSize = 11.sp, color = TG.Muted,
                 modifier = Modifier.padding(top = 2.dp))
+            f.nearest?.let { n ->
+                afterDarkWarning(n[0], n[1], System.currentTimeMillis(), mins)?.let {
+                    Text(it, fontSize = 12.sp, color = Color(0xFF8A4B00), lineHeight = 16.sp)
+                }
+            }
         }
     }
 }
@@ -335,6 +340,7 @@ fun RoutePlannerPanel(
     onSave: () -> Unit,
     onEditPace: () -> Unit,
     onScrub: (Double?) -> Unit = {},
+    onWater: () -> Unit = {},
 ) {
     var showDifficulty by remember { mutableStateOf(false) }
     Column {
@@ -357,6 +363,11 @@ fun RoutePlannerPanel(
                 Spacer(Modifier.height(8.dp))
                 ElevationProfile(plan.stats, onScrub = onScrub)
             }
+            plan.points.firstOrNull()?.let { s ->
+                afterDarkWarning(s.lat, s.lon, System.currentTimeMillis(), pace.minutes(plan.stats.distanceM, plan.stats.gainM))?.let {
+                    Text("If you start now: $it", fontSize = 12.sp, color = Color(0xFF8A4B00), lineHeight = 16.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
             if (plan.via.isNotEmpty()) {
                 Text(
                     "Via " + plan.via.joinToString(" → "), fontSize = 13.sp, color = TG.Ink,
@@ -368,6 +379,7 @@ fun RoutePlannerPanel(
                     "${plan.points.size} point${if (plan.points.size == 1) "" else "s"}" + if (plan.busy) " · finding the trail…" else "",
                     fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f),
                 )
+                if (plan.points.size >= 2) TextButton(onClick = onWater) { Text("Water", fontSize = 12.sp, color = TG.Accent) }
                 TextButton(onClick = onEditPace) { Text("Pace: %.1f mph".format(pace.mph), fontSize = 12.sp, color = TG.Accent) }
             }
         }

@@ -316,6 +316,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Stops recording; saves it unless [save] is false. */
+    // ---- Quick tools: measure, go to, reverse, water along a route ----
+
+    /** Points tapped while measuring, or null when not measuring. */
+    private val _measure = MutableStateFlow<List<DoubleArray>?>(null)
+    val measure: StateFlow<List<DoubleArray>?> = _measure.asStateFlow()
+    fun startMeasure() { select(null); _measure.value = emptyList() }
+    fun addMeasurePoint(lat: Double, lon: Double) { _measure.value = _measure.value?.plus(doubleArrayOf(lat, lon)) }
+    fun undoMeasure() { _measure.value = _measure.value?.dropLast(1) }
+    fun clearMeasure() { if (_measure.value != null) _measure.value = emptyList() }
+    fun stopMeasure() { _measure.value = null }
+
+    /** A place to head toward with the compass arrow. */
+    data class GoTo(val name: String, val lat: Double, val lon: Double)
+    private val _goTo = MutableStateFlow<GoTo?>(null)
+    val goTo: StateFlow<GoTo?> = _goTo.asStateFlow()
+    val compass = com.trailguidegps.app.location.Compass(app)
+    fun startGoTo(name: String, lat: Double, lon: Double) {
+        _goTo.value = GoTo(name, lat, lon)
+        select(null)
+    }
+    fun stopGoTo() { _goTo.value = null }
+
+    /** Saves a copy of a route running the other way (for the hike out), and shows it. */
+    fun reverseRoute(id: String) {
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) { routes.load(id) } ?: return@launch
+            val coords = r.coords.reversed()
+            val pts = r.points.reversed()
+            // Each point's flag says how the leg *into* it was drawn; reversed, that leg leads into the previous point.
+            val flipped = pts.mapIndexed { i, p -> p.copy(followTrails = if (i == 0) true else pts[i - 1].followTrails) }
+            val stats = withContext(Dispatchers.Default) { RouteStats.compute(coords, r.stats.distanceM, terrain) }
+            val baseName = r.name.removeSuffix(" (reversed)")
+            val copy = r.copy(
+                id = RouteStore.newId(), name = if (r.name.endsWith(" (reversed)")) baseName else "$baseName (reversed)",
+                createdAt = System.currentTimeMillis(), points = flipped, coords = coords, stats = stats, via = r.via.reversed(),
+            )
+            withContext(Dispatchers.IO) { routes.save(copy) }
+            folders.folderOf(com.trailguidegps.app.data.FolderStore.routeKey(r.id))?.let {
+                folders.put(com.trailguidegps.app.data.FolderStore.routeKey(copy.id), it.id)
+            }
+            setShown(_shownRoutes.value.filter { it.id != r.id } + copy, copy)
+            _message.value = "Saved \"${copy.name}\": +%,d ft climb, −%,d ft descent.".format(
+                (stats.gainM * com.trailguidegps.app.geo.Geo.FT_PER_M).toInt(), (stats.lossM * com.trailguidegps.app.geo.Geo.FT_PER_M).toInt())
+        }
+    }
+
+    /** Water sources along a line, by mile, with the longest dry stretches. */
+    fun waterPlan(coords: List<DoubleArray>, maxOffM: Double): com.trailguidegps.app.data.WaterPlan =
+        com.trailguidegps.app.data.WaterPlanner.plan(coords, features.value?.allPoints.orEmpty(), maxOffM)
+
     // ---- Trip folders ----
 
     val folders = com.trailguidegps.app.data.FolderStore(app)

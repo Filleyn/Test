@@ -67,6 +67,7 @@ private val kindColors = mapOf(
     "campsite" to 0xFFB4491A, "trailhead" to 0xFF2E7D4F, "trail" to 0xFFB5462A, "peak" to 0xFF5A4636,
     "lake" to 0xFF4A8FC7, "town" to 0xFF23271F, "waterfall" to 0xFF1565C0, "hot_spring" to 0xFFC2185B,
     "shelter" to 0xFF6D4C41, "viewpoint" to 0xFF5E35B1, "toilets" to 0xFF00695C,
+    "stream" to 0xFF3F88C5, "lookout" to 0xFFBF360C, "historic" to 0xFF6D4C41,
 )
 
 /** Offline search: trails, water sources and places from the downloaded maps. */
