@@ -124,6 +124,9 @@ private val layerNames = linkedMapOf(
     "landmanager" to "Land manager (Forest Service, BLM, state…)",
     "forests" to "National forest and reservation boundaries",
     "wilderness" to "Wilderness and other special areas",
+    "slope" to "Slope angle shading (zoom in)",
+    "roadaccess" to "Forest road access (car, high clearance, 4WD)",
+    "burns" to "Past wildfire burn areas (since 2000)",
     "fires" to "Active wildfires (updates when online)",
     "satellite" to "Satellite imagery (online, and saved areas offline)",
 )
@@ -166,6 +169,10 @@ fun MapScreen(
     val goTo by vm.goTo.collectAsStateWithLifecycle()
     val heading by vm.compass.heading.collectAsStateWithLifecycle()
     var waterFor by remember { mutableStateOf<Pair<String, List<DoubleArray>>?>(null) }
+    var peaksFor by remember { mutableStateOf<Triple<String, Double, Double>?>(null) }
+    // Weather: (saved-forecast key, title, spots).
+    var weatherFor by remember { mutableStateOf<Triple<String, String, List<Triple<String, Double, Double>>>?>(null) }
+    var daysFor by remember { mutableStateOf<SavedRoute?>(null) }
     // The compass runs only while a Go to target is set.
     DisposableEffect(goTo != null) {
         if (goTo != null) vm.compass.start()
@@ -302,6 +309,35 @@ fun MapScreen(
                 }
                 val hit = m.queryRenderedFeatures(point, *MapStyle.TAP_LAYERS).firstOrNull()
                 if (hit == null) {
+                    // A Forest Service road: who can drive it and when.
+                    m.queryRenderedFeatures(point, MapStyle.LAYER_ROAD_HIT).firstOrNull()?.let { r ->
+                        fun rp(k: String) = if (r.hasProperty(k) && !r.getProperty(k).isJsonNull) r.getProperty(k).asString else null
+                        val access = when (rp("access")) {
+                            "car" -> "Passenger cars OK"
+                            "high" -> "High-clearance vehicles"
+                            else -> "Not open to cars (OHV only or closed)"
+                        }
+                        val parts = listOfNotNull(
+                            access, rp("level")?.let { "maintenance level $it" }, rp("surface"),
+                            rp("car_dates")?.let { "cars ${it.replace("-", "–")}" } ?: rp("high_dates")?.let { "open ${it.replace("-", "–")}" },
+                            if (rp("seasonal") == "true") "seasonal" else null, rp("forest"),
+                        )
+                        vm.select(Selected(rp("name") ?: "Forest road ${rp("id") ?: ""}".trim(), parts.joinToString(" · "),
+                            latLng.latitude, latLng.longitude,
+                            note = "From the Forest Service's motor vehicle use map. Conditions change; snow and washouts aren't shown."))
+                        return@addOnMapClickListener true
+                    }
+                    // A past wildfire.
+                    m.queryRenderedFeatures(point, MapStyle.LAYER_BURN_FILL).maxByOrNull {
+                        if (it.hasProperty("year")) it.getNumberProperty("year").toInt() else 0
+                    }?.let { b ->
+                        fun bp(k: String) = if (b.hasProperty(k) && !b.getProperty(k).isJsonNull) b.getProperty(k).asString else null
+                        vm.select(Selected("${bp("name") ?: "Unnamed"} Fire (${bp("year") ?: "?"})",
+                            listOfNotNull("Past wildfire", bp("acres")?.toDoubleOrNull()?.let { "%,d acres".format(it.roundToInt()) }).joinToString(" · "),
+                            latLng.latitude, latLng.longitude,
+                            note = "Burned areas can have standing dead trees that fall without warning, blowdown across the trail, and washouts. Check recent trip reports."))
+                        return@addOnMapClickListener true
+                    }
                     // Nothing else here: say whose land it is, if a land layer is on.
                     fun propsOf(layer: String): Map<String, String?>? = m.queryRenderedFeatures(point, layer)
                         .maxByOrNull { f -> if (f.hasProperty("acres")) -(f.getNumberProperty("acres")?.toDouble() ?: 0.0) else 0.0 }
@@ -312,10 +348,12 @@ fun MapScreen(
                         }
                     val bProps = propsOf(MapStyle.LAYER_BOUNDARY_HIT)
                     val lProps = propsOf(MapStyle.LAYER_LAND_FILL)
-                    val land = com.trailguidegps.app.data.PublicLand.describe(propsOf(MapStyle.LAYER_SPECIAL_FILL), bProps, lProps)
+                    val sProps = propsOf(MapStyle.LAYER_SPECIAL_FILL)
+                    val land = com.trailguidegps.app.data.PublicLand.describe(sProps, bProps, lProps)
                     vm.select(land?.let { (title, sub) ->
                         Selected(title, sub, latLng.latitude, latLng.longitude,
-                            links = listOfNotNull(com.trailguidegps.app.data.PublicLand.alertsLink(bProps, lProps)))
+                            links = listOfNotNull(com.trailguidegps.app.data.PublicLand.alertsLink(bProps, lProps)),
+                            note = com.trailguidegps.app.data.PublicLand.campingNote(sProps, bProps, lProps))
                     })
                     return@addOnMapClickListener land != null
                 }
@@ -444,6 +482,7 @@ fun MapScreen(
     LaunchedEffect(style, shownRoutes, shownRoute?.id) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SHOWN_ROUTE)
             ?.setGeoJson(RouteStore.routesGeoJson(shownRoutes, shownRoute?.id))
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_CAMPS)?.setGeoJson(RouteStore.campsGeoJson(shownRoutes))
     }
     LaunchedEffect(shownRoute?.id, plan.active) { profileMark = null }
     LaunchedEffect(style, measure) {
@@ -774,6 +813,12 @@ fun MapScreen(
                 onStopGoTo = { vm.stopGoTo() },
                 onWater = { name, coords -> waterFor = name to coords },
                 onReverse = { id -> vm.reverseRoute(id) },
+                onPeaks = { name, la, lo -> peaksFor = Triple(name, la, lo) },
+                onWeather = { name, la, lo ->
+                    weatherFor = Triple("place:%.3f,%.3f".format(java.util.Locale.US, la, lo), name, listOf(Triple(name, la, lo)))
+                },
+                onDays = { r -> daysFor = r },
+                onRouteWeather = { r -> weatherFor = Triple("route:${r.id}", r.name, vm.weatherSpots(r)) },
                 tripVm = vm,
                 onFollow = onStartFollowing,
                 onStopFollowing = { vm.stopFollowing() },
@@ -816,6 +861,13 @@ fun MapScreen(
             onDismiss = { waterFor = null },
         )
     }
+    peaksFor?.let { (name, la, lo) ->
+        PeaksDialog(vm, name, la, lo, onPick = { pla, plo -> peaksFor = null; vm.focusOn(listOf(pla to plo)) }, onDismiss = { peaksFor = null })
+    }
+    weatherFor?.let { (key, title, spots) ->
+        WeatherDialog(vm, key, title, spots, onDismiss = { weatherFor = null })
+    }
+    daysFor?.let { r -> TripDaysDialog(vm, r, pace, onDismiss = { daysFor = null }) }
 
     if (showPace) {
         PaceDialog(pace, onSave = { vm.setPace(it); showPace = false }, onDismiss = { showPace = false })
@@ -881,6 +933,7 @@ fun MapScreen(
                             colors = SwitchDefaults.colors(checkedTrackColor = TG.Accent),
                         )
                     }
+                    if (layerOn[group] == true) LayerLegend(group)
                 }
                 val fStatus by vm.firesStatus.collectAsStateWithLifecycle()
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -997,6 +1050,10 @@ private fun BottomPanel(
     onStopGoTo: () -> Unit,
     onWater: (String, List<DoubleArray>) -> Unit,
     onReverse: (String) -> Unit,
+    onPeaks: (String, Double, Double) -> Unit,
+    onWeather: (String, Double, Double) -> Unit,
+    onDays: (SavedRoute) -> Unit,
+    onRouteWeather: (SavedRoute) -> Unit,
     tripVm: AppViewModel,
     onFollow: () -> Unit,
     onStopFollowing: () -> Unit,
@@ -1032,12 +1089,14 @@ private fun BottomPanel(
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
                 PlaceActions(selectedWaypoint.lat, selectedWaypoint.lon, selectedWaypoint.name, onGoTo)
+                PlaceExtras(selectedWaypoint.name, selectedWaypoint.lat, selectedWaypoint.lon, onPeaks, onWeather)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             } else if (selected != null) {
                 Row(verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f)) {
                         Text(selected.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
                         Text(selected.subtitle, fontSize = 13.sp, color = TG.Muted)
+                        selected.note?.let { Text(it, fontSize = 13.sp, color = TG.Ink, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp)) }
                         if (selected.isWater) {
                             if (waterNote != null) {
                                 Text("Your note (${waterNote.date}): ${waterNote.text}", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
@@ -1068,6 +1127,7 @@ private fun BottomPanel(
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
                 PlaceActions(selected.lat, selected.lon, selected.title, onGoTo)
+                PlaceExtras(selected.title, selected.lat, selected.lon, onPeaks, onWeather)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             }
 
@@ -1134,6 +1194,9 @@ private fun BottomPanel(
                     Text(statsLine(fix), fontSize = 13.sp, color = TG.Muted)
                     daylightLine(fix.lat, fix.lon)?.let { Text(it, fontSize = 13.sp, color = TG.Muted) }
                     placeDescription?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 2) }
+                    if (selected == null && selectedWaypoint == null && shownRoute == null && goTo == null && following == null) {
+                        PlaceExtras("your location", fix.lat, fix.lon, onPeaks, onWeather)
+                    }
                 }
             }
             goTo?.let { t ->
@@ -1176,9 +1239,12 @@ private fun BottomPanel(
                         Text("If you start now: $it", fontSize = 12.sp, color = Color(0xFF8A4B00), lineHeight = 16.sp)
                     }
                 }
+                daysLine(r, pace)?.let { Text(it, fontSize = 12.sp, color = TG.Ink) }
                 if (shownRouteCount > 1) Text("$shownRouteCount routes on the map · tap a line to switch", fontSize = 12.sp, color = TG.Muted)
                 Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { onWater(r.name, r.coords) }) { Text("Water", fontSize = 13.sp, color = TG.Accent) }
+                    TextButton(onClick = { onDays(r) }) { Text("Days", fontSize = 13.sp, color = TG.Accent) }
+                    TextButton(onClick = { onRouteWeather(r) }) { Text("Weather", fontSize = 13.sp, color = TG.Accent) }
                     TextButton(onClick = { onReverse(r.id) }) { Text("Reverse", fontSize = 13.sp, color = TG.Accent) }
                     TextButton(onClick = { showTripPlan = true }) { Text("Trip plan", fontSize = 13.sp, color = TG.Accent) }
                     if (shownRouteCount > 1) TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 13.sp, color = TG.Accent) }
@@ -1276,6 +1342,27 @@ private fun PlaceActions(lat: Double, lon: Double, label: String, onGoTo: (Strin
             shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp),
         ) { Text("Copy", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
     }
+}
+
+/** A one-line color key under a layer switch. */
+@Composable
+private fun LayerLegend(group: String) {
+    val items = when (group) {
+        "slope" -> listOf(0xFFF2E205 to "25°", 0xFFF59B00 to "30°", 0xFFE3241B to "35°", 0xFF9C27B0 to "45°", 0xFF3B0B59 to "60°+")
+        "roadaccess" -> listOf(0xFF2E7D32 to "Car", 0xFFE65100 to "High clearance", 0xFFC62828 to "OHV/closed", 0xFF6A1B9A to "Rough/4WD")
+        "burns" -> listOf(0x5E6D4C41 to "Older", 0xC06D4C41 to "Recent")
+        else -> return
+    }
+    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        items.forEach { (c, label) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(width = 14.dp, height = 8.dp).background(Color(c.toLong() and 0xFFFFFFFFL), RoundedCornerShape(2.dp)))
+                Text(" $label", fontSize = 11.sp, color = TG.Muted)
+            }
+        }
+    }
+    if (group == "roadaccess") Text("Forest Service roads; dashed = open only part of the year. Rough/4WD from map data, where tagged.",
+        fontSize = 11.sp, color = TG.Muted, modifier = Modifier.padding(bottom = 6.dp))
 }
 
 /** Small red round button for the emergency location screen. */

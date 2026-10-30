@@ -219,7 +219,7 @@ class MapStore(context: Context) {
             "topo.pmtiles", "contours.pmtiles", "terrain.pmtiles",
             "water.geojson", "trails.geojson", "pois.geojson", "manifest.json",
         )
-        val OPTIONAL = listOf("routing.bin.gz", "publiclands.pmtiles")
+        val OPTIONAL = listOf("routing.bin.gz", "publiclands.pmtiles", "slope.pmtiles", "extras.pmtiles")
         private const val TAG_FILE = "release-tag.txt"
     }
 }

@@ -17,13 +17,14 @@ import kotlin.math.tan
 class Terrain(file: File) {
     private val pm = PmTiles(file)
     private val zoom = pm.maxZoom
+    val maxZoom: Int get() = pm.maxZoom
     private val missing = IntArray(0)
-    private val tiles = object : LruCache<Long, IntArray>(48) {}
+    private val tiles = object : LruCache<Long, IntArray>(96) {}
 
-    private fun pixels(x: Int, y: Int): IntArray? {
-        val key = (x.toLong() shl 32) or (y.toLong() and 0xffffffffL)
+    private fun pixels(z: Int, x: Int, y: Int): IntArray? {
+        val key = (z.toLong() shl 58) or (x.toLong() shl 29) or (y.toLong() and 0x1fffffffL)
         tiles.get(key)?.let { return if (it === missing) null else it }
-        val bytes = pm.tile(zoom, x, y)
+        val bytes = pm.tile(z, x, y)
         val px = bytes?.let { b ->
             BitmapFactory.decodeByteArray(b, 0, b.size)?.let { bmp ->
                 IntArray(bmp.width * bmp.height).also { bmp.getPixels(it, 0, bmp.width, 0, 0, bmp.width, bmp.height); bmp.recycle() }
@@ -34,8 +35,15 @@ class Terrain(file: File) {
     }
 
     /** Elevation in metres, or null outside the map area. */
+    fun elevationM(lat: Double, lon: Double): Double? = elevationM(lat, lon, zoom)
+
+    /**
+     * Elevation from a coarser zoom when [z] is below the most detailed one: each tile
+     * covers more ground, so far-away lookups (what's visible from a summit) read far fewer tiles.
+     */
     @Synchronized
-    fun elevationM(lat: Double, lon: Double): Double? {
+    fun elevationM(lat: Double, lon: Double, z: Int): Double? {
+        val zoom = z.coerceIn(pm.minZoom, pm.maxZoom)
         val n = 1 shl zoom
         val xf = (lon + 180.0) / 360.0 * n
         val r = Math.toRadians(lat)
@@ -43,7 +51,7 @@ class Terrain(file: File) {
         val tx = floor(xf).toInt()
         val ty = floor(yf).toInt()
         if (tx < 0 || ty < 0 || tx >= n || ty >= n) return null
-        val px = pixels(tx, ty) ?: return null
+        val px = pixels(zoom, tx, ty) ?: return null
         val size = kotlin.math.sqrt(px.size.toDouble()).toInt()
         val ix = ((xf - tx) * size).toInt().coerceIn(0, size - 1)
         val iy = ((yf - ty) * size).toInt().coerceIn(0, size - 1)

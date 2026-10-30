@@ -12,6 +12,8 @@ data class SearchResult(
     val point: Features.Point? = null,
     /** "14 mi NE of Sisters", filled in for the results shown. */
     val near: String? = null,
+    /** Extra detail for some filters ("water 300 ft: Lost Creek"). */
+    val detail: String? = null,
 )
 
 /** Offline search over the named places and trails in the map files. */
@@ -24,6 +26,7 @@ object Search {
         "Trails" to setOf("trail"),
         "Trailheads" to setOf("trailhead"),
         "Campsites" to setOf("campsite", "shelter"),
+        "Camps by water" to setOf(CAMP_WATER),
         "Water" to setOf("spring", "drinking_water", "water_point", "well", "stream", "lake"),
         "Peaks" to setOf("peak", "saddle", "pass", "viewpoint"),
         "Waterfalls" to setOf("waterfall", "hot_spring"),
@@ -31,7 +34,24 @@ object Search {
         "Towns" to setOf("town"),
     )
 
+    /** Filter marker: campsites and shelters with water within [CAMP_WATER_M]. */
+    const val CAMP_WATER = "camp+water"
+    const val CAMP_WATER_M = 1000 / 3.28084 // 1,000 ft
+    private val CAMP_KINDS = setOf("campsite", "shelter")
+
+    /** "Water 300 ft: Lost Creek", or null when there's no water near enough. */
+    fun waterDetail(features: Features, p: Features.Point): String? =
+        features.waterNear(p.lat, p.lon, CAMP_WATER_M)?.let { (w, d) ->
+            val what = w.name ?: (Features.KIND_LABELS[w.kind] ?: "water")
+            "Water ${if (d < 15) "right there" else Geo.formatDistance(d)}: $what" + if (w.seasonal) " (may be seasonal)" else ""
+        }
+
     fun search(features: Features, query: String, refLat: Double, refLon: Double, kinds: Set<String>? = null): List<SearchResult> {
+        if (kinds != null && CAMP_WATER in kinds) {
+            return search(features, query, refLat, refLon, CAMP_KINDS).mapNotNull { r ->
+                r.point?.let { p -> waterDetail(features, p) }?.let { r.copy(detail = it) }
+            }
+        }
         val q = query.trim().lowercase()
         if (q.isEmpty()) return emptyList()
         val tokens = q.split(Regex("\\s+"))
@@ -70,7 +90,16 @@ object Search {
 
     /** Closest points of the given kinds, nearest first, within [maxM]. */
     fun nearest(features: Features, kinds: Set<String>, refLat: Double, refLon: Double, n: Int = 8, maxM: Double = 32_000.0): List<SearchResult> =
-        features.allPoints.asSequence()
+        if (CAMP_WATER in kinds) features.allPoints.asSequence()
+            .filter { it.kind in CAMP_KINDS }
+            .map { p -> SearchResult(p.label, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p) }
+            .filter { it.distanceM <= maxM }
+            .sortedBy { it.distanceM }
+            .mapNotNull { r -> waterDetail(features, r.point!!)?.let { r.copy(detail = it) } }
+            .take(n)
+            .map { it.withNear(features) }
+            .toList()
+        else features.allPoints.asSequence()
             .filter { it.kind in kinds }
             .map { p -> SearchResult(p.label, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p) }
             .filter { it.distanceM <= maxM }

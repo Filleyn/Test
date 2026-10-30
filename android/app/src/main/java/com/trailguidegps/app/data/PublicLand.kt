@@ -63,6 +63,23 @@ object PublicLand {
         }
     }
 
+    /**
+     * Dispersed camping rules for Forest Service or BLM land, or null elsewhere. From the
+     * agencies' own pages (Mt. Hood NF and blm.gov, checked October 2026); forests vary.
+     */
+    fun campingNote(special: Map<String, String?>?, boundary: Map<String, String?>?, land: Map<String, String?>?): String? {
+        val mgr = land?.get("mgr") ?: boundary?.get("mgr")
+        val wilderness = special?.get("des") == "WA"
+        return when (mgr) {
+            "USFS" -> "Dispersed camping is generally allowed on national forest land: up to 14 days in one spot " +
+                "(28 days a year on the forest), at least 100 ft from water. Some roads, developed sites and " +
+                "sensitive areas are closed to it" + (if (wilderness) ", and wilderness areas can have their own limits." else ".")
+            "BLM" -> "Dispersed camping is generally allowed on BLM land: 14 days within any 28-day period, then " +
+                "move well away; camp about 200 ft from water. Check for posted closures."
+            else -> null
+        }
+    }
+
     /** "National forest" for a PROC boundary, depending on who manages it. */
     fun boundaryKind(des: String?, mgr: String?): String = when {
         des == "TRIBL" -> "Tribal land (reservation)"

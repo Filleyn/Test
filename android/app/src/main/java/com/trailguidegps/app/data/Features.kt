@@ -32,6 +32,8 @@ class Features private constructor(
         val website: String? = null,
         /** For lakes: size, so distance can be measured to the shore rather than the middle. */
         val acres: Double? = null,
+        /** Elevation in feet, for peaks (from the map data, or the terrain if mappers left it out). */
+        val eleFt: Double? = null,
     ) {
         val label: String get() = name ?: (Features.KIND_LABELS[kind] ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() })
     }
@@ -71,6 +73,25 @@ class Features private constructor(
         return if (d < 1200) "in ${t.name}"
         else "${Geo.formatDistance(d)} ${Geo.compassPoint(Geo.bearingDeg(t.lat, t.lon, lat, lon))} of ${t.name}"
     }
+
+    /** Water sources and lakes on a grid, for "is there water near this campsite". */
+    private val waterGrid: Map<Long, List<Point>> by lazy {
+        points.filter { it.isWater || it.kind == "lake" }.groupBy { cell(it.lat, it.lon) }
+    }
+
+    /**
+     * The closest water within [maxM] of a spot, and how far it is (lakes from their
+     * shore, roughly). Seasonal sources count only if [seasonalOk].
+     */
+    fun waterNear(lat: Double, lon: Double, maxM: Double, seasonalOk: Boolean = true): Pair<Point, Double>? =
+        nearbyCells(lat, lon, 1).asSequence().flatMap { waterGrid[it].orEmpty().asSequence() }
+            .filter { seasonalOk || !it.seasonal }
+            .map { w ->
+                val radius = w.acres?.let { kotlin.math.sqrt(it * 4046.86 / Math.PI) } ?: 0.0
+                w to (Geo.distanceM(lat, lon, w.lat, w.lon) - radius).coerceAtLeast(0.0)
+            }
+            .filter { it.second <= maxM }
+            .minByOrNull { it.second }
 
     /** Named trails grouped by name; one trail name often spans many map segments. */
     val trailsByName: Map<String, List<Trail>> by lazy { trails.groupBy { it.name } }
@@ -151,6 +172,7 @@ class Features private constructor(
                             lastEdit = props["last_edit"], isWater = isWater,
                             place = props["place"], population = props["population"]?.toDoubleOrNull()?.toInt(),
                             website = props["website"], acres = props["acres"]?.toDoubleOrNull(),
+                            eleFt = props["ele_ft"]?.toDoubleOrNull(),
                         )
                     }
                 }

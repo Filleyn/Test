@@ -74,8 +74,21 @@ object TripPlan {
             start?.let { appendLine("Map link: https://www.google.com/maps/search/?api=1&query=%.5f,%.5f".format(Locale.US, it[0], it[1])) }
             appendLine("Distance: %.1f mi, +%,d ft climb, about %s".format(route.stats.distanceM / Geo.M_PER_MI,
                 (route.stats.gainM * Geo.FT_PER_M).roundToInt(), Pace.format(pace.minutes(route.stats.distanceM, route.stats.gainM))))
+            if (route.camps.isNotEmpty()) {
+                appendLine()
+                TripDays.days(route, route.camps, pace).forEach { d -> appendLine(dayLine(route, d)) }
+            }
             if (form.notes.isNotBlank()) { appendLine(); appendLine("Notes: ${form.notes}") }
         }
+    }
+
+    /** "Day 1: 8.2 mi, +2,100 ft, about 5h 10m. Camp: Lost Lake (44.12345, -121.12345)" */
+    private fun dayLine(route: SavedRoute, d: TripDay): String {
+        val camp = if (d.endsAtCamp) RouteStore.pointAt(route.coords, d.toM)?.let { p ->
+            " Camp: ${d.endName ?: "mile %.1f".format(d.toM / Geo.M_PER_MI)} (%.5f, %.5f)".format(Locale.US, p[0], p[1])
+        } ?: "" else " Out at the end of the route."
+        return "Day ${d.day}: %.1f mi, +%,d ft, about %s.".format(d.distanceM / Geo.M_PER_MI, (d.gainM * Geo.FT_PER_M).roundToInt(),
+            Pace.format(d.minutes)) + camp
     }
 
     /** Writes the PDF. [map] is a snapshot of the route area with the route drawn on it, or null. */
@@ -179,7 +192,24 @@ object TripPlan {
             c.drawText("%,d ft".format((prof.maxOf { it.second } * Geo.FT_PER_M).roundToInt()), left, y + 8, label)
             c.drawText("%,d ft".format((minE * Geo.FT_PER_M).roundToInt()), left, y + h - 2, label)
             c.drawText("%.1f mi".format(maxD / Geo.M_PER_MI), left + width - 30, y + h + 10, label)
+            // Camps on the profile.
+            val campPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(107, 63, 160); strokeWidth = 1f }
+            route.camps.sortedBy { it.alongM }.forEachIndexed { i, cp ->
+                val px = left + (cp.alongM / maxD * width).toFloat()
+                c.drawLine(px, y, px, y + h, campPaint)
+                c.drawText("Night ${i + 1}", px + 2, y + h + 10, label)
+            }
             y += h + 16
+        }
+
+        // Day by day, for a multi-day trip.
+        if (route.camps.isNotEmpty() && y < 700) {
+            c.drawText("DAY BY DAY", left, y + 9, label)
+            y += 12
+            TripDays.days(route, route.camps, pace).forEach { d ->
+                if (y < 735) y = block(dayLine(route, d), text, left, y, width, 2) + 2
+            }
+            y += 6
         }
 
         // Named points along the way.

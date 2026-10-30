@@ -173,6 +173,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val isWater: Boolean = false,
         /** Pages to check, as (label, web address): official site, agency alerts, web search. */
         val links: List<Pair<String, String>> = emptyList(),
+        /** A paragraph of advice (camping rules, burn hazards). */
+        val note: String? = null,
     )
     private val _selected = MutableStateFlow<SelectedPlace?>(null)
     val selected: StateFlow<SelectedPlace?> = _selected.asStateFlow()
@@ -351,6 +353,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val copy = r.copy(
                 id = RouteStore.newId(), name = if (r.name.endsWith(" (reversed)")) baseName else "$baseName (reversed)",
                 createdAt = System.currentTimeMillis(), points = flipped, coords = coords, stats = stats, via = r.via.reversed(),
+                camps = r.camps.map { it.copy(alongM = (r.stats.distanceM - it.alongM).coerceAtLeast(0.0)) }.sortedBy { it.alongM },
             )
             withContext(Dispatchers.IO) { routes.save(copy) }
             folders.folderOf(com.trailguidegps.app.data.FolderStore.routeKey(r.id))?.let {
@@ -502,6 +505,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             route.coords.last().let { dot(it[0], it[1], android.graphics.Color.rgb(183, 28, 28)) }
             route.coords.first().let { dot(it[0], it[1], android.graphics.Color.rgb(46, 139, 87)) }
+            // Camps, numbered by night.
+            val label = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = 26f; typeface = android.graphics.Typeface.DEFAULT_BOLD; color = android.graphics.Color.parseColor(route.color)
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+            route.camps.sortedBy { it.alongM }.forEachIndexed { i, c ->
+                RouteStore.pointAt(route.coords, c.alongM)?.let { pt ->
+                    val p = px(pt[0], pt[1])
+                    canvas.drawCircle(p.x, p.y, 17f, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
+                    canvas.drawCircle(p.x, p.y, 17f, stroke(android.graphics.Color.parseColor(route.color), 5f))
+                    canvas.drawText("${i + 1}", p.x, p.y + 9f, label)
+                }
+            }
             done(bmp)
         }, { _ -> if (!finished) { finished = true; done(null) } })
     }
@@ -852,6 +868,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         routes.setColor(id, color)
         updateShown(id) { it.copy(color = color) }
     }
+
+    /** Saves the nights out for a multi-day route (empty for a day hike). */
+    fun setCamps(id: String, camps: List<com.trailguidegps.app.data.Camp>) {
+        viewModelScope.launch {
+            val sorted = camps.sortedBy { it.alongM }
+            withContext(Dispatchers.IO) { routes.load(id)?.let { routes.save(it.copy(camps = sorted)) } }
+            updateShown(id) { it.copy(camps = sorted) }
+        }
+    }
+
+    /** Campsites and water along a route, for choosing camps. */
+    suspend fun campSpots(route: SavedRoute): List<com.trailguidegps.app.data.CampSpot> = withContext(Dispatchers.Default) {
+        features.value?.let { com.trailguidegps.app.data.TripDays.spots(route, it) }.orEmpty()
+    }
+
+    // ---- What's visible, and weather ----
+
+    /** Named peaks visible from a spot, worked out offline. Null without terrain data. */
+    suspend fun peaksFrom(lat: Double, lon: Double): com.trailguidegps.app.data.PeakView.Result? = withContext(Dispatchers.Default) {
+        val t = terrain ?: return@withContext null
+        val peaks = features.value?.allPoints.orEmpty().filter { it.kind == "peak" && it.name != null }
+        runCatching {
+            com.trailguidegps.app.data.PeakView.compute(lat, lon, peaks, t.maxZoom) { la, lo, z -> t.elevationM(la, lo, z) }
+        }.getOrNull()
+    }
+
+    /** Where to get a forecast for a route: the start, the high point and each camp. */
+    fun weatherSpots(r: SavedRoute): List<Triple<String, Double, Double>> {
+        val out = ArrayList<Triple<String, Double, Double>>()
+        r.coords.firstOrNull()?.let { out += Triple("Start", it[0], it[1]) }
+        r.stats.profile.maxByOrNull { it.second }?.let { (d, _) ->
+            RouteStore.pointAt(r.coords, d)?.let { p ->
+                if (out.none { com.trailguidegps.app.geo.Geo.distanceM(it.second, it.third, p[0], p[1]) < 2500 }) out += Triple("High point", p[0], p[1])
+            }
+        }
+        r.camps.sortedBy { it.alongM }.forEachIndexed { i, c ->
+            RouteStore.pointAt(r.coords, c.alongM)?.let { p ->
+                if (out.none { com.trailguidegps.app.geo.Geo.distanceM(it.second, it.third, p[0], p[1]) < 2500 })
+                    out += Triple("Night ${i + 1}" + (c.name?.let { ": $it" } ?: ""), p[0], p[1])
+            }
+        }
+        return out
+    }
+
+    fun savedWeather(key: String) = com.trailguidegps.app.data.Weather.saved(getApplication(), key)
+
+    /** Fetches forecasts for [spots] and keeps them under [key] for offline reading. */
+    suspend fun fetchWeather(key: String, spots: List<Triple<String, Double, Double>>): Result<List<com.trailguidegps.app.data.Weather.Forecast>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val list = spots.map { (label, la, lo) -> com.trailguidegps.app.data.Weather.fetch(label, la, lo, elevationAt(la, lo)) }
+                com.trailguidegps.app.data.Weather.save(getApplication(), key, list)
+                list
+            }.recoverCatching { e ->
+                throw java.io.IOException(when (e) {
+                    is java.net.UnknownHostException -> "No internet connection. The forecast needs Wi-Fi or data."
+                    is java.net.SocketTimeoutException -> "The weather service didn't answer in time. Try again."
+                    else -> e.message ?: "Couldn't get the forecast."
+                })
+            }
+        }
 
     fun renameRoute(id: String, name: String) {
         routes.rename(id, name)

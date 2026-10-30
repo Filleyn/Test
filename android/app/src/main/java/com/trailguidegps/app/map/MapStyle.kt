@@ -51,12 +51,15 @@ object MapStyle {
         "forests" to listOf(LAYER_BOUNDARY_HIT, "boundary-line", "boundary-line-labels", "boundary-point-labels"),
         // The saved-area layers are added per area; MapScreen finds them by the "satellite" prefix.
         "satellite" to listOf("satellite-online"),
+        "slope" to listOf("slope"),
+        "roadaccess" to listOf("mvum-yearlong", "mvum-seasonal", "rough-roads", LAYER_ROAD_HIT),
+        "burns" to listOf(LAYER_BURN_FILL, "burns-line", "burns-labels"),
         "fires" to listOf(LAYER_FIRE_FILL, "fire-line", LAYER_FIRE_POINTS, "fire-labels"),
         "wilderness" to listOf(LAYER_SPECIAL_FILL, "special-line", "special-line-other", "special-line-labels", "special-point-labels"),
     )
 
     /** Layer groups that start switched off. */
-    val DEFAULT_OFF = setOf("landmanager", "satellite")
+    val DEFAULT_OFF = setOf("landmanager", "satellite", "slope", "roadaccess", "burns")
 
     /** Tap these (in order) for who manages the land, when nothing else was tapped. */
     val LAND_TAP_LAYERS = arrayOf(LAYER_SPECIAL_FILL, LAYER_BOUNDARY_HIT, LAYER_LAND_FILL)
@@ -91,6 +94,14 @@ object MapStyle {
             .put("water", JSONObject().put("type", "geojson").put("data", gj("water.geojson")))
             .put("pois", JSONObject().put("type", "geojson").put("data", gj("pois.geojson")))
             .apply {
+                if (store.file("slope.pmtiles").exists()) {
+                    put("slope", JSONObject().put("type", "raster").put("url", pm("slope.pmtiles")).put("tileSize", 256)
+                        .put("attribution", "Slope from USGS 3DEP"))
+                }
+                if (store.file("extras.pmtiles").exists()) {
+                    put("extras", JSONObject().put("type", "vector").put("url", pm("extras.pmtiles"))
+                        .put("attribution", "USDA Forest Service MVUM, NIFC fire history"))
+                }
                 if (store.file("publiclands.pmtiles").exists()) {
                     put("publiclands", JSONObject().put("type", "vector").put("url", pm("publiclands.pmtiles"))
                         .put("attribution", "Public land: USGS PAD-US"))
@@ -99,6 +110,7 @@ object MapStyle {
             // Your own data, filled in by the app after the style loads.
             .put(SRC_SHOWN_TRACK, emptyGeoJson())
             .put(SRC_SHOWN_ROUTE, emptyGeoJson())
+            .put(SRC_CAMPS, emptyGeoJson())
             .put(SRC_PLAN, emptyGeoJson())
             .put(SRC_PLAN_POINTS, emptyGeoJson())
             .put(SRC_PROFILE_MARK, emptyGeoJson())
@@ -159,9 +171,21 @@ object MapStyle {
             layer(LAYER_BOUNDARY_HIT, "fill", "publiclands", "boundary", paint = JSONObject()
                 .put("fill-color", "#000000").put("fill-opacity", HIT_OPACITY))
         }
+        val hasExtras = store.file("extras.pmtiles").exists()
+        if (hasExtras) {
+            // Past wildfires: browner the more recent.
+            layer(LAYER_BURN_FILL, "fill", "extras", "burns", paint = JSONObject().put("fill-color", "#6D4C41")
+                .put("fill-opacity", arr("interpolate", arr("linear"), arr("get", "year"), 2000, 0.10, 2026, 0.38)))
+            layer("burns-line", "line", "extras", "burns", paint = JSONObject().put("line-color", "#5D4037").put("line-width", 1)
+                .put("line-opacity", 0.6))
+        }
         layer("hillshade", "hillshade", "terrain", paint = JSONObject()
             .put("hillshade-exaggeration", 0.45).put("hillshade-shadow-color", "#4E4232")
             .put("hillshade-highlight-color", "#FFFFFF").put("hillshade-accent-color", "#6B5A44"))
+        if (store.file("slope.pmtiles").exists()) {
+            layer("slope", "raster", "slope", paint = JSONObject().put("raster-opacity", 0.5).put("raster-fade-duration", 0)
+                .put("raster-resampling", "nearest"), minzoom = 10.0)
+        }
         // Satellite: USGS imagery online, with saved areas on top so they show offline. Off until switched on.
         sources.put("satellite-online", JSONObject().put("type", "raster")
             .put("tiles", arr(com.trailguidegps.app.data.SatelliteStore.TILE_URL + "/{z}/{y}/{x}"))
@@ -210,6 +234,20 @@ object MapStyle {
         layer("trail", "line", "topo", "transportation", inClass(arr("path")),
             JSONObject().put("line-color", "#B5462A").put("line-width", byZoom(10, 1.2, 15, 2.8))
                 .put("line-dasharray", arr(3, 1.5)))
+        if (hasExtras) {
+            // Forest Service road access: green passenger car, orange high clearance, red OHV only; dashed if seasonal.
+            val accessColor = arr("match", arr("get", "access"), "car", "#2E7D32", "high", "#E65100", "#C62828")
+            val accessWidth = byZoom(9, 1.5, 15, 4.5)
+            layer("mvum-yearlong", "line", "extras", "mvum", arr("!=", arr("get", "seasonal"), true),
+                JSONObject().put("line-color", accessColor).put("line-width", accessWidth).put("line-opacity", 0.85), minzoom = 9.0)
+            layer("mvum-seasonal", "line", "extras", "mvum", arr("==", arr("get", "seasonal"), true),
+                JSONObject().put("line-color", accessColor).put("line-width", accessWidth).put("line-opacity", 0.85)
+                    .put("line-dasharray", arr(2.5, 1.2)), minzoom = 9.0)
+            layer("rough-roads", "line", "extras", "rough", paint = JSONObject().put("line-color", "#6A1B9A")
+                .put("line-width", byZoom(10, 1.5, 15, 3.5)).put("line-dasharray", arr(0.6, 1.4)), minzoom = 10.0)
+            layer(LAYER_ROAD_HIT, "line", "extras", "mvum", paint = JSONObject().put("line-color", "#000000")
+                .put("line-opacity", HIT_OPACITY).put("line-width", 16), minzoom = 9.0)
+        }
         // Invisible wide lines so trails are easy to tap (named ones carry their name here).
         layer("trail-hit", "line", "topo", "transportation_name", inClass(trails),
             JSONObject().put("line-color", "#000000").put("line-opacity", HIT_OPACITY).put("line-width", 18))
@@ -249,6 +287,12 @@ object MapStyle {
                 halo("#FFFFFF", "#2E5E1E", 1.6),
                 JSONObject().put("text-font", arr(ITALIC)).put("text-size", 11).put("text-field", arr("get", "name"))
                     .put("text-max-width", 8), minzoom = 8.0, maxzoom = 11.0)
+        }
+        if (hasExtras) {
+            layer("burns-labels", "symbol", "extras", "burns", paint = halo("#FFFFFF", "#5D4037", 1.4),
+                layout = JSONObject().put("text-font", arr(ITALIC)).put("text-size", 11)
+                    .put("text-field", arr("concat", arr("get", "name"), " Fire ", arr("to-string", arr("get", "year"))))
+                    .put("text-optional", true), minzoom = 10.0)
         }
         layer("place-names", "symbol", "topo", "place", paint = halo("#FFFFFF", "#23271F"),
             layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 13).put("text-field", arr("get", "name")))
@@ -317,6 +361,16 @@ object MapStyle {
             layout = JSONObject().put("symbol-placement", "line").put("symbol-spacing", 350).put("text-font", arr(MEDIUM))
                 .put("text-size", 12).put("text-field", arr("get", "name")).put("text-optional", true),
             minzoom = 11.0)
+        // Nights out on multi-day routes.
+        layer("route-camps", "circle", SRC_CAMPS, paint = JSONObject()
+            .put("circle-radius", 7).put("circle-color", "#FFFFFF")
+            .put("circle-stroke-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("circle-stroke-width", 4))
+        layer("route-camps-labels", "symbol", SRC_CAMPS,
+            paint = JSONObject().put("text-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
+                .put("text-halo-color", "#FFFFFF").put("text-halo-width", 2),
+            layout = JSONObject().put("text-field", arr("get", "label")).put("text-font", arr(MEDIUM)).put("text-size", 12)
+                .put("text-offset", arr(0, 1.3)).put("text-anchor", "top").put("text-optional", true),
+            minzoom = 10.0)
         layer("plan-casing", "line", SRC_PLAN, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer("plan-trail", "line", SRC_PLAN, filter = arr("==", arr("get", "trail"), true),
@@ -374,6 +428,7 @@ object MapStyle {
 
     const val SRC_SHOWN_TRACK = "user-shown-track"
     const val SRC_SHOWN_ROUTE = "user-shown-route"
+    const val SRC_CAMPS = "user-camps"
     const val LAYER_SHOWN_ROUTE_HIT = "shown-route-hit"
     const val SRC_PLAN = "user-plan"
     const val SRC_PLAN_POINTS = "user-plan-points"
@@ -396,6 +451,8 @@ object MapStyle {
     private const val HIT_OPACITY = 0.01
     const val LAYER_WAYPOINTS = "user-waypoints"
     const val LAYER_LAND_FILL = "land-fill"
+    const val LAYER_BURN_FILL = "burns-fill"
+    const val LAYER_ROAD_HIT = "mvum-hit"
     const val LAYER_SPECIAL_FILL = "special-fill"
     const val LAYER_BOUNDARY_HIT = "boundary-hit"
 

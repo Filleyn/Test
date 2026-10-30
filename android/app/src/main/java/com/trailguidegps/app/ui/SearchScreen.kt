@@ -224,6 +224,7 @@ private fun ResultRow(r: SearchResult, note: String?, onClick: () -> Unit) {
             if (r.point?.seasonal == true) parts += "seasonal"
             r.near?.let { parts += it }
             Text(parts.joinToString(" · "), fontSize = 13.sp, color = TG.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            r.detail?.let { Text(it, fontSize = 13.sp, color = Color(0xFF1F5FA8), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             note?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         val ref = r.distanceM

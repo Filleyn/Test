@@ -220,6 +220,8 @@ data class SavedRoute(
     val via: List<String>,
     val color: String = RouteColors.DEFAULT,
     val terrain: RouteTerrain? = null,
+    /** Nights out, for a multi-day trip; empty for a day hike. */
+    val camps: List<Camp> = emptyList(),
 )
 
 data class RouteSummary(
@@ -260,6 +262,9 @@ class RouteStore(context: Context) {
                     put(JSONObject().put("lat", p.lat).put("lon", p.lon).put("trail", p.followTrails).put("wp", p.waypointName ?: JSONObject.NULL))
                 }
             })
+            .put("camps", JSONArray().apply {
+                r.camps.forEach { put(JSONObject().put("along", it.alongM.roundToInt()).put("name", it.name ?: JSONObject.NULL)) }
+            })
             .put("coords", JSONArray().apply { r.coords.forEach { put(JSONArray().put(round6(it[0])).put(round6(it[1]))) } })
             .put("profile", JSONArray().apply { r.stats.profile.forEach { put(JSONArray().put(it.first.roundToInt()).put((it.second * 10).roundToInt() / 10.0)) } })
         val tmp = File(dir, "${r.id}.json.tmp")
@@ -288,6 +293,11 @@ class RouteStore(context: Context) {
             o.optJSONObject("terrain")?.let { t ->
                 RouteTerrain(t.optDouble("trail"), t.optDouble("track"), t.optDouble("road"), t.optDouble("off"),
                     t.optInt("sac"), t.optDouble("sacRated"))
+            },
+            (o.optJSONArray("camps") ?: JSONArray()).let { a ->
+                (0 until a.length()).map { i ->
+                    a.getJSONObject(i).let { c -> Camp(c.getDouble("along"), c.optString("name").takeIf { !c.isNull("name") && it.isNotBlank() }) }
+                }
             },
         )
     }.getOrNull()
@@ -372,6 +382,20 @@ class RouteStore(context: Context) {
                 features.put(JSONObject().put("type", "Feature")
                     .put("properties", JSONObject().put("id", r.id).put("name", r.name).put("color", r.color).put("focus", r.id == focusId))
                     .put("geometry", JSONObject().put("type", "LineString").put("coordinates", c)))
+            }
+            return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
+        }
+
+        /** Each shown route's camps, as "Night 1: Lost Lake" points in the route's color. */
+        fun campsGeoJson(routes: List<SavedRoute>): String {
+            val features = JSONArray()
+            routes.forEach { r ->
+                r.camps.sortedBy { it.alongM }.forEachIndexed { i, c ->
+                    val p = pointAt(r.coords, c.alongM) ?: return@forEachIndexed
+                    features.put(JSONObject().put("type", "Feature")
+                        .put("properties", JSONObject().put("label", "Night ${i + 1}" + (c.name?.let { ": $it" } ?: "")).put("color", r.color))
+                        .put("geometry", JSONObject().put("type", "Point").put("coordinates", JSONArray().put(p[1]).put(p[0]))))
+                }
             }
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
         }
