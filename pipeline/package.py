@@ -131,7 +131,8 @@ def main():
     lines += ["", "### Checks", ""]
     lines.append(f"- {'✅' if not missing else '❌'} All expected files built" + (f" (missing: {', '.join(missing)})" if missing else ""))
     if stats:
-        lines.append(f"- Water sources: {stats.get('water_sources', 0)} ({stats.get('water_seasonal', 0)} marked seasonal)")
+        lines.append(f"- Water sources: {stats.get('water_sources', 0):,} ({stats.get('water_seasonal', 0):,} marked seasonal), "
+                     f"including {stats.get('stream_crossings', 0):,} trail and dirt-road stream crossings")
         lines.append(f"- Trail ways: {stats.get('trail_ways', 0)}, named trails: {stats.get('named_trails', 0)}")
         lines.append(f"- Trail network: {stats.get('graph_edges', 0):,} segments, {stats.get('graph_miles', 0):,} mi, {stats.get('graph_mb_unpacked', 0)} MB unpacked, elevation {'included' if stats.get('has_elevation') else 'MISSING'}")
         if a.expect_trail:

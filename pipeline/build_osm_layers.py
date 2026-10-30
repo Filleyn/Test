@@ -47,7 +47,11 @@ WATER_TAGS = [
     ("man_made", "water_well", "well"),
     ("natural", "water_point", "water_point"),
 ]
+HISTORIC = ["ruins", "archaeological_site", "mine", "mine_shaft", "adit", "monument", "fort", "wreck",
+            "homestead", "cabin", "railway_station"]
 POI_TAGS = [
+    ("tower:type", "fire_lookout", "lookout"),
+    ("historic", "fire_lookout", "lookout"),
     ("natural", "peak", "peak"),
     ("highway", "trailhead", "trailhead"),
     ("tourism", "camp_site", "campsite"),
@@ -63,13 +67,14 @@ POI_TAGS = [
     ("place", "town", "town"),
     ("place", "village", "town"),
     ("place", "hamlet", "town"),
-]
+] + [("historic", v, "historic") for v in HISTORIC]
+STREAMS = {"stream", "river", "canal"}
 
 
 # Many trailheads are only mapped as a parking lot named "... Trailhead".
 TRAILHEAD_NAME = re.compile(r"trail\s*head|\bTH\b", re.I)
 # Kinds that are also mapped as areas (a campground outline, a restroom building).
-AREA_POI_KINDS = {"trailhead", "campsite", "toilets", "shelter", "viewpoint", "waterfall", "hot_spring"}
+AREA_POI_KINDS = {"trailhead", "campsite", "toilets", "shelter", "viewpoint", "waterfall", "hot_spring", "lookout", "historic"}
 
 
 def poi_kind(tags):
@@ -375,6 +380,38 @@ def derive_trailheads(ways, pois, radius_m=400):
     return added
 
 
+def stream_crossings(ways, streams, merge_m=40):
+    """Where trails and dirt roads cross creeks and rivers: water sources for planning.
+
+    Most backcountry water in Oregon comes from creeks, and OpenStreetMap rarely
+    marks a water point at a trail crossing. Creeks tagged intermittent are flagged
+    seasonal. Crossings of the same creek within [merge_m] are kept once.
+    """
+    from shapely import STRtree, LineString, get_coordinates
+    if not streams:
+        return []
+    s_geoms = [LineString(p) for _, p, _, _, _ in streams]
+    tree = STRtree(s_geoms)
+    paths = [(wid, coords) for wid, _, coords, info in ways if info["kind"] in TRAIL_KINDS]
+    p_geoms = [LineString(c) for _, c in paths]
+    pairs = tree.query(p_geoms, predicate="intersects")
+    out, seen = [], {}
+    for pi, si in zip(pairs[0], pairs[1]):
+        inter = p_geoms[pi].intersection(s_geoms[si])
+        sid, _, name, seasonal, kind = streams[si]
+        for lon, lat in get_coordinates(inter)[:3]:
+            key = (sid, round(lon, 3), round(lat, 3))
+            near = [p for p in seen.get(sid, []) if haversine_m(lon, lat, *p) < merge_m]
+            if near:
+                continue
+            seen.setdefault(sid, []).append((lon, lat))
+            out.append(feature("Point", [round(float(lon), 6), round(float(lat), 6)], {
+                "kind": "stream", "name": name, "seasonal": seasonal, "drinking_water": None,
+                "waterway": kind, "osm_id": f"x{paths[pi][0]}_{sid}", "last_edit": None,
+            }))
+    return out
+
+
 def merge_area_pois(pois, area_pois, radius_m=150):
     """Adds area places unless the same kind is already mapped as a point close by
     (a trailhead sign next to its parking lot, say). Returns how many were added per kind."""
@@ -411,6 +448,7 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
     way_routes = read_route_relations(pbf)
 
     water, pois, trails = [], [], []
+    streams = []  # (way id, [(lon, lat)], name, seasonal, waterway)
     trail_ways = 0
     ways = []  # (way_id, [node ids], [(lon, lat)], tags-subset)
     node_use = defaultdict(int)
@@ -458,6 +496,11 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
                         props["population"] = None
                 pois.append(feature("Point", [round(lon, 6), round(lat, 6)], props))
         elif obj.is_way():
+            if tags.get("waterway") in STREAMS:
+                pts = [(n.lon, n.lat) for n in obj.nodes if n.location.valid()]
+                if len(pts) >= 2 and any(in_bbox(x, y, bbox) for x, y in pts):
+                    streams.append((obj.id, pts, tags.get("name"), seasonal_flag(tags), tags.get("waterway")))
+                continue
             hw = tags.get("highway")
             kind = ROUTABLE.get(hw)
             if not kind or not is_foot_allowed(tags):
@@ -489,6 +532,10 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
                     "kind": kind, "highway": hw, "name": name, "routes": routes,
                     "osm_id": f"w{obj.id}",
                 }))
+
+    crossings = stream_crossings(ways, streams)
+    water.extend(crossings)
+    del streams
 
     # Routing graph: split ways at junctions (nodes used more than once).
     vertex_index, vertices, edges = {}, [], []
@@ -540,6 +587,7 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
     stats = {
         "water_sources": len(water),
         "water_seasonal": sum(1 for w in water if w["properties"]["seasonal"]),
+        "stream_crossings": sum(1 for w in water if w["properties"]["kind"] == "stream"),
         "trail_ways": trail_ways,
         "named_trail_ways": len(trails),
         "named_trails": len(named),

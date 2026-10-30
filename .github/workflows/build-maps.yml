@@ -1,6 +1,9 @@
 name: Build map files
 
 on:
+  # Monthly refresh of the statewide maps (2nd of the month, early morning Pacific).
+  schedule:
+    - cron: "17 11 2 * *"
   workflow_dispatch:
     inputs:
       region:
@@ -18,7 +21,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: build-maps-${{ inputs.region }}
+  group: build-maps-${{ inputs.region || 'oregon' }}
   cancel-in-progress: false
 
 jobs:
@@ -26,7 +29,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     env:
-      REGION: ${{ inputs.region }}
+      REGION: ${{ inputs.region || 'oregon' }}
       # /mnt has far more free space than the runner's main disk.
       WORK: /mnt/work
       OUT: /mnt/out
@@ -95,7 +98,8 @@ jobs:
             n/waterway=waterfall n/natural=hot_spring,saddle n/mountain_pass=yes n/amenity=shelter \
             n/place=city,town,village,hamlet wr/natural=water wr/landuse=reservoir \
             wr/highway=trailhead wr/tourism=camp_site,viewpoint,alpine_hut wr/amenity=toilets,shelter \
-            nwr/amenity=parking w/waterway=waterfall wr/natural=hot_spring \
+            nwr/amenity=parking w/waterway=waterfall,stream,river,canal wr/natural=hot_spring \
+            nwr/tower:type=fire_lookout nwr/historic=fire_lookout,ruins,archaeological_site,mine,mine_shaft,adit,monument,fort,wreck,homestead,cabin,railway_station \
             r/route=hiking,foot \
             -o "$WORK/filtered.osm.pbf" --overwrite
           osmium fileinfo -e "$WORK/region.osm.pbf" | grep -E "Number of (nodes|ways|relations)" || true
@@ -187,6 +191,17 @@ jobs:
             --title "Map files: ${REGION} ($(date -u +%Y-%m-%d))" \
             --notes-file "$WORK/summary.md"
           echo "Release: $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove old map releases (keep the newest 3)
+        continue-on-error: true
+        run: |
+          gh api "repos/${{ github.repository }}/releases?per_page=100" --paginate \
+            -q '.[] | select(.tag_name | startswith("maps-'"$REGION"'-")) | [.created_at, .id, .tag_name] | @tsv' \
+            | sort -r | tail -n +4 | while IFS=$'\t' read -r _ id tag; do
+                echo "Deleting $tag"
+                gh api -X DELETE "repos/${{ github.repository }}/releases/$id"
+                gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/$tag" || true
+              done
 
       - name: Report failure details
         if: failure()
