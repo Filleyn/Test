@@ -40,8 +40,13 @@ fun WaypointEditor(
     onSave: (Waypoint) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
+    folders: List<com.trailguidegps.app.data.Folder> = emptyList(),
+    folderId: String? = null,
+    onCreateFolder: ((String) -> com.trailguidegps.app.data.Folder)? = null,
+    onFolder: (String?) -> Unit = {},
 ) {
     var name by remember(waypoint.id) { mutableStateOf(waypoint.name) }
+    var folder by remember(waypoint.id) { mutableStateOf(folderId) }
     var note by remember(waypoint.id) { mutableStateOf(waypoint.note) }
     var color by remember(waypoint.id) { mutableStateOf(waypoint.color) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -76,12 +81,13 @@ fun WaypointEditor(
                     }
                 }
                 OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("Note (optional)") }, modifier = Modifier.fillMaxWidth())
+                if (onCreateFolder != null) FolderPicker(folders, folder, { folder = it }, onCreateFolder)
                 val (la, lo) = Geo.decimal(waypoint.lat, waypoint.lon)
                 Text("$la, $lo" + (waypoint.eleM?.let { " · ${Geo.formatFeet(it)}" } ?: ""), fontSize = 13.sp, color = TG.Muted)
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(waypoint.copy(name = name.ifBlank { waypoint.name }, note = note.trim(), color = color)) }) {
+            TextButton(onClick = { onFolder(folder); onSave(waypoint.copy(name = name.ifBlank { waypoint.name }, note = note.trim(), color = color)) }) {
                 Text("Save")
             }
         },
@@ -95,8 +101,13 @@ fun WaypointEditor(
 }
 
 @Composable
-fun StopRecordingDialog(defaultName: String, onSave: (String) -> Unit, onDiscard: () -> Unit, onDismiss: () -> Unit) {
+fun StopRecordingDialog(
+    defaultName: String, onSave: (String, String?) -> Unit, onDiscard: () -> Unit, onDismiss: () -> Unit,
+    folders: List<com.trailguidegps.app.data.Folder> = emptyList(), folderId: String? = null,
+    onCreateFolder: (String) -> com.trailguidegps.app.data.Folder,
+) {
     var name by remember { mutableStateOf(defaultName) }
+    var folder by remember { mutableStateOf(folderId) }
     var confirmDiscard by remember { mutableStateOf(false) }
     if (confirmDiscard) {
         AlertDialog(
@@ -112,9 +123,12 @@ fun StopRecordingDialog(defaultName: String, onSave: (String) -> Unit, onDiscard
         onDismissRequest = onDismiss,
         title = { Text("Stop recording") },
         text = {
-            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Track name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Track name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                FolderPicker(folders, folder, { folder = it }, onCreateFolder)
+            }
         },
-        confirmButton = { TextButton(onClick = { onSave(name) }) { Text("Save track") } },
+        confirmButton = { TextButton(onClick = { onSave(name, folder) }) { Text("Save track") } },
         dismissButton = {
             Row {
                 TextButton(onClick = { confirmDiscard = true }) { Text("Discard", color = TG.Danger) }

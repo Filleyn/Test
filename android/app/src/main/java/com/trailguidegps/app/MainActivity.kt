@@ -125,6 +125,10 @@ class MainActivity : ComponentActivity() {
                                 onSave = { vm.waypoints.upsert(it); editingFromSaved = null },
                                 onDelete = { vm.waypoints.delete(w.id); editingFromSaved = null },
                                 onDismiss = { editingFromSaved = null },
+                                folders = vm.folders.folders.collectAsStateWithLifecycle().value,
+                                folderId = vm.folders.members.value[com.trailguidegps.app.data.FolderStore.waypointKey(w.id)],
+                                onCreateFolder = { vm.folders.create(it) },
+                                onFolder = { f -> vm.folders.put(com.trailguidegps.app.data.FolderStore.waypointKey(w.id), f) },
                             )
                         }
                     }

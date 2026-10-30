@@ -35,6 +35,7 @@ object Backup {
             File(dir, "tracks").listFiles { f -> f.name.endsWith(".json") }?.forEach { put("tracks/${it.name}", it.readBytes()); tracks++ }
             File(dir, "waypoints.json").takeIf { it.exists() }?.let { put("waypoints.json", it.readBytes()) }
             File(dir, "water-notes.json").takeIf { it.exists() }?.let { put("water-notes.json", it.readBytes()) }
+            File(dir, FolderStore.FILE).takeIf { it.exists() }?.let { put(FolderStore.FILE, it.readBytes()) }
             PREFS.forEach { name ->
                 val o = JSONObject()
                 context.getSharedPreferences(name, Context.MODE_PRIVATE).all.forEach { (k, v) ->
@@ -95,6 +96,20 @@ object Backup {
                         val current = runCatching { JSONObject(f.readText()) }.getOrDefault(JSONObject())
                         incoming.keys().forEach { k -> if (!current.has(k)) { current.put(k, incoming.get(k)); notes++ } }
                         writeAtomically(f, current.toString())
+                    }
+                    name == FolderStore.FILE -> {
+                        // Folders merge by id; the backup decides which folder an item is in.
+                        val incoming = JSONObject(String(bytes))
+                        val f = File(dir, FolderStore.FILE)
+                        val current = runCatching { JSONObject(f.readText()) }.getOrDefault(JSONObject())
+                        val byId = LinkedHashMap<String, JSONObject>()
+                        listOf(current, incoming).forEach { o ->
+                            val arr = o.optJSONArray("folders") ?: JSONArray()
+                            for (i in 0 until arr.length()) arr.getJSONObject(i).let { byId[it.getString("id")] = it }
+                        }
+                        val items = current.optJSONObject("items") ?: JSONObject()
+                        incoming.optJSONObject("items")?.let { inc -> inc.keys().forEach { k -> items.put(k, inc.getString(k)) } }
+                        writeAtomically(f, JSONObject().put("folders", JSONArray(byId.values)).put("items", items).toString())
                     }
                     name.startsWith("prefs/") -> {
                         val pref = name.removePrefix("prefs/").removeSuffix(".json")

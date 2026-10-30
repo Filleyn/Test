@@ -735,6 +735,14 @@ fun MapScreen(
             onSave = { vm.waypoints.upsert(it); editing = null; selectedWaypointId = it.id },
             onDelete = { vm.waypoints.delete(w.id); editing = null; selectedWaypointId = null },
             onDismiss = { editing = null },
+            folders = vm.folders.folders.collectAsStateWithLifecycle().value,
+            folderId = vm.folders.members.value[com.trailguidegps.app.data.FolderStore.waypointKey(w.id)]
+                ?: if (vm.waypoints.get(w.id) == null) vm.lastFolder() else null,
+            onCreateFolder = { vm.folders.create(it) },
+            onFolder = { f ->
+                vm.folders.put(com.trailguidegps.app.data.FolderStore.waypointKey(w.id), f)
+                if (f != null) vm.rememberFolder(f)
+            },
         )
     }
 
@@ -757,7 +765,11 @@ fun MapScreen(
             plan.via.isNotEmpty() -> plan.via.first()
             else -> "Route ${java.text.SimpleDateFormat("MMM d", java.util.Locale.US).format(java.util.Date())}"
         }
-        SaveRouteDialog(suggested, onSave = { name, color -> askSaveRoute = false; vm.savePlan(name, color) }, onDismiss = { askSaveRoute = false })
+        SaveRouteDialog(
+            suggested, onSave = { name, color, folder -> askSaveRoute = false; vm.savePlan(name, color, folder) }, onDismiss = { askSaveRoute = false },
+            folders = vm.folders.folders.collectAsStateWithLifecycle().value, folderId = vm.lastFolder(),
+            onCreateFolder = { vm.folders.create(it) },
+        )
     }
     if (askDiscardRoute) {
         androidx.compose.material3.AlertDialog(
@@ -772,9 +784,11 @@ fun MapScreen(
     if (askStop) {
         StopRecordingDialog(
             defaultName = vm.defaultTrackName(recording?.startedAt ?: System.currentTimeMillis()),
-            onSave = { name -> askStop = false; vm.stopRecording(name, save = true) },
+            onSave = { name, folder -> askStop = false; vm.stopRecording(name, save = true, folderId = folder) },
             onDiscard = { askStop = false; vm.stopRecording(null, save = false) },
             onDismiss = { askStop = false },
+            folders = vm.folders.folders.collectAsStateWithLifecycle().value, folderId = vm.lastFolder(),
+            onCreateFolder = { vm.folders.create(it) },
         )
     }
 

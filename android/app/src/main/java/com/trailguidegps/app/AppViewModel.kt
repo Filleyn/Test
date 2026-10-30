@@ -316,12 +316,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Stops recording; saves it unless [save] is false. */
-    fun stopRecording(name: String?, save: Boolean) {
+    // ---- Trip folders ----
+
+    val folders = com.trailguidegps.app.data.FolderStore(app)
+    private val folderPrefs = app.getSharedPreferences("folders_ui", android.content.Context.MODE_PRIVATE)
+    /** The folder you last saved into, offered first next time (handy while planning a trip). */
+    fun lastFolder(): String? = folderPrefs.getString("last", null)?.takeIf { id -> folders.folders.value.any { it.id == id } }
+    fun rememberFolder(id: String?) { folderPrefs.edit().putString("last", id).apply() }
+
+    /** Shows a folder's routes, its most recent track, and fits the map to everything in it. */
+    fun showFolder(folderId: String) {
+        viewModelScope.launch {
+            val keys = folders.keysIn(folderId)
+            val rs = withContext(Dispatchers.IO) { keys.filter { it.startsWith("route:") }.mapNotNull { routes.load(it.removePrefix("route:")) } }
+            val ts = tracks.summaries.value.filter { "track:${it.id}" in keys }.sortedByDescending { it.startedAt }
+            val wps = waypoints.items.value.filter { "wp:${it.id}" in keys }
+            if (rs.isNotEmpty()) setShown((_shownRoutes.value.filter { s -> rs.none { it.id == s.id } } + rs), rs.first())
+            val trackPts = ts.firstOrNull()?.let { t -> tracks.load(t.id)?.second?.also { _shownTrack.value = t.id to it } }.orEmpty()
+            val pts = rs.flatMap { r -> r.coords.map { it[0] to it[1] } } + wps.map { it.lat to it.lon } + trackPts.map { it.lat to it.lon }
+            if (pts.isNotEmpty()) focusOn(pts) else _message.value = "This folder is empty."
+        }
+    }
+
+    fun stopRecording(name: String?, save: Boolean, folderId: String? = null) {
         val app = getApplication<Application>()
         val pts = TrackRecorder.finish(app)
         TrackRecordingService.stop(app)
         if (save && pts.size >= 2) {
             val summary = tracks.save(name?.takeIf { it.isNotBlank() } ?: defaultTrackName(pts.first().time), pts)
+            folderId?.let { folders.put(com.trailguidegps.app.data.FolderStore.trackKey(summary.id), it); rememberFolder(it) }
             _shownTrack.value = summary.id to pts
             _message.value = "Saved \"${summary.name}\"."
         } else if (save) {
@@ -497,7 +520,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching { app.contentResolver.openInputStream(uri)!!.use { com.trailguidegps.app.data.Backup.restore(app, it) } }
             }
             r.onSuccess { c ->
-                waypoints.reload(); tracks.reload(); routes.reload(); waterNotes.reload()
+                waypoints.reload(); tracks.reload(); routes.reload(); waterNotes.reload(); folders.reload()
                 _pace.value = Pace.load(app)
                 _message.value = "Restored ${c.routes} routes, ${c.tracks} tracks, ${c.waypoints} waypoints and ${c.notes} water notes."
             }.onFailure { _message.value = it.message ?: "That file couldn't be restored." }
@@ -688,7 +711,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return Triple(point, RouteLeg(coords, len, routed.names, onTrail = true, routed.kindM, routed.sacMax, routed.sacRatedM), null)
     }
 
-    fun savePlan(name: String, color: String = com.trailguidegps.app.data.RouteColors.DEFAULT) {
+    fun savePlan(name: String, color: String = com.trailguidegps.app.data.RouteColors.DEFAULT, folderId: String? = null) {
         val st = _plan.value
         if (st.points.size < 2) return
         viewModelScope.launch {
@@ -700,6 +723,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     .also { routes.save(it) }
             }
             _plan.value = PlanState()
+            folderId?.let { folders.put(com.trailguidegps.app.data.FolderStore.routeKey(saved.id), it); rememberFolder(it) }
             setShown(_shownRoutes.value + saved, saved)
             _message.value = "Saved \"${saved.name}\"."
         }

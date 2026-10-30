@@ -470,8 +470,13 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
 
 /** Ask for a name when saving a planned route. */
 @Composable
-fun SaveRouteDialog(defaultName: String, onSave: (name: String, color: String) -> Unit, onDismiss: () -> Unit) {
+fun SaveRouteDialog(
+    defaultName: String, onSave: (name: String, color: String, folderId: String?) -> Unit, onDismiss: () -> Unit,
+    folders: List<com.trailguidegps.app.data.Folder> = emptyList(), folderId: String? = null,
+    onCreateFolder: (String) -> com.trailguidegps.app.data.Folder,
+) {
     var name by remember { mutableStateOf(defaultName) }
+    var folder by remember { mutableStateOf(folderId) }
     var color by remember { mutableStateOf(RouteColors.DEFAULT) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -481,9 +486,11 @@ fun SaveRouteDialog(defaultName: String, onSave: (name: String, color: String) -
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Route name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text("Color", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
                 RouteColorPicker(color) { color = it }
+                Text("Folder", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                FolderPicker(folders, folder, { folder = it }, onCreateFolder)
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(name.trim(), color) }) { Text("Save") } },
+        confirmButton = { TextButton(onClick = { onSave(name.trim(), color, folder) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Keep planning") } },
     )
 }
