@@ -80,6 +80,7 @@ def main():
     ap.add_argument("--expect-trail", default="", help="Trail name to look for, e.g. Pinnacles")
     ap.add_argument("--summary", required=True, help="Where to write the Markdown report")
     ap.add_argument("--publiclands-stats", default="", help="Stats from build_publiclands.py, if it ran")
+    ap.add_argument("--extras-stats", default="", help="Stats from build_extras.py, if it ran")
     a = ap.parse_args()
 
     region = json.load(open(a.regions_file))[a.region]
@@ -167,6 +168,11 @@ def main():
         lines.append(f"- Wilderness areas ({len(pl['wilderness'])}): {', '.join(pl['wilderness'][:12])}…")
     else:
         lines.append("- ⚠️ Public land layer not built (PAD-US source unavailable?); the app works without it")
+    ex = json.load(open(a.extras_stats)) if a.extras_stats and os.path.exists(a.extras_stats) else None
+    if ex:
+        lines.append(f"- {'✅' if 'extras.pmtiles' in have else '⚠️'} Extras: Forest Service roads {ex.get('mvum')}, "
+                     f"past burns {ex.get('burns')}, rough/4WD roads {ex.get('rough')}")
+    lines.append(f"- {'✅' if 'slope.pmtiles' in have else '⚠️'} Slope shading " + ("built" if "slope.pmtiles" in have else "not built"))
     lines += ["", "Open the .pmtiles files at https://pmtiles.io to check them visually.", ""]
     with open(a.summary, "w") as f:
         f.write("\n".join(lines))

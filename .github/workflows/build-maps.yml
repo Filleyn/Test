@@ -161,6 +161,20 @@ jobs:
             --bbox="${{ steps.region.outputs.bbox }}" --dem "$WORK/dem-region.tif" --out "$OUT" \
             --roads "${{ steps.region.outputs.roads }}"
 
+      - name: Build slope shading
+        continue-on-error: true
+        run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
+          python3 pipeline/slope_tiles.py --dem "$WORK/dem-region.tif" --bbox="${{ steps.region.outputs.bbox }}" \
+            --minzoom 10 --maxzoom 12 --out "$OUT/slope.pmtiles"
+
+      - name: Build road access, rough roads and past burns
+        continue-on-error: true
+        run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
+          python3 pipeline/build_extras.py --bbox="${{ steps.region.outputs.bbox }}" --pbf "$WORK/filtered.osm.pbf" \
+            --work "$WORK/extras" --out "$OUT/extras.pmtiles" --stats "$WORK/extras-stats.json"
+
       - name: Build public land layer (PAD-US)
         # If the source is down the rest of the maps still publish; the app treats this file as optional.
         continue-on-error: true
@@ -175,7 +189,7 @@ jobs:
           exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/package.py --dir "$OUT" --region "$REGION" \
             --regions-file pipeline/regions.json --expect-trail "${{ steps.region.outputs.expect_trail }}" \
-            --publiclands-stats "$WORK/publiclands-stats.json" \
+            --publiclands-stats "$WORK/publiclands-stats.json" --extras-stats "$WORK/extras-stats.json" \
             --summary "$WORK/summary.md"
           cat "$WORK/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
