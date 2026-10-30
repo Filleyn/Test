@@ -41,7 +41,7 @@ object MapStyle {
     val GROUPS: Map<String, List<String>> = linkedMapOf(
         "hillshade" to listOf("hillshade"),
         "contours" to listOf("contours-minor", "contours-major", "contour-labels"),
-        "trails" to listOf("trail", "trail-names", "trail-hit", "trail-hit-unnamed"),
+        "trails" to listOf("trail", "track", "trail-names", "trail-hit", "trail-hit-unnamed"),
         "water" to listOf("water-points", "water-labels"),
         "peaks" to listOf("peaks", "peak-labels"),
     ) + PLACE_GROUPS.associate { g -> g.id to g.layers } + linkedMapOf(
@@ -198,7 +198,11 @@ object MapStyle {
             JSONObject().put("line-color", "#FFFFFF").put("line-width", byZoom(10, 2, 15, 7)))
         layer("road", "line", "topo", "transportation", inClass(roads),
             JSONObject().put("line-color", "#C9B48F").put("line-width", byZoom(10, 1, 15, 4)))
-        layer("trail", "line", "topo", "transportation", inClass(trails),
+        // Dirt and forest roads: solid brown, so they don't look like trails.
+        layer("track", "line", "topo", "transportation", inClass(arr("track")),
+            JSONObject().put("line-color", "#8A6A43").put("line-width", byZoom(10, 0.9, 15, 2.6)))
+        // Trails: dashed red-brown.
+        layer("trail", "line", "topo", "transportation", inClass(arr("path")),
             JSONObject().put("line-color", "#B5462A").put("line-width", byZoom(10, 1.2, 15, 2.8))
                 .put("line-dasharray", arr(3, 1.5)))
         // Invisible wide lines so trails are easy to tap (named ones carry their name here).
@@ -218,7 +222,7 @@ object MapStyle {
         layer("water-names", "symbol", "topo", "water_name", paint = halo(GROUND, "#1F5F92"),
             layout = JSONObject().put("text-font", arr(ITALIC)).put("text-size", 12).put("text-field", arr("get", "name")))
         layer("trail-names", "symbol", "topo", "transportation_name", inClass(trails),
-            halo("#FFFFFF", "#8E3218"),
+            halo("#FFFFFF", "#8E3218").put("text-color", arr("match", arr("get", "class"), "track", "#6B4F2E", "#8E3218")),
             JSONObject().put("symbol-placement", "line").put("text-font", arr(MEDIUM))
                 .put("text-size", 12).put("text-field", arr("get", "name")), minzoom = 12.0)
         if (hasLand) {
@@ -294,8 +298,16 @@ object MapStyle {
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer(LAYER_SHOWN_ROUTE_HIT, "line", SRC_SHOWN_ROUTE, paint = JSONObject().put("line-color", "#000000").put("line-opacity", 0).put("line-width", 20))
         layer("shown-route", "line", SRC_SHOWN_ROUTE, paint = JSONObject()
-            .put("line-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("line-width", focusWidth(5.0, 3.5)),
+            .put("line-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("line-width", focusWidth(5.0, 3.5))
+            .put("line-opacity", focusWidth(1.0, 0.55)),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        // Each route's name along its line, so you can tell several apart.
+        layer("shown-route-labels", "symbol", SRC_SHOWN_ROUTE,
+            paint = JSONObject().put("text-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
+                .put("text-halo-color", "#FFFFFF").put("text-halo-width", 2),
+            layout = JSONObject().put("symbol-placement", "line").put("symbol-spacing", 350).put("text-font", arr(MEDIUM))
+                .put("text-size", 12).put("text-field", arr("get", "name")).put("text-optional", true),
+            minzoom = 11.0)
         layer("plan-casing", "line", SRC_PLAN, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer("plan-trail", "line", SRC_PLAN, filter = arr("==", arr("get", "trail"), true),

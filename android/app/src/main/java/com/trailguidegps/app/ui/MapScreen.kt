@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -272,7 +274,7 @@ fun MapScreen(
                         "closures often reach well beyond the fire",
                     )
                     vm.select(Selected("$name Fire", parts.joinToString(" · "), latLng.latitude, latLng.longitude,
-                        link = "Fire closures on InciWeb" to com.trailguidegps.app.data.FireStore.INCIWEB_OREGON))
+                        links = listOf("Fire closures on InciWeb" to com.trailguidegps.app.data.FireStore.INCIWEB_OREGON)))
                     return@addOnMapClickListener true
                 }
                 // Tapping one of the routes on the map shows its details.
@@ -297,7 +299,7 @@ fun MapScreen(
                     val land = com.trailguidegps.app.data.PublicLand.describe(propsOf(MapStyle.LAYER_SPECIAL_FILL), bProps, lProps)
                     vm.select(land?.let { (title, sub) ->
                         Selected(title, sub, latLng.latitude, latLng.longitude,
-                            link = com.trailguidegps.app.data.PublicLand.alertsLink(bProps, lProps))
+                            links = listOfNotNull(com.trailguidegps.app.data.PublicLand.alertsLink(bProps, lProps)))
                     })
                     return@addOnMapClickListener land != null
                 }
@@ -321,10 +323,20 @@ fun MapScreen(
                         exclude = if (kind == "town") name else null,
                     )?.let { parts += it }
                     prop("last_edit")?.let { parts += "map data edited $it" }
+                    // Links: the place's own page, the land manager's alerts, and a web search.
+                    fun landProps(layer: String): Map<String, String?>? = m.queryRenderedFeatures(point, layer).firstOrNull()?.let { lf ->
+                        listOf("name", "mgr", "des").associateWith { k ->
+                            if (lf.hasProperty(k) && !lf.getProperty(k).isJsonNull) lf.getProperty(k).asString else null
+                        }
+                    }
+                    val agency = com.trailguidegps.app.data.PublicLand.alertsLink(landProps(MapStyle.LAYER_BOUNDARY_HIT), landProps(MapStyle.LAYER_LAND_FILL))
                     Selected(
                         name, parts.joinToString(" · "),
                         geomPoint?.latitude() ?: latLng.latitude, geomPoint?.longitude() ?: latLng.longitude,
                         osmId = prop("osm_id"), isWater = isWater,
+                        links = com.trailguidegps.app.data.PublicLand.placeLinks(
+                            prop("name"), kindLabels[kind] ?: kind, prop("website"), agency,
+                        ),
                     )
                 })
                 true
@@ -558,6 +570,9 @@ fun MapScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 RoundButton(onClick = { showLayers = true }, description = "Map layers") {
                     Icon(Icons.Filled.Layers, contentDescription = null, tint = TG.Ink)
+                }
+                RoundButton(onClick = onOpenSettings, description = "Settings") {
+                    Icon(Icons.Filled.Settings, contentDescription = null, tint = TG.Ink)
                 }
                 SosButton(onClick = onEmergency)
             }
@@ -942,11 +957,16 @@ private fun BottomPanel(
                             val dir = Geo.compassPoint(Geo.bearingDeg(f.lat, f.lon, selected.lat, selected.lon))
                             Text("${Geo.formatDistance(d)} $dir of you (straight line)", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
                         }
-                        selected.link?.let { (label, url) ->
+                        if (selected.links.isNotEmpty()) {
                             val uri = androidx.compose.ui.platform.LocalUriHandler.current
-                            TextButton(onClick = { runCatching { uri.openUri(url) } }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
-                                Text("$label ↗ (needs a connection)", color = TG.Accent, fontSize = 14.sp)
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                selected.links.forEach { (label, url) ->
+                                    TextButton(onClick = { runCatching { uri.openUri(url) } }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                                        Text("$label ↗", color = TG.Accent, fontSize = 14.sp, maxLines = 1)
+                                    }
+                                }
                             }
+                            Text("Links need a connection.", fontSize = 11.sp, color = TG.Muted)
                         }
                     }
                     if (selected.isWater && selected.osmId != null) {

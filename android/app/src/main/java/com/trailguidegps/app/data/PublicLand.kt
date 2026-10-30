@@ -36,6 +36,20 @@ object PublicLand {
         "Umatilla" to "umatilla", "Wallowa" to "wallowa-whitman", "Whitman" to "wallowa-whitman", "Siuslaw" to "siuslaw",
     )
 
+    /**
+     * Links for a place: its own website, the managing agency's alerts page, and a web
+     * search (trip reports, conditions). Each is (label, web address).
+     */
+    fun placeLinks(name: String?, kindLabel: String, website: String?, agency: Pair<String, String>?): List<Pair<String, String>> =
+        buildList {
+            website?.let { add("Official page" to it) }
+            agency?.let { add(it) }
+            if (!name.isNullOrBlank() && name != kindLabel) {
+                val q = java.net.URLEncoder.encode("$name $kindLabel Oregon", "UTF-8")
+                add("Search the web" to "https://www.google.com/search?q=$q")
+            }
+        }
+
     /** A "check alerts" link for the agency that manages this land, or null. */
     fun alertsLink(boundary: Map<String, String?>?, land: Map<String, String?>?): Pair<String, String>? {
         val forest = listOfNotNull(boundary?.get("name"), land?.get("name"))

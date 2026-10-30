@@ -18,7 +18,19 @@ data class SearchResult(
 object Search {
     private const val LIMIT = 60
 
-    fun search(features: Features, query: String, refLat: Double, refLon: Double): List<SearchResult> {
+    /** Search filters: label and the kinds it keeps ("trail" means named trails). Null keeps everything. */
+    val FILTERS: List<Pair<String, Set<String>?>> = listOf(
+        "All" to null,
+        "Trails" to setOf("trail"),
+        "Trailheads" to setOf("trailhead"),
+        "Campsites" to setOf("campsite", "shelter"),
+        "Water" to setOf("spring", "drinking_water", "water_point", "well", "lake"),
+        "Peaks" to setOf("peak", "saddle", "pass", "viewpoint"),
+        "Waterfalls" to setOf("waterfall", "hot_spring"),
+        "Towns" to setOf("town"),
+    )
+
+    fun search(features: Features, query: String, refLat: Double, refLon: Double, kinds: Set<String>? = null): List<SearchResult> {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return emptyList()
         val tokens = q.split(Regex("\\s+"))
@@ -35,11 +47,12 @@ object Search {
 
         val hits = ArrayList<Pair<Int, SearchResult>>()
         features.allPoints.forEach { p ->
+            if (kinds != null && p.kind !in kinds) return@forEach
             val name = p.name ?: return@forEach
             val s = score(name) ?: return@forEach
             hits += s to SearchResult(name, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p)
         }
-        features.trailsByName.forEach { (name, parts) ->
+        if (kinds == null || "trail" in kinds) features.trailsByName.forEach { (name, parts) ->
             val s = score(name) ?: return@forEach
             var best = Double.MAX_VALUE
             var bestLat = 0.0

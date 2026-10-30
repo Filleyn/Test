@@ -367,7 +367,7 @@ class RouteStore(context: Context) {
                 val c = JSONArray()
                 r.coords.forEach { c.put(JSONArray().put(it[1]).put(it[0])) }
                 features.put(JSONObject().put("type", "Feature")
-                    .put("properties", JSONObject().put("id", r.id).put("color", r.color).put("focus", r.id == focusId))
+                    .put("properties", JSONObject().put("id", r.id).put("name", r.name).put("color", r.color).put("focus", r.id == focusId))
                     .put("geometry", JSONObject().put("type", "LineString").put("coordinates", c)))
             }
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()

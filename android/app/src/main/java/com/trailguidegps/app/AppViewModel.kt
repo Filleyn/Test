@@ -171,8 +171,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val lon: Double,
         val osmId: String? = null,
         val isWater: Boolean = false,
-        /** An official page to check, as (label, web address). */
-        val link: Pair<String, String>? = null,
+        /** Pages to check, as (label, web address): official site, agency alerts, web search. */
+        val links: List<Pair<String, String>> = emptyList(),
     )
     private val _selected = MutableStateFlow<SelectedPlace?>(null)
     val selected: StateFlow<SelectedPlace?> = _selected.asStateFlow()
@@ -192,7 +192,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (p?.seasonal == true) parts += "may be seasonal"
         r.near?.let { parts += it }
         p?.lastEdit?.let { parts += "map data edited $it" }
-        _selected.value = SelectedPlace(r.name, parts.joinToString(" · "), r.lat, r.lon, p?.osmId, p?.isWater == true)
+        val kindLabel = Features.KIND_LABELS[r.kind] ?: r.kind
+        _selected.value = SelectedPlace(r.name, parts.joinToString(" · "), r.lat, r.lon, p?.osmId, p?.isWater == true,
+            links = com.trailguidegps.app.data.PublicLand.placeLinks(r.name, kindLabel, p?.website, null))
         focusOn(listOf(r.lat to r.lon))
     }
 

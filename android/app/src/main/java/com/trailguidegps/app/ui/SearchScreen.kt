@@ -3,7 +3,12 @@ package com.trailguidegps.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -70,6 +75,9 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
     val features by vm.features.collectAsStateWithLifecycle()
     val notes by vm.waterNotes.notes.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf("All") }
+    val kinds = Search.FILTERS.firstOrNull { it.first == filter }?.second
+    var filtered by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var nearby by remember { mutableStateOf<List<Pair<String, List<SearchResult>>>>(emptyList()) }
     val focus = remember { FocusRequester() }
@@ -93,12 +101,21 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
     }
 
     // Search as you type, after a short pause.
-    LaunchedEffect(query, features) {
+    LaunchedEffect(query, features, filter) {
         val f = features ?: return@LaunchedEffect
         if (query.isBlank()) { results = emptyList(); return@LaunchedEffect }
         delay(150)
         val (lat, lon) = ref ?: (44.0 to -121.0)
-        results = withContext(Dispatchers.Default) { Search.search(f, query, lat, lon) }
+        results = withContext(Dispatchers.Default) { Search.search(f, query, lat, lon, kinds) }
+    }
+    // With a filter and no words typed: the nearest of that type.
+    LaunchedEffect(features, filter) {
+        val f = features ?: return@LaunchedEffect
+        val k = kinds ?: run { filtered = emptyList(); return@LaunchedEffect }
+        val (lat, lon) = ref ?: return@LaunchedEffect
+        filtered = withContext(Dispatchers.Default) {
+            if (k == setOf("trail")) emptyList() else Search.nearest(f, k, lat, lon, n = 25, maxM = 80_000.0)
+        }
     }
 
     fun open(r: SearchResult) {
@@ -125,9 +142,34 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
                 modifier = Modifier.weight(1f).focusRequester(focus),
             )
         }
+        // Filter by type.
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Search.FILTERS.forEach { (label, _) ->
+                FilterChip(
+                    selected = filter == label, onClick = { filter = label }, label = { Text(label) },
+                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Accent, selectedLabelColor = Color.White),
+                )
+            }
+        }
 
         when {
             features == null -> Message("Loading the offline index…")
+            query.isBlank() && kinds != null -> {
+                if (filtered.isEmpty()) {
+                    Message(if (kinds == setOf("trail")) "Type part of a trail's name." else if (ref == null) "Waiting for GPS to list the nearest ones." else "None within 50 miles.")
+                } else {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        item(key = "h-filter") { Header("Nearest ${filter.lowercase()}") }
+                        items(filtered, key = { "f-${it.kind}-${it.lat}-${it.lon}-${it.name}" }) { r ->
+                            ResultRow(r, notes[r.point?.osmId]?.let { "Your note: ${it.text}" }) { open(r) }
+                            HorizontalDivider(color = TG.Line)
+                        }
+                    }
+                }
+            }
             query.isBlank() -> {
                 if (nearby.isEmpty()) {
                     Message(if (ref == null) "Search by name. Once GPS has a fix, the nearest water and campsites show here." else "Search by name: trails, springs, lakes, peaks, campsites, trailheads and towns.")
@@ -143,7 +185,10 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
                     }
                 }
             }
-            results.isEmpty() -> Message("No matches for \"$query\" in the Oregon maps. Try part of the name, like \"pacific\" or \"spring\".")
+            results.isEmpty() -> Message(
+                if (kinds != null) "No ${filter.lowercase()} match \"$query\". Try the All filter."
+                else "No matches for \"$query\" in the Oregon maps. Try part of the name, like \"pacific\" or \"spring\"."
+            )
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(results, key = { "${it.kind}-${it.name}-${it.lat}-${it.lon}" }) { r ->
                     ResultRow(r, notes[r.point?.osmId]?.let { "Your note: ${it.text}" }) { open(r) }

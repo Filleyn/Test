@@ -84,6 +84,15 @@ def poi_kind(tags):
     return None
 
 
+def website(tags):
+    """An official web page for the place, if mappers added one."""
+    for k in ("website", "contact:website", "url"):
+        v = (tags.get(k) or "").strip()
+        if v.startswith("http"):
+            return v.split(";")[0].strip()
+    return None
+
+
 def haversine_m(lon1, lat1, lon2, lat2):
     r = 6371008.8
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -285,6 +294,7 @@ def read_lakes(pbf, bbox, area_pois=None):
                     if in_bbox(lon, lat, bbox):
                         area_pois.append(feature("Point", [round(lon, 6), round(lat, 6)], {
                             "kind": kind, "name": tags.get("name"), "ele_ft": None,
+                            **({"website": website(tags)} if website(tags) else {}),
                             "osm_id": f"{'w' if obj.from_way() else 'r'}{obj.orig_id()}",
                         }))
         if tags.get("natural") != "water" and tags.get("landuse") != "reservoir":
@@ -437,6 +447,8 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
                     ele_ft = elev.sample([(lon, lat)])[0]
                     ele_ft = round(ele_ft) if ele_ft is not None else None
                 props = {"kind": pkind, "name": tags.get("name"), "ele_ft": ele_ft, "osm_id": f"n{obj.id}"}
+                if website(tags):
+                    props["website"] = website(tags)
                 if pkind == "town":
                     # Keep the size so the app can say "near Sisters" rather than a tiny hamlet.
                     props["place"] = tags.get("place")

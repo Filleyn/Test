@@ -28,6 +28,8 @@ class Features private constructor(
         /** For towns: city, town, village or hamlet. */
         val place: String? = null,
         val population: Int? = null,
+        /** The place's official web page, when mappers added one. */
+        val website: String? = null,
     ) {
         val label: String get() = name ?: (Features.KIND_LABELS[kind] ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() })
     }
@@ -126,7 +128,7 @@ class Features private constructor(
             "well" to "Well", "campsite" to "Campsite", "trailhead" to "Trailhead", "toilets" to "Restroom",
             "viewpoint" to "Viewpoint", "peak" to "Peak", "lake" to "Lake", "town" to "Town",
             "waterfall" to "Waterfall", "hot_spring" to "Hot spring", "saddle" to "Saddle", "pass" to "Pass",
-            "shelter" to "Shelter", "trail" to "Trail", "track" to "Track",
+            "shelter" to "Shelter", "trail" to "Trail", "track" to "Dirt or forest road",
         )
 
         private fun key(row: Long, col: Long) = (row shl 32) xor (col and 0xffffffffL)
@@ -145,6 +147,7 @@ class Features private constructor(
                             osmId = props["osm_id"], seasonal = props["seasonal"] == "true",
                             lastEdit = props["last_edit"], isWater = isWater,
                             place = props["place"], population = props["population"]?.toDoubleOrNull()?.toInt(),
+                            website = props["website"],
                         )
                     }
                 }
