@@ -1,6 +1,6 @@
 # TrailGuide GPS: features and requirements
 
-Current as of app 1.1.34 and maps `maps-oregon-2026-10-30-run9` (October 2026). Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
+Current as of app 1.2 and the October 30, 2026 maps. Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
 
 ## Requirements set at the start
 
@@ -22,7 +22,10 @@ Current as of app 1.1.34 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 - **Contour lines:** every 40 ft, with 200 ft index lines labeled in feet.
 - **Hillshade:** terrain shading from USGS 3DEP elevation data.
 - **Trails vs forest roads:** trails are dashed red-brown; dirt and forest roads are solid brown.
-- **Layer switches:** hillshade, contours, trails, water, peaks, campsites, trailheads, waterfalls, shelters, restrooms (with a restroom icon), other places, land manager, forest boundaries, wilderness, wildfires and satellite, each on or off and remembered.
+- **Layer switches:** hillshade, contours, trails, water, peaks, campsites, trailheads, waterfalls, shelters, restrooms (with a restroom icon), other places, land manager, forest boundaries, wilderness, slope shading, forest road access, past burns, wildfires and satellite, each on or off and remembered, with a color key under the newer ones.
+- **Slope angle shading:** slopes of 25°, 30°, 35°, 45° and 60°+ in yellow to purple, computed from the elevation data (zoom in to see it). For snow travel and scrambling.
+- **Forest road access:** Forest Service roads colored by who can drive them (passenger car, high clearance, OHV only or closed), dashed where open only part of the year; tap one for its maintenance level, surface, open dates and forest. Rough and 4WD roads from OpenStreetMap are dotted purple.
+- **Past wildfire burns:** fires since 2000 over 50 acres, shaded darker the more recent; tap one for its name, year and size, with a warning about snags, blowdown and washouts.
 - **Live GPS:** blue dot with heading, center-on-me, and a north-up or heading-up compass mode.
 - **Off-the-map notice:** says when you're outside the downloaded area.
 
@@ -42,6 +45,7 @@ Current as of app 1.1.34 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 - **Offline search:** trails, water, peaks, lakes, campsites, trailheads and towns, nearest first, each with its nearest town.
 - **Filters:** All, Trails, Trailheads, Campsites, Water, Peaks, Waterfalls and Towns; with nothing typed, a filter lists the nearest of that type.
 - **Nearest lists:** with an empty search box, the nearest water, campsites and trailheads.
+- **Camps by water:** campsites and shelters with mapped water within 1,000 ft, with the water's name and distance.
 
 ## Waypoints and tracks
 
@@ -68,6 +72,8 @@ Current as of app 1.1.34 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 - **Go to:** compass arrow, distance, true bearing and climb to any place or waypoint.
 - **Water along a route:** water by mile with distance off route, seasonal flags and your notes; longest dry stretch, and how it changes if seasonal sources are dry. Includes about 30,000 trail and road creek crossings.
 - **Sunrise, sunset and daylight left**, offline, with after-dark warnings when planning, following and in trip plans.
+- **Peaks in view:** from any place, waypoint or your location, the named peaks within 60 mi you can see, worked out offline from the terrain with the earth's curve; sorted by direction or distance, with "only just visible" flags. Point the phone and it names the peak you're facing.
+- **Weather (online):** National Weather Service forecast for a place, or for a route's start, high point and camps; adjusted for how far you'll be above the forecast area, and kept for reading offline.
 
 ## Following a route
 
@@ -80,6 +86,7 @@ Current as of app 1.1.34 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 - **Emergency screen:** large coordinates in decimal, degrees-minutes-seconds and UTM, plus elevation and accuracy, for reading to 911; shareable as a text. It notes that the Pixel 9a has no satellite SOS.
 - **Trip plan PDF:** who's going, phones, start, expected return, call-for-help time, vehicle and trailhead, with the route map, numbers and elevation profile; sent by email or text.
 - **Trip folders:** any mix of routes, tracks and waypoints; pick a folder when saving; show a whole trip on the map; export it as GPX.
+- **Multi-day trips:** split a route into days. Camps are suggested so each day takes about the same time at your pace, then moved to a nearby campsite (with water if possible) or water source; move each camp by half a mile or pick from campsites nearby. Each day shows miles, climb, time and water; camps show on the map as "Night 1", "Night 2"; the trip plan PDF lists each day and camp.
 
 ## Public land and alerts
 
@@ -87,6 +94,7 @@ Current as of app 1.1.34 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 - **Boundaries:** national forest, refuge and reservation boundaries with names.
 - **Wilderness and special areas:** wilderness, wilderness study areas, national monuments and recreation areas.
 - **Tap for land info:** who manages it, whether the public can get in, and a link to that agency's alerts.
+- **Dispersed camping rules:** on Forest Service and BLM land the land card says what's generally allowed (14-day limits; 100 ft from water on national forests, about 200 ft on BLM) and to check for closures.
 - **Active wildfires (online):** perimeters and fire locations with size and containment, kept for offline use with an "as of" time, plus a link to InciWeb closures.
 
 ## Satellite
@@ -109,6 +117,6 @@ Current as of app 1.1.34 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 
 ## Behind the scenes
 
-- **Map build pipeline (GitHub Actions):** builds all the Oregon map files from OpenStreetMap, USGS 3DEP, PAD-US and the Forest Service, then publishes them with a check report.
+- **Map build pipeline (GitHub Actions):** builds all the Oregon map files from OpenStreetMap, USGS 3DEP, PAD-US, the Forest Service motor vehicle use maps and national fire history, then publishes them with a check report.
 - **App builds:** every change builds a signed app automatically and publishes it on GitHub.
 - **No account, no tracking:** nothing about you leaves the phone except map, imagery and fire-data downloads.

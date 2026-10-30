@@ -19,27 +19,27 @@ Asked about 2026-10-28; documented only, not built.
 - **Closures and fire-season bans (hard).** Oregon's Forest Service region publishes no closure data (checked October 2026; only regions 3 and 4 do). Shooting closures and fire precaution levels are PDFs and web notices. The app already links each forest's alerts page when you tap its land; reuse that.
 - State, county and private land have their own rules; the overlay should cover federal land only.
 
+### Hunting and fishing areas (backlog, needs discussion)
+Looked at for 1.2 and held back:
+- **Hunting units:** ODFW publishes hunt boundaries as several 2026 hunt-series layers (100, 400, 500 and 700 series), not one simple wildlife-management-unit map, and the boundaries change by season and tag. Before building: decide which hunts matter (deer and elk general season?), and whether a once-a-year snapshot is good enough.
+- **Fishing:** regulations are by water body and zone in the ODFW synopsis (a PDF); there's no clean statewide data layer. A link to the ODFW zone page from lake and river cards may be enough.
+
 ### Smaller ideas
-- **Multi-night trips:** route legs grouped into days, camps marked, per-day miles and climb, and a "campsites near water" filter.
-- **Weather for a route** (online), at the route's location and elevation.
 - **Photos on waypoints**, kept with the waypoint and included in GPX export.
 - **Battery settings prompt** for phones that kill background apps (Samsung, Xiaomi, OnePlus): send people to set the app to "Unrestricted".
 
 ### Other map layers
 Ideas, roughly most useful first. All are public data; each would follow the satellite pattern (online, with optional saved areas) or be built into the offline maps.
 
-- **Forest Service motor vehicle use maps (MVUM):** which forest roads are open to cars, and in which months. Useful for driving to remote trailheads. A national Forest Service map service; verify before building.
-- **Slope angle shading:** colors slopes 30–45° and steeper, computed offline from the elevation data already in the maps. Standard for snow and scrambling.
-- **Past wildfire burn areas:** recent burn scars mean standing dead trees, blowdown and washed-out trail. National fire history perimeters are public.
 - **Classic USGS topo (scanned quads):** the traditional USGS map look, as an alternative base map.
 - **Snow depth (online):** SNOTEL stations and national snow analysis, for early or late season trips.
-- **ODFW hunting units**, for hunting season awareness.
 
 ## Done after phase 7
 - 0.9.26: **Driving directions** (opens Google Maps or the phone's maps app) and **Copy coordinates** on every place and waypoint card.
 - 1.0: **Backup and restore** (one .zip to the phone, Google Drive, OneDrive or any storage app); **trip plan PDF** to email or text; dirt and forest roads drawn differently from trails; place cards link to the official page, the forest's alerts and a web search; route names on their lines with unselected routes faded; separate Layers and Settings buttons with SOS under them; **search filters** by type.
 - 1.0.31: tapping routes, trails and forest boundaries fixed (fully transparent tap layers aren't tappable in MapLibre); backup through the share sheet so OneDrive appears.
 - 1.0.32: **trip folders** holding any mix of routes, tracks and waypoints; choose a folder when saving; show a whole folder on the map; export a folder as GPX; folders included in backups.
+- 1.2: **slope angle shading**, **forest road access** (Forest Service MVUM, plus rough/4WD roads from OpenStreetMap), **past wildfire burns** (since 2000), **dispersed camping rules** on land cards, **peaks in view** with compass, **multi-day trips** with camps, **camps by water** search filter, **weather** (National Weather Service) for places and routes. Hunting and fishing areas moved to the backlog above.
 - 1.1: **reverse a route**, **measuring tool**, **Go to** with compass, **water along a route** (with stream crossings in the map build), **sunrise/sunset** and after-dark warnings, **fire lookouts and historic sites**, **monthly automatic map builds** (keeping the last 3); the app now picks the most recently published map release.
 
 ## Publishing on Google Play (discussed 2026-10-28)
