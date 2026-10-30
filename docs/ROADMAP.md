@@ -20,11 +20,8 @@ Asked about 2026-10-28; documented only, not built.
 - State, county and private land have their own rules; the overlay should cover federal land only.
 
 ### Smaller ideas
-- **Monthly map rebuild** on a schedule (`schedule:` cron in `build-maps.yml`), so trails and public land stay current. The app already offers only changed files.
 - **Multi-night trips:** route legs grouped into days, camps marked, per-day miles and climb, and a "campsites near water" filter.
-- **Sunrise, sunset and daylight left**, computed offline, with a warning if a route's finish time is after dark.
 - **Weather for a route** (online), at the route's location and elevation.
-- **"Go to" a point:** a compass arrow and distance to one waypoint or place, for off-trail travel without planning a route.
 - **Photos on waypoints**, kept with the waypoint and included in GPX export.
 - **Battery settings prompt** for phones that kill background apps (Samsung, Xiaomi, OnePlus): send people to set the app to "Unrestricted".
 
@@ -43,6 +40,7 @@ Ideas, roughly most useful first. All are public data; each would follow the sat
 - 1.0: **Backup and restore** (one .zip to the phone, Google Drive, OneDrive or any storage app); **trip plan PDF** to email or text; dirt and forest roads drawn differently from trails; place cards link to the official page, the forest's alerts and a web search; route names on their lines with unselected routes faded; separate Layers and Settings buttons with SOS under them; **search filters** by type.
 - 1.0.31: tapping routes, trails and forest boundaries fixed (fully transparent tap layers aren't tappable in MapLibre); backup through the share sheet so OneDrive appears.
 - 1.0.32: **trip folders** holding any mix of routes, tracks and waypoints; choose a folder when saving; show a whole folder on the map; export a folder as GPX; folders included in backups.
+- 1.1: **reverse a route**, **measuring tool**, **Go to** with compass, **water along a route** (with stream crossings in the map build), **sunrise/sunset** and after-dark warnings, **fire lookouts and historic sites**, **monthly automatic map builds** (keeping the last 3); the app now picks the most recently published map release.
 
 ## Publishing on Google Play (discussed 2026-10-28)
 

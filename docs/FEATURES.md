@@ -1,6 +1,6 @@
 # TrailGuide GPS: features and requirements
 
-Current as of app 1.0.32 and maps `maps-oregon-2026-10-30-run9` (October 2026). Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
+Current as of app 1.1.34 and maps `maps-oregon-2026-10-30-run9` (October 2026). Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
 
 ## Requirements set at the start
 
@@ -30,6 +30,7 @@ Current as of app 1.0.32 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 
 - **Water sources:** springs, taps, water points and wells, with seasonal ones marked.
 - **Water notes:** add your own note to a water source ("flowing, Aug 2026").
+- **Fire lookouts (61) and historic sites (252)**, with their own layer switches and a History search filter.
 - **Places:** about 2,700 trailheads, 1,750 campsites, 4,500 peaks with elevation, plus lakes, waterfalls, shelters, viewpoints, hot springs and towns.
 - **Extra trailheads:** includes ones mapped only as "Trailhead" parking lots, campgrounds drawn as areas, and a trailhead wherever a named trail ends at a road (shown from zoom 11).
 - **Tap for details:** name, type, elevation, distance and direction from you, and the nearest town ("10.6 mi NW of Sisters").
@@ -59,6 +60,14 @@ Current as of app 1.0.32 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 - **Difficulty rating:** the Shenandoah National Park scale, plus steepest stretch, high point, surface mix (trail, dirt road, road, off-trail) and the SAC technical rating where trails have one.
 - **Saved routes:** name, color (6 choices), rename, export, delete.
 - **Several routes at once:** names on their lines; tap a line to see its details; Show all / Hide all.
+
+## Tools
+
+- **Reverse a route:** saves a copy running the other way for the hike out, with climb, time and difficulty recalculated.
+- **Measuring tool:** ruler button; tap points for total and leg distance, bearing, and area.
+- **Go to:** compass arrow, distance, true bearing and climb to any place or waypoint.
+- **Water along a route:** water by mile with distance off route, seasonal flags and your notes; longest dry stretch, and how it changes if seasonal sources are dry. Includes about 30,000 trail and road creek crossings.
+- **Sunrise, sunset and daylight left**, offline, with after-dark warnings when planning, following and in trip plans.
 
 ## Following a route
 
@@ -94,6 +103,7 @@ Current as of app 1.0.32 and maps `maps-oregon-2026-10-30-run9` (October 2026). 
 - **Battery saver:** GPS every 15 seconds instead of 5.
 - **Low battery warnings:** at 20% and 10%.
 - **Automatic battery saver:** switches on at 20%.
+- **Monthly map refresh:** the Oregon maps rebuild automatically on the 2nd of each month.
 - **Map updates:** checked when the app opens (can be turned off); only changed files download, and downloads resume.
 - **Backup and restore:** one file to the phone, Google Drive, OneDrive or email; restoring merges and never deletes.
 
