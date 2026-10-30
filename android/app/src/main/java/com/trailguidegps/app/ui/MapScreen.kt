@@ -711,6 +711,7 @@ fun MapScreen(
                 onHideRoute = { vm.hideRoute() },
                 onRouteScrub = { d -> profileMark = d?.let { dist -> shownRoute?.let { RouteStore.pointAt(it.coords, dist) } } },
                 following = routeFollow,
+                tripVm = vm,
                 onFollow = onStartFollowing,
                 onStopFollowing = { vm.stopFollowing() },
                 placeDescription = fix?.let { f -> features?.describe(f.lat, f.lon) },
@@ -905,6 +906,7 @@ private fun BottomPanel(
     onHideRoute: () -> Unit,
     onRouteScrub: (Double?) -> Unit,
     following: com.trailguidegps.app.route.Following?,
+    tripVm: AppViewModel,
     onFollow: () -> Unit,
     onStopFollowing: () -> Unit,
     placeDescription: String?,
@@ -1066,18 +1068,22 @@ private fun BottomPanel(
                     ) { Text("Follow", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
                 }
                 var showDifficulty by remember(r.id) { mutableStateOf(false) }
+                var showTripPlan by remember(r.id) { mutableStateOf(false) }
                 val difficulty = remember(r) { com.trailguidegps.app.data.Difficulty.of(r.stats, r.terrain) }
                 DifficultyLine(difficulty, onClick = { showDifficulty = true })
                 if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
                 if (r.stats.profile.size >= 2) {
                     ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub)
                 }
-                if (shownRouteCount > 1) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${shownRouteCount} routes on the map · tap one to see it", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f))
-                        TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 12.sp, color = TG.Accent) }
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (shownRouteCount > 1) "$shownRouteCount routes on the map · tap a line to switch" else "",
+                        fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { showTripPlan = true }) { Text("Trip plan", fontSize = 13.sp, color = TG.Accent) }
+                    if (shownRouteCount > 1) TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 13.sp, color = TG.Accent) }
                 }
+                if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
             }
             shownTrackName?.let { name ->
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {

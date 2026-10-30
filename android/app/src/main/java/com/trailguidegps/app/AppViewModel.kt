@@ -338,6 +338,95 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_shownTrack.value?.first == id) _shownTrack.value = null
     }
 
+    // ---- Trip plan to leave behind ----
+
+    /**
+     * Draws the route on a map snapshot (offline map files), writes the trip plan PDF,
+     * and hands back what's needed to share it by email or text.
+     */
+    fun makeTripPlan(route: SavedRoute, form: com.trailguidegps.app.data.TripForm, onReady: (android.net.Uri, String, String) -> Unit) {
+        val app = getApplication<Application>()
+        com.trailguidegps.app.data.TripForm.remember(app, form)
+        _message.value = "Making the trip plan…"
+        snapshotRoute(route) { bitmap ->
+            viewModelScope.launch {
+                val r = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
+                        val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
+                        val f = java.io.File(dir, "Trip plan - $safe.pdf")
+                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap)
+                        androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
+                    }
+                }
+                r.onSuccess { uri ->
+                    onReady(uri, com.trailguidegps.app.data.TripPlan.subject(route, form),
+                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value))
+                }.onFailure { _message.value = "Couldn't make the trip plan: ${it.message}" }
+            }
+        }
+    }
+
+    private var activeSnapshotter: org.maplibre.android.snapshotter.MapSnapshotter? = null
+
+    /** A map picture of the route (topo, no satellite), with the route drawn on. Null if it can't be drawn. */
+    private fun snapshotRoute(route: SavedRoute, done: (android.graphics.Bitmap?) -> Unit) {
+        val app = getApplication<Application>()
+        if (route.coords.size < 2 || !store.isReady()) { done(null); return }
+        val b = org.maplibre.android.geometry.LatLngBounds.Builder()
+        route.coords.forEach { b.include(org.maplibre.android.geometry.LatLng(it[0], it[1])) }
+        val bounds = runCatching { b.build() }.getOrNull() ?: run { done(null); return }
+        // The offline style, without the layers that are off by default or need a connection.
+        val style = org.json.JSONObject(com.trailguidegps.app.map.MapStyle.build(store))
+        val layers = style.getJSONArray("layers")
+        for (i in 0 until layers.length()) {
+            val l = layers.getJSONObject(i)
+            val id = l.getString("id")
+            if (id.startsWith("satellite") || id.startsWith("land-fill") || id.startsWith("fire")) {
+                l.put("layout", (l.optJSONObject("layout") ?: org.json.JSONObject()).put("visibility", "none"))
+            }
+        }
+        val w = 532
+        val h = 300
+        val ratio = 2f
+        val opts = org.maplibre.android.snapshotter.MapSnapshotter.Options(w, h)
+            .withStyleBuilder(org.maplibre.android.maps.Style.Builder().fromJson(style.toString()))
+            .withRegion(bounds).withPadding(30, 30, 30, 30).withPixelRatio(ratio).withLogo(false)
+        val snap = org.maplibre.android.snapshotter.MapSnapshotter(app, opts)
+        activeSnapshotter = snap // keep it alive until it answers
+        var finished = false
+        val timeout = android.os.Handler(android.os.Looper.getMainLooper())
+        timeout.postDelayed({ if (!finished) { finished = true; runCatching { snap.cancel() }; done(null) } }, 20_000)
+        snap.start({ s ->
+            if (finished) return@start
+            finished = true
+            val bmp = s.bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+            val canvas = android.graphics.Canvas(bmp)
+            // pixelForLatLng may answer in map points rather than bitmap pixels; check against the middle.
+            val mid = s.pixelForLatLng(bounds.center)
+            val scale = if (kotlin.math.abs(mid.x * ratio - bmp.width / 2f) < kotlin.math.abs(mid.x - bmp.width / 2f)) ratio else 1f
+            fun px(lat: Double, lon: Double) = s.pixelForLatLng(org.maplibre.android.geometry.LatLng(lat, lon)).let { android.graphics.PointF(it.x * scale, it.y * scale) }
+            val path = android.graphics.Path()
+            route.coords.forEachIndexed { i, c -> px(c[0], c[1]).let { if (i == 0) path.moveTo(it.x, it.y) else path.lineTo(it.x, it.y) } }
+            val stroke = { color: Int, width: Float ->
+                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    style = android.graphics.Paint.Style.STROKE; strokeWidth = width; this.color = color
+                    strokeJoin = android.graphics.Paint.Join.ROUND; strokeCap = android.graphics.Paint.Cap.ROUND
+                }
+            }
+            canvas.drawPath(path, stroke(android.graphics.Color.WHITE, 12f))
+            canvas.drawPath(path, stroke(android.graphics.Color.parseColor(route.color), 7f))
+            val dot = { lat: Double, lon: Double, color: Int ->
+                val p = px(lat, lon)
+                canvas.drawCircle(p.x, p.y, 13f, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })
+                canvas.drawCircle(p.x, p.y, 9f, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.color = color })
+            }
+            route.coords.last().let { dot(it[0], it[1], android.graphics.Color.rgb(183, 28, 28)) }
+            route.coords.first().let { dot(it[0], it[1], android.graphics.Color.rgb(46, 139, 87)) }
+            done(bmp)
+        }, { _ -> if (!finished) { finished = true; done(null) } })
+    }
+
     // ---- Backup and restore ----
 
     private val backupPrefs = app.getSharedPreferences("backup", android.content.Context.MODE_PRIVATE)

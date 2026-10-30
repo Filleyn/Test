@@ -76,6 +76,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     val shownRoutes by vm.shownRoutes.collectAsStateWithLifecycle()
     var renamingRoute by remember { mutableStateOf<RouteSummary?>(null) }
     var recoloring by remember { mutableStateOf<RouteSummary?>(null) }
+    var tripPlanFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     val fix by vm.tracker.fix.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var renaming by remember { mutableStateOf<TrackSummary?>(null) }
@@ -140,6 +141,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                             onHide = { vm.hideRoute(r.id) },
                             onRename = { renamingRoute = r },
                             onColor = { recoloring = r },
+                            onTripPlan = { tripPlanFor = vm.routes.load(r.id) },
                             onExport = { share(r.name, emptyList(), emptyList(), listOf(r.id)) },
                             onDelete = { deleting = r.name to { vm.deleteRoute(r.id) } },
                         )
@@ -198,6 +200,8 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         )
     }
 
+    tripPlanFor?.let { r -> TripPlanDialog(vm, r) { tripPlanFor = null } }
+
     recoloring?.let { r ->
         var color by remember(r.id) { mutableStateOf(r.color) }
         AlertDialog(
@@ -252,7 +256,8 @@ private fun TrackRow(t: TrackSummary, onShow: () -> Unit, onRename: () -> Unit, 
 @Composable
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean,
-    onShow: () -> Unit, onHide: () -> Unit, onRename: () -> Unit, onColor: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
+    onShow: () -> Unit, onHide: () -> Unit, onRename: () -> Unit, onColor: () -> Unit, onTripPlan: () -> Unit,
+    onExport: () -> Unit, onDelete: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 22.dp, height = 4.dp).background(routeColor(r.color), RoundedCornerShape(2.dp)))
@@ -274,6 +279,7 @@ private fun RouteRow(
         RowMenu(listOfNotNull(
             "Show on map" to onShow,
             if (onMap) "Hide from map" to onHide else null,
+            "Trip plan (PDF)" to onTripPlan,
             "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete,
         ))
     }

@@ -1,0 +1,198 @@
+package com.trailguidegps.app.data
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import com.trailguidegps.app.geo.Geo
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.roundToInt
+
+/** What you fill in for a trip plan. Times are epoch milliseconds. */
+data class TripForm(
+    val party: String,
+    val phones: String,
+    val startAt: Long,
+    val backBy: Long,
+    val alarmAt: Long,
+    val vehicle: String,
+    val parkedAt: String,
+    val notes: String,
+) {
+    companion object {
+        /** The parts that stay the same from trip to trip are remembered. */
+        fun remembered(context: Context): TripForm {
+            val p = context.getSharedPreferences("tripplan", Context.MODE_PRIVATE)
+            return TripForm(p.getString("party", "") ?: "", p.getString("phones", "") ?: "", 0, 0, 0,
+                p.getString("vehicle", "") ?: "", "", p.getString("notes", "") ?: "")
+        }
+
+        fun remember(context: Context, f: TripForm) {
+            context.getSharedPreferences("tripplan", Context.MODE_PRIVATE).edit()
+                .putString("party", f.party).putString("phones", f.phones).putString("vehicle", f.vehicle)
+                .putString("notes", f.notes).apply()
+        }
+    }
+}
+
+/**
+ * A one-page trip plan PDF to leave with someone at home: who, where, when you'll
+ * be back, when to call for help, the route on a map, and its numbers.
+ */
+object TripPlan {
+    private val dateTime = SimpleDateFormat("EEE, MMM d 'at' h:mm a", Locale.US)
+
+    fun subject(route: SavedRoute, form: TripForm) =
+        "Trip plan: ${route.name} (${SimpleDateFormat("EEE, MMM d", Locale.US).format(Date(form.startAt))})"
+
+    /** A short plain-text version for the email body, so the essentials show without opening the PDF. */
+    fun body(route: SavedRoute, form: TripForm, pace: Pace): String {
+        val start = route.coords.firstOrNull()
+        return buildString {
+            appendLine("Here's my trip plan. The PDF attached has the map.")
+            appendLine()
+            appendLine("Route: ${route.name}")
+            appendLine("Who: ${form.party.ifBlank { "(not given)" }}")
+            if (form.phones.isNotBlank()) appendLine("Phone: ${form.phones}")
+            appendLine("Start: ${dateTime.format(Date(form.startAt))}")
+            appendLine("Expected back: ${dateTime.format(Date(form.backBy))}")
+            appendLine()
+            appendLine("IF YOU HAVEN'T HEARD FROM ME BY ${dateTime.format(Date(form.alarmAt)).uppercase()}, call 911 and ask for the county sheriff's search and rescue. Give them this plan.")
+            appendLine()
+            if (form.vehicle.isNotBlank()) appendLine("Vehicle: ${form.vehicle}")
+            start?.let { appendLine("Parked at / trailhead: ${form.parkedAt.ifBlank { "route start" }} — %.5f, %.5f".format(Locale.US, it[0], it[1])) }
+            start?.let { appendLine("Map link: https://www.google.com/maps/search/?api=1&query=%.5f,%.5f".format(Locale.US, it[0], it[1])) }
+            appendLine("Distance: %.1f mi, +%,d ft climb, about %s".format(route.stats.distanceM / Geo.M_PER_MI,
+                (route.stats.gainM * Geo.FT_PER_M).roundToInt(), Pace.format(pace.minutes(route.stats.distanceM, route.stats.gainM))))
+            if (form.notes.isNotBlank()) { appendLine(); appendLine("Notes: ${form.notes}") }
+        }
+    }
+
+    /** Writes the PDF. [map] is a snapshot of the route area with the route drawn on it, or null. */
+    fun write(out: File, route: SavedRoute, form: TripForm, pace: Pace, map: Bitmap?) {
+        val doc = PdfDocument()
+        val page = doc.startPage(PdfDocument.PageInfo.Builder(612, 792, 1).create())
+        val c = page.canvas
+        val left = 40f
+        val width = 532f
+        var y = 40f
+
+        val title = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 20f; typeface = Typeface.DEFAULT_BOLD; color = Color.rgb(35, 39, 31) }
+        val label = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 9f; color = Color.rgb(107, 113, 106) }
+        val text = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f; color = Color.rgb(35, 39, 31) }
+        val bold = TextPaint(text).apply { typeface = Typeface.DEFAULT_BOLD }
+        fun block(s: String, p: TextPaint, x: Float, top: Float, w: Float, maxLines: Int = 6): Float {
+            val l = StaticLayout.Builder.obtain(s, 0, s.length, p, w.toInt()).setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setMaxLines(maxLines).setEllipsize(android.text.TextUtils.TruncateAt.END).build()
+            c.save(); c.translate(x, top); l.draw(c); c.restore()
+            return top + l.height
+        }
+
+        label.textSize = 10f
+        c.drawText("TRIP PLAN", left, y, label)
+        y = block(route.name, title, left, y + 4, width, 2) + 6
+
+        // The one thing someone at home needs to know.
+        val alarm = "If you haven't heard from us by ${dateTime.format(Date(form.alarmAt))}, call 911 and ask for the county " +
+            "sheriff's search and rescue. Give them this plan."
+        val alarmPaint = TextPaint(bold).apply { color = Color.WHITE; textSize = 12f }
+        val alarmLayout = StaticLayout.Builder.obtain(alarm, 0, alarm.length, alarmPaint, (width - 20).toInt()).build()
+        val boxBottom = y + alarmLayout.height + 16
+        c.drawRoundRect(RectF(left, y, left + width, boxBottom), 6f, 6f, Paint().apply { color = Color.rgb(183, 28, 28) })
+        c.save(); c.translate(left + 10, y + 8); alarmLayout.draw(c); c.restore()
+        y = boxBottom + 12
+
+        // Details in two columns.
+        val start = route.coords.firstOrNull()
+        val rows = listOfNotNull(
+            "Who" to form.party.ifBlank { "—" },
+            form.phones.takeIf { it.isNotBlank() }?.let { "Phone" to it },
+            "Start" to dateTime.format(Date(form.startAt)),
+            "Expected back" to dateTime.format(Date(form.backBy)),
+            "Vehicle" to form.vehicle.ifBlank { "—" },
+            start?.let {
+                "Parked at" to (form.parkedAt.ifBlank { "Route start" } + "\n%.5f, %.5f".format(Locale.US, it[0], it[1]))
+            },
+        )
+        val colW = (width - 16) / 2
+        var colY = floatArrayOf(y, y)
+        rows.forEachIndexed { i, (k, v) ->
+            val col = i % 2
+            val x = left + col * (colW + 16)
+            c.drawText(k.uppercase(), x, colY[col] + 9, label)
+            colY[col] = block(v, text, x, colY[col] + 12, colW, 3) + 8
+        }
+        y = maxOf(colY[0], colY[1]) + 2
+
+        // The map.
+        if (map != null) {
+            val h = width * map.height / map.width
+            c.drawBitmap(map, null, RectF(left, y, left + width, y + h), Paint(Paint.FILTER_BITMAP_FLAG))
+            c.drawRect(RectF(left, y, left + width, y + h), Paint().apply { style = Paint.Style.STROKE; color = Color.rgb(200, 200, 195) })
+            y += h + 10
+        }
+
+        // Numbers.
+        val d = Difficulty.of(route.stats, route.terrain)
+        val summary = "%.1f mi · +%,d ft climb · −%,d ft descent · about %s at your pace · %s".format(
+            route.stats.distanceM / Geo.M_PER_MI, (route.stats.gainM * Geo.FT_PER_M).roundToInt(),
+            (route.stats.lossM * Geo.FT_PER_M).roundToInt(), Pace.format(pace.minutes(route.stats.distanceM, route.stats.gainM)), d.label,
+        ) + (d.highPointFt?.let { " · high point %,d ft".format(it.roundToInt()) } ?: "")
+        y = block(summary, bold, left, y, width, 2) + 4
+        if (route.via.isNotEmpty()) y = block("Via " + route.via.joinToString(" → "), text, left, y, width, 2) + 6
+
+        // Elevation profile.
+        val prof = route.stats.profile
+        if (prof.size >= 2) {
+            val h = 60f
+            val minE = prof.minOf { it.second }
+            val range = (prof.maxOf { it.second } - minE).coerceAtLeast(30.0)
+            val maxD = prof.last().first.coerceAtLeast(1.0)
+            val path = Path()
+            prof.forEachIndexed { i, (dd, e) ->
+                val px = left + (dd / maxD * width).toFloat()
+                val py = y + h - ((e - minE) / range * (h - 4)).toFloat() - 2
+                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            val fill = Path(path).apply { lineTo(left + width, y + h); lineTo(left, y + h); close() }
+            c.drawPath(fill, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(40, 107, 63, 160) })
+            c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f; color = Color.rgb(107, 63, 160) })
+            c.drawText("%,d ft".format((prof.maxOf { it.second } * Geo.FT_PER_M).roundToInt()), left, y + 8, label)
+            c.drawText("%,d ft".format((minE * Geo.FT_PER_M).roundToInt()), left, y + h - 2, label)
+            c.drawText("%.1f mi".format(maxD / Geo.M_PER_MI), left + width - 30, y + h + 10, label)
+            y += h + 16
+        }
+
+        // Named points along the way.
+        val named = route.points.filter { it.waypointName != null }
+        if (named.isNotEmpty() && y < 700) {
+            c.drawText("POINTS ON THE ROUTE", left, y + 9, label)
+            y += 12
+            named.take(6).forEach { p ->
+                y = block("${p.waypointName}: %.5f, %.5f".format(Locale.US, p.lat, p.lon), text, left, y, width, 1) + 2
+            }
+            y += 6
+        }
+        if (form.notes.isNotBlank() && y < 730) {
+            c.drawText("NOTES", left, y + 9, label)
+            y = block(form.notes, text, left, y + 12, width, ((750 - y) / 14).toInt().coerceAtLeast(1)) + 4
+        }
+
+        label.textSize = 8f
+        c.drawText("Made with TrailGuide GPS on ${SimpleDateFormat("MMM d, yyyy h:mm a", Locale.US).format(Date())}. " +
+            "Coordinates are latitude, longitude (WGS84). Map © OpenStreetMap contributors, USGS.", left, 776f, label)
+        doc.finishPage(page)
+        out.outputStream().use { doc.writeTo(it) }
+        doc.close()
+    }
+}
