@@ -9,7 +9,7 @@ This repo has two parts:
 | `pipeline/` + `.github/workflows/build-maps.yml` | Builds the offline map files from open data | Done (all of Oregon) |
 | `android/` + `.github/workflows/build-app.yml` | The Android app (Kotlin, Jetpack Compose, MapLibre) | All 7 phases done (0.9) |
 
-Ideas for later, Play Store notes and multi-state notes: [docs/ROADMAP.md](docs/ROADMAP.md).
+Everything the app does: [docs/FEATURES.md](docs/FEATURES.md). Ideas for later, Play Store notes and multi-state notes: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Installing the app
 
