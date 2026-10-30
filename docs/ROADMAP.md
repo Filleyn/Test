@@ -41,6 +41,8 @@ Ideas, roughly most useful first. All are public data; each would follow the sat
 ## Done after phase 7
 - 0.9.26: **Driving directions** (opens Google Maps or the phone's maps app) and **Copy coordinates** on every place and waypoint card.
 - 1.0: **Backup and restore** (one .zip to the phone, Google Drive, OneDrive or any storage app); **trip plan PDF** to email or text; dirt and forest roads drawn differently from trails; place cards link to the official page, the forest's alerts and a web search; route names on their lines with unselected routes faded; separate Layers and Settings buttons with SOS under them; **search filters** by type.
+- 1.0.31: tapping routes, trails and forest boundaries fixed (fully transparent tap layers aren't tappable in MapLibre); backup through the share sheet so OneDrive appears.
+- 1.0.32: **trip folders** holding any mix of routes, tracks and waypoints; choose a folder when saving; show a whole folder on the map; export a folder as GPX; folders included in backups.
 
 ## Publishing on Google Play (discussed 2026-10-28)
 
