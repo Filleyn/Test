@@ -117,7 +117,10 @@ def rough(pbf, bbox, path):
     bad = {"very_bad", "horrible", "very_horrible", "impassable"}
     n = 0
     with open(path, "w") as f:
-        for w in osmium.FileProcessor(pbf, osmium.osm.WAY).with_locations():
+        # Node locations have to be read for ways to have coordinates.
+        for w in osmium.FileProcessor(pbf, osmium.osm.NODE | osmium.osm.WAY).with_locations():
+            if not w.is_way():
+                continue
             t = w.tags
             hw = t.get("highway")
             if hw not in ("track", "unclassified", "service", "tertiary"):
