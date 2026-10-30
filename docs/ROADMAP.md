@@ -24,8 +24,6 @@ Asked about 2026-10-28; documented only, not built.
 - **Multi-night trips:** route legs grouped into days, camps marked, per-day miles and climb, and a "campsites near water" filter.
 - **Sunrise, sunset and daylight left**, computed offline, with a warning if a route's finish time is after dark.
 - **Weather for a route** (online), at the route's location and elevation.
-- **Backup** of routes, tracks and waypoints to Google Drive.
-- **Trip plan to leave behind:** before a hike, send a text or email to someone at home with the route map link, start point, expected finish time and when to call for help.
 - **"Go to" a point:** a compass arrow and distance to one waypoint or place, for off-trail travel without planning a route.
 - **Photos on waypoints**, kept with the waypoint and included in GPX export.
 - **Battery settings prompt** for phones that kill background apps (Samsung, Xiaomi, OnePlus): send people to set the app to "Unrestricted".
@@ -42,6 +40,7 @@ Ideas, roughly most useful first. All are public data; each would follow the sat
 
 ## Done after phase 7
 - 0.9.26: **Driving directions** (opens Google Maps or the phone's maps app) and **Copy coordinates** on every place and waypoint card.
+- 1.0: **Backup and restore** (one .zip to the phone, Google Drive, OneDrive or any storage app); **trip plan PDF** to email or text; dirt and forest roads drawn differently from trails; place cards link to the official page, the forest's alerts and a web search; route names on their lines with unselected routes faded; separate Layers and Settings buttons with SOS under them; **search filters** by type.
 
 ## Publishing on Google Play (discussed 2026-10-28)
 
