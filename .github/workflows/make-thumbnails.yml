@@ -30,7 +30,7 @@ jobs:
           set -o pipefail
           TAG=$(gh api "repos/${{ github.repository }}/releases?per_page=30" -q '[.[] | select(.tag_name|startswith("maps-oregon-"))] | max_by(.published_at) | .tag_name')
           echo "Using $TAG"
-          if ! python3 pipeline/make_thumbnails.py --release-url "https://github.com/${{ github.repository }}/releases/download/$TAG" --out out 2>&1 | tee log.txt; then
+          if ! python3 pipeline/make_thumbnails.py --repo "${{ github.repository }}" --tag "$TAG" --out out 2>&1 | tee log.txt; then
             msg=$(tail -25 log.txt | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=Thumbnails failed::${msg}"
             exit 1

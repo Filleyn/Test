@@ -43,11 +43,16 @@ CX, CY = gpx(*CENTER, Z)
 OX, OY = CX - W / 2, CY - H / 2          # top-left of the picture, zoom-13 pixels
 
 
+TOKEN = os.environ.get("GH_TOKEN")
+
+
 def remote(url):
+    """Range reads of a release file. Works for private repositories through the API with a token."""
     s = requests.Session()
+    auth = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/octet-stream"} if TOKEN and "api.github.com" in url else {}
 
     def get(offset, length):
-        r = s.get(url, headers={**UA, "Range": f"bytes={offset}-{offset + length - 1}"}, timeout=60)
+        r = s.get(url, headers={**UA, **auth, "Range": f"bytes={offset}-{offset + length - 1}"}, timeout=60)
         r.raise_for_status()
         return r.content
     return Reader(get)
@@ -227,14 +232,18 @@ def peaks(img, feats, hybrid):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release-url", required=True, help="https://github.com/<repo>/releases/download/<tag>")
+    ap.add_argument("--repo", required=True)
+    ap.add_argument("--tag", required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
 
-    topo = remote(f"{a.release_url}/topo.pmtiles")
-    contours = remote(f"{a.release_url}/contours.pmtiles")
-    terrain = remote(f"{a.release_url}/terrain.pmtiles")
+    rel = requests.get(f"https://api.github.com/repos/{a.repo}/releases/tags/{a.tag}",
+                       headers={**UA, **({"Authorization": f"Bearer {TOKEN}"} if TOKEN else {})}, timeout=60).json()
+    assets = {x["name"]: x["url"] for x in rel["assets"]}
+    topo = remote(assets["topo.pmtiles"])
+    contours = remote(assets["contours.pmtiles"])
+    terrain = remote(assets["terrain.pmtiles"])
     feats = vector_features(topo)
     cfeats = vector_features(contours)
     print(f"{len(feats)} topo features, {len(cfeats)} contour features")
