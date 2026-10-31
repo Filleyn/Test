@@ -55,7 +55,8 @@ class ScreenshotTest {
                 LayersContent(
                     base = MapStyle.BASE_TOPO, onBase = {}, thumbs = emptyMap(), online = false, satelliteAreaCount = 1,
                     layerOn = on, onToggle = { g, v -> on[g] = v }, onPreset = {},
-                    sectionOpen = { it == "terrain" || it == "hazards" }, onSection = { _, _ -> }, firesFooter = {},
+                    customPresets = listOf("Elk season" to setOf("trails", "roadaccess")), onCustomPresets = {},
+                    sectionOpen = { it == "trails" || it == "hazards" }, onSection = { _, _ -> }, firesFooter = {},
                 )
             }
         }
@@ -89,6 +90,24 @@ class ScreenshotTest {
         "Lost Creek Spring", "Spring · may be seasonal · 6.2 mi W of Sisters", 44.12, -121.74, osmId = "n1", isWater = true,
         links = listOf("Deschutes NF alerts" to "https://example.org", "Search the web" to "https://example.org"),
     )
+
+    @Test
+    fun routePlanner() {
+        val prof = (0..40).map { i -> i * 140.0 to 1440.0 + 360.0 * (i / 40.0) + 15 * kotlin.math.sin(i / 3.0) }
+        val pts = listOf(com.trailguidegps.app.data.RoutePoint(44.1, -121.7, true), com.trailguidegps.app.data.RoutePoint(44.12, -121.74, true))
+        val plan = AppViewModel.PlanState(
+            active = true, points = pts,
+            legs = listOf(com.trailguidegps.app.data.RouteLeg(listOf(doubleArrayOf(44.1, -121.7), doubleArrayOf(44.12, -121.74)), 5600.0,
+                listOf("Obsidian Trail #3528"), true, doubleArrayOf(5600.0, 0.0, 0.0))),
+            stats = com.trailguidegps.app.data.RouteStats(5600.0, 354.0, 24.0, prof),
+        )
+        compose.setContent {
+            Box(Modifier.background(Color.White).padding(16.dp)) {
+                RoutePlannerPanel(plan = plan, pace = Pace(), routingReady = true, onAddWaypoint = {}, onSave = {}, onEditPace = {})
+            }
+        }
+        compose.onRoot().captureRoboImage(out("route-planner"))
+    }
 
     @Test fun mainPanel() = panel("panel-main", null, false)
     @Test fun placeCard() = panel("panel-place", spring, false)

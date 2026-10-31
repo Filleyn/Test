@@ -75,6 +75,7 @@ import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Description
@@ -227,6 +228,17 @@ fun MapScreen(
             ?: if (layerPrefs.getBoolean("satellite", false)) MapStyle.BASE_HYBRID else MapStyle.BASE_TOPO)
     }
     val sectionOpen = remember { mutableStateMapOf<String, Boolean>() }
+    // Quick sets you made yourself: name and the overlays it turns on.
+    var customPresets by remember {
+        mutableStateOf(runCatching {
+            val arr = org.json.JSONArray(layerPrefs.getString("custom_presets", "[]"))
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                val l = o.getJSONArray("layers")
+                o.getString("name") to (0 until l.length()).map { l.getString(it) }.toSet()
+            }
+        }.getOrDefault(emptyList()))
+    }
     var thumbs by remember { mutableStateOf<Map<String, android.graphics.Bitmap>>(emptyMap()) }
 
     DisposableEffect(lifecycleOwner) {
@@ -985,6 +997,13 @@ fun MapScreen(
                     layerOn = layerOn,
                     onToggle = { g, on -> setGroup(g, on) },
                     onPreset = { set -> OVERLAY_GROUPS.forEach { g -> if ((layerOn[g] == true) != (g in set)) setGroup(g, g in set) } },
+                    customPresets = customPresets,
+                    onCustomPresets = { list ->
+                        customPresets = list
+                        layerPrefs.edit().putString("custom_presets", org.json.JSONArray().apply {
+                            list.forEach { (n, set) -> put(org.json.JSONObject().put("name", n).put("layers", org.json.JSONArray(set.toList()))) }
+                        }.toString()).apply()
+                    },
                     sectionOpen = { id -> sectionOpen[id] ?: layerPrefs.getBoolean("sec_$id", false) },
                     onSection = { id, open -> sectionOpen[id] = open; layerPrefs.edit().putBoolean("sec_$id", open).apply() },
                     firesFooter = {
@@ -1350,7 +1369,7 @@ private fun BottomPanel(
                 var showDifficulty by remember(r.id) { mutableStateOf(false) }
                 var showTripPlan by remember(r.id) { mutableStateOf(false) }
                 val difficulty = remember(r) { com.trailguidegps.app.data.Difficulty.of(r.stats, r.terrain) }
-                DifficultyLine(difficulty, onClick = { showDifficulty = true })
+                DifficultyLine(difficulty, onClick = { showDifficulty = true }, showLink = false)
                 if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
                 if (r.stats.profile.size >= 2) {
                     ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub)
@@ -1366,12 +1385,13 @@ private fun BottomPanel(
                     TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 12.sp, color = TG.Accent) }
                 }
                 ActionGrid(listOf(
+                    Action(Icons.Filled.Info, "Details") { showDifficulty = true },
                     Action(Icons.Filled.WaterDrop, "Water") { onWater(r.name, r.coords) },
                     Action(Icons.Filled.NightsStay, "Days") { onDays(r) },
                     Action(Icons.Filled.WbSunny, "Weather") { onRouteWeather(r) },
                     Action(Icons.Filled.SwapHoriz, "Reverse") { onReverse(r.id) },
                     Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
-                ), Modifier.padding(top = 4.dp), columns = 5)
+                ), Modifier.padding(top = 4.dp), columns = 6)
                 if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
             }
             shownTrackName?.let { name ->

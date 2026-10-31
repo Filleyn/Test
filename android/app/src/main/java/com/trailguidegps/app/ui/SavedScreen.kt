@@ -25,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -135,6 +137,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 r, pace, shownRoutes.any { it.id == r.id }, if (inFolder) null else folderName(FolderStore.routeKey(r.id)),
                 onShow = { vm.showRoute(r.id); onClose() },
                 onHide = { vm.hideRoute(r.id) },
+                onToggleMap = { on -> if (on) vm.addRouteToMap(r.id) else vm.hideRoute(r.id) },
                 onRename = { renamingRoute = r },
                 onColor = { recoloring = r },
                 onTripPlan = { tripPlanFor = vm.routes.load(r.id) },
@@ -245,7 +248,18 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             1 -> if (routes.isEmpty()) {
                 Empty("No routes yet", "Tap Route on the map, then tap along the trails to plan one. It works offline.")
                 Spacer(Modifier.weight(1f))
-            } else LazyColumn(Modifier.weight(1f)) { items(routes, key = { it.id }) { RouteItem(it, false) } }
+            } else LazyColumn(Modifier.weight(1f)) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${shownRoutes.size} of ${routes.size} on the map · tap the eye to choose", fontSize = 12.sp, color = TG.Muted,
+                            modifier = Modifier.weight(1f))
+                        if (shownRoutes.size < routes.size) TextButton(onClick = { vm.showAllRoutes() }) { Text("Show all", fontSize = 13.sp, color = TG.Accent) }
+                        if (shownRoutes.isNotEmpty()) TextButton(onClick = { vm.hideAllRoutes() }) { Text("Hide all", fontSize = 13.sp, color = TG.Accent) }
+                    }
+                    HorizontalDivider(color = TG.Line)
+                }
+                items(routes, key = { it.id }) { RouteItem(it, false) }
+            }
             2 -> if (tracks.isEmpty()) {
                 Empty("No tracks yet", "Tap Record on the map to record your hike. It keeps recording with the screen off.")
                 Spacer(Modifier.weight(1f))
@@ -450,7 +464,7 @@ private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, o
 @Composable
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?,
-    onShow: () -> Unit, onHide: () -> Unit, onRename: () -> Unit, onColor: () -> Unit, onTripPlan: () -> Unit,
+    onShow: () -> Unit, onHide: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onTripPlan: () -> Unit,
     onWater: () -> Unit, onReverse: () -> Unit,
     onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
 ) {
@@ -471,6 +485,12 @@ private fun RouteRow(
             Text(com.trailguidegps.app.data.Difficulty.LABELS[level], fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DifficultyColors[level])
             Text("Planned ${dateFmt.format(Date(r.createdAt))}" + if (onMap) " · on the map" else "", fontSize = 12.sp,
                 color = if (onMap) routeColor(r.color) else TG.Muted, fontWeight = if (onMap) FontWeight.SemiBold else FontWeight.Normal)
+        }
+        // On the map or not, without leaving the list, so several can be picked.
+        IconButton(onClick = { onToggleMap(!onMap) }) {
+            Icon(if (onMap) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                contentDescription = if (onMap) "Hide ${r.name} from the map" else "Show ${r.name} on the map",
+                tint = if (onMap) routeColor(r.color) else TG.Muted)
         }
         RowMenu(listOfNotNull(
             "Show on map" to onShow,

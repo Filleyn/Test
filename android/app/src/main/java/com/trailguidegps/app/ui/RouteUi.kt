@@ -12,6 +12,11 @@ import com.trailguidegps.app.data.RouteColors
 import com.trailguidegps.app.data.Difficulty
 import com.trailguidegps.app.data.RouteTerrain
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -152,7 +157,7 @@ val DifficultyColors = listOf(Color(0xFF2E7D32), Color(0xFF558B2F), Color(0xFFB0
 
 /** One line: the rating, the steepest stretch and the high point. Tap for the full breakdown. */
 @Composable
-fun DifficultyLine(d: Difficulty, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun DifficultyLine(d: Difficulty, onClick: () -> Unit, modifier: Modifier = Modifier, showLink: Boolean = true) {
     Row(
         modifier.fillMaxWidth().heightIn(min = 40.dp).clickable(onClick = onClick)
             .semantics { contentDescription = "Difficulty: ${d.label}. Tap for details." },
@@ -168,7 +173,7 @@ fun DifficultyLine(d: Difficulty, onClick: () -> Unit, modifier: Modifier = Modi
             d.terrain?.takeIf { it.sacMax > 0 }?.let { add("T${it.sacMax}") }
         }
         Text(bits.joinToString(" · "), fontSize = 12.sp, color = TG.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        Text("Details", fontSize = 12.sp, color = TG.Accent, fontWeight = FontWeight.SemiBold)
+        if (showLink) Text("Details", fontSize = 12.sp, color = TG.Accent, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -357,7 +362,7 @@ fun RoutePlannerPanel(
         } else {
             RouteStatsRow(plan.stats, pace)
             val difficulty = remember(plan.stats, plan.legs) { Difficulty.of(plan.stats, RouteTerrain.of(plan.legs)) }
-            if (plan.points.size >= 2) DifficultyLine(difficulty, onClick = { showDifficulty = true }, Modifier.padding(top = 4.dp))
+            if (plan.points.size >= 2) DifficultyLine(difficulty, onClick = { showDifficulty = true }, Modifier.padding(top = 4.dp), showLink = false)
             if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
             if (plan.stats.profile.size >= 2) {
                 Spacer(Modifier.height(8.dp))
@@ -374,13 +379,16 @@ fun RoutePlannerPanel(
                     maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp),
                 )
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "${plan.points.size} point${if (plan.points.size == 1) "" else "s"}" + if (plan.busy) " · finding the trail…" else "",
-                    fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f),
-                )
-                if (plan.points.size >= 2) TextButton(onClick = onWater) { Text("Water", fontSize = 12.sp, color = TG.Accent) }
-                TextButton(onClick = onEditPace) { Text("Pace: %.1f mph".format(pace.mph), fontSize = 12.sp, color = TG.Accent) }
+            Text(
+                "${plan.points.size} point${if (plan.points.size == 1) "" else "s"}" + if (plan.busy) " · finding the trail…" else "",
+                fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(top = 4.dp),
+            )
+            Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (plan.points.size >= 2) {
+                    PillButton(Icons.Filled.Info, "Details") { showDifficulty = true }
+                    PillButton(Icons.Filled.WaterDrop, "Water") { onWater() }
+                }
+                PillButton(Icons.Filled.DirectionsWalk, "Pace %.1f mph".format(pace.mph)) { onEditPace() }
             }
         }
         Spacer(Modifier.height(8.dp))

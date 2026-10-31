@@ -835,6 +835,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Takes a route off the map; with no id, the one in the bottom panel. */
+    /** Puts a route on the map alongside the others, without moving the map (from the Saved list). */
+    fun addRouteToMap(id: String) {
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) { routes.load(id) } ?: return@launch
+            setShown(_shownRoutes.value.filter { it.id != id } + r, r)
+        }
+    }
+
     fun hideRoute(id: String? = _shownRoute.value?.id) {
         if (following.value?.route?.id == id) stopFollowing()
         val rest = _shownRoutes.value.filter { it.id != id }
