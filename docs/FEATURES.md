@@ -67,6 +67,7 @@ Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Elevation graph:** press or drag on it to mark that spot on the map.
 - **Difficulty rating:** the Shenandoah National Park scale, plus steepest stretch, high point, surface mix (trail, dirt road, road, off-trail) and the SAC technical rating where trails have one.
 - **Saved routes:** name, color (6 choices), rename, export, delete; arrows along the line show which way it runs.
+- **Edit a saved route:** Edit (on the map or in Saved) opens it in the planner: tap a point to move or remove it, add points at the end or the start; save the changes or save as a new route. The parts you don't touch stay exactly as they were.
 - **Several routes at once:** names on their lines; tap a line to see its details; Show all / Hide all.
 
 ## Tools
@@ -76,7 +77,7 @@ Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Go to:** compass arrow, distance, true bearing and climb to any place or waypoint.
 - **Water along a route:** water by mile with distance off route, seasonal flags and your notes; longest dry stretch, and how it changes if seasonal sources are dry. Includes about 30,000 trail and road creek crossings.
 - **Sunrise, sunset and daylight left**, offline, with after-dark warnings when planning, following and in trip plans.
-- **Peaks in view:** from any place, waypoint or your location, the named peaks within 60 mi you can see, worked out offline from the terrain with the earth's curve. A full screen with a compass dial that turns as you do (up is where the phone points) and names the peak you're facing, plus a list by direction or distance with "only just visible" flags.
+- **Peaks in view:** from any place, waypoint or your location, the named peaks within 60 mi you can see, worked out offline from the terrain with the earth's curve. A full screen with a compass dial that turns as you do (up is where the phone points) and names the peak you're facing, plus a list by direction or distance with "only just visible" flags. Filter by kind (mountains, buttes, hills, rocks and points) or only peaks higher than you.
 - **Weather (online):** National Weather Service forecast for a place, or for a route's start, high point and camps, on a full screen with a day strip (icons, highs, lows, chance of rain or snow) and each day's full forecast; temperatures adjusted for how far you'll be above the forecast area; kept for reading offline.
 
 ## Following a route
