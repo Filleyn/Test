@@ -1,6 +1,6 @@
 # TrailGuide GPS: features and requirements
 
-Current as of app 1.2 and the October 30, 2026 maps. Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
+Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
 
 ## Requirements set at the start
 
@@ -22,7 +22,9 @@ Current as of app 1.2 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Contour lines:** every 40 ft, with 200 ft index lines labeled in feet.
 - **Hillshade:** terrain shading from USGS 3DEP elevation data.
 - **Trails vs forest roads:** trails are dashed red-brown; dirt and forest roads are solid brown.
-- **Layer switches:** hillshade, contours, trails, water, peaks, campsites, trailheads, waterfalls, shelters, restrooms (with a restroom icon), other places, land manager, forest boundaries, wilderness, slope shading, forest road access, past burns, wildfires and satellite, each on or off and remembered, with a color key under the newer ones.
+- **Base maps:** Topo, Satellite and Hybrid (imagery with roads, streams and names) as picture buttons showing the area you're looking at.
+- **Overlays:** grouped in sections that open and close (Terrain, Trails and water, Places, Land and roads, Hazards), each showing how many are on, with a color key under the newer ones; all remembered.
+- **Quick sets:** Hiking, Driving to the trailhead, Snow and scrambling, and Minimal switch a whole set of overlays at once.
 - **Slope angle shading:** slopes of 25°, 30°, 35°, 45° and 60°+ in yellow to purple, computed from the elevation data (zoom in to see it). For snow travel and scrambling.
 - **Forest road access:** Forest Service roads colored by who can drive them (passenger car, high clearance, OHV only or closed), dashed where open only part of the year; tap one for its maintenance level, surface, open dates and forest. Rough and 4WD roads from OpenStreetMap are dotted purple (from the November map build on).
 - **Past wildfire burns:** fires since 2000 over 50 acres, shaded darker the more recent; tap one for its name, year and size, with a warning about snags, blowdown and washouts.
@@ -37,7 +39,7 @@ Current as of app 1.2 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Fire lookouts (61) and historic sites (252)**, with their own layer switches and a History search filter.
 - **Places:** about 2,700 trailheads, 1,750 campsites, 4,500 peaks with elevation, plus lakes, waterfalls, shelters, viewpoints, hot springs and towns.
 - **Extra trailheads:** includes ones mapped only as "Trailhead" parking lots, campgrounds drawn as areas, and a trailhead wherever a named trail ends at a road (shown from zoom 11).
-- **Tap for details:** name, type, elevation, distance and direction from you, and the nearest town ("10.6 mi NW of Sisters").
+- **Tap for details:** a short card with the name, type, distance and direction from you and the nearest town, plus Go to, Drive, Copy and Pin buttons; pull it up (or tap More) for coordinates, notes, links, Peaks in view, Weather and water notes.
 - **Links:** the official page (555 places), the forest's alerts page, and a web search.
 - **Driving directions and Copy coordinates** on every place and waypoint card.
 
