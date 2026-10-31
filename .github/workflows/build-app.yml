@@ -87,6 +87,26 @@ jobs:
           gh release create "app-v$VERSION" "$APK" --title "TrailGuide GPS $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
           echo "::notice::Published app-v$VERSION ($MAPLIBRE)"
 
+      # Pictures of the main screens, drawn without a phone, attached to the "ui-screenshots" pre-release
+      # so the design can be checked. Never blocks the app release.
+      - name: Screenshots of the main screens
+        continue-on-error: true
+        working-directory: android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          if ! gradle --no-daemon recordRoborazziDebug 2>&1 | tee "$RUNNER_TEMP/shots.log"; then
+            msg=$(grep -E "^e: |FAILED|Exception|Caused by|What went wrong|> " "$RUNNER_TEMP/shots.log" | head -30 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::warning title=Screenshot tests::${msg}"
+          fi
+          ls app/build/outputs/roborazzi/*.png >/dev/null 2>&1 || { echo "::warning::No screenshots were made"; exit 0; }
+          R=${{ github.repository }}
+          gh release view ui-screenshots -R "$R" >/dev/null 2>&1 || gh release create ui-screenshots -R "$R" --prerelease \
+            --title "UI screenshots" --notes "Pictures of the app's main screens from the latest build. Not an app release."
+          gh release upload ui-screenshots app/build/outputs/roborazzi/*.png -R "$R" --clobber
+          echo "::notice::Screenshots: $(ls app/build/outputs/roborazzi/*.png | xargs -n1 basename | tr '\n' ' ')"
+
       - name: Report failure details
         if: failure()
         run: |

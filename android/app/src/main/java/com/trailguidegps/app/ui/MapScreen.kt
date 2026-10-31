@@ -67,6 +67,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.animation.animateContentSize
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.runtime.mutableFloatStateOf
@@ -113,29 +124,6 @@ private typealias Selected = AppViewModel.SelectedPlace
 
 private val kindLabels = com.trailguidegps.app.data.Features.KIND_LABELS
 
-private val layerNames = linkedMapOf(
-    "hillshade" to "Hillshade",
-    "contours" to "Contour lines (40 ft)",
-    "trails" to "Trails and tracks",
-    "water" to "Water sources",
-    "campsites" to "Campsites",
-    "trailheads" to "Trailheads",
-    "peaks" to "Peaks",
-    "waterfalls" to "Waterfalls",
-    "lookouts" to "Fire lookouts",
-    "history" to "Historic sites",
-    "shelters" to "Shelters and huts",
-    "restrooms" to "Restrooms (when zoomed in)",
-    "other" to "Other places: viewpoints, hot springs, passes",
-    "landmanager" to "Land manager (Forest Service, BLM, state…)",
-    "forests" to "National forest and reservation boundaries",
-    "wilderness" to "Wilderness and other special areas",
-    "slope" to "Slope angle shading (zoom in)",
-    "roadaccess" to "Forest road access (car, high clearance, 4WD)",
-    "burns" to "Past wildfire burn areas (since 2000)",
-    "fires" to "Active wildfires (updates when online)",
-    "satellite" to "Satellite imagery (online, and saved areas offline)",
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -233,6 +221,13 @@ fun MapScreen(
             MapStyle.GROUPS.keys.forEach { put(it, layerPrefs.getBoolean(it, it !in MapStyle.DEFAULT_OFF)) }
         }
     }
+    // The base map. Before 1.3 satellite was a switch that drew imagery under roads and names, which is now "Hybrid".
+    var baseMap by remember {
+        mutableStateOf(layerPrefs.getString("base", null)
+            ?: if (layerPrefs.getBoolean("satellite", false)) MapStyle.BASE_HYBRID else MapStyle.BASE_TOPO)
+    }
+    val sectionOpen = remember { mutableStateMapOf<String, Boolean>() }
+    var thumbs by remember { mutableStateOf<Map<String, android.graphics.Bitmap>>(emptyMap()) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -451,7 +446,8 @@ fun MapScreen(
         val areas = vm.satellite.areas.value.filter { it.ready && vm.satellite.file(it).exists() }.map { it.id to vm.satellite.file(it) }
         m.setStyle(Style.Builder().fromJson(MapStyle.build(vm.store, areas))) { s ->
             MapIcons.addAll(context, s)
-            MapStyle.GROUPS.keys.forEach { group -> setVisible(s, groupLayers(s, group), layerOn[group] != false) }
+            MapStyle.GROUPS.keys.filter { it != "satellite" }.forEach { group -> setVisible(s, groupLayers(s, group), layerOn[group] != false) }
+            applyBase(s, baseMap)
             if (!cameraPlaced) {
                 vm.store.bbox()?.let { b ->
                     val bounds = LatLngBounds.Builder()
@@ -956,37 +952,55 @@ fun MapScreen(
         )
     }
 
+    // Pictures for the base map buttons, drawn from where you're looking.
+    LaunchedEffect(showLayers, mapVersion) {
+        if (!showLayers) return@LaunchedEffect
+        val m = map ?: return@LaunchedEffect
+        val areas = vm.satellite.areas.value.filter { it.ready && vm.satellite.file(it).exists() }.map { it.id to vm.satellite.file(it) }
+        val json = MapStyle.build(vm.store, areas)
+        MapStyle.BASES.forEach { b ->
+            snapshotBase(context, MapStyle.thumbnailStyle(json, b), m.cameraPosition)?.let { bmp -> thumbs = thumbs + (b to bmp) }
+        }
+    }
     if (showLayers) {
         ModalBottomSheet(onDismissRequest = { showLayers = false }, containerColor = Color.White) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
                 Text("Map layers", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
                 Spacer(Modifier.height(8.dp))
-                layerNames.forEach { (group, label) ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(label, fontSize = 16.sp, color = TG.Ink, modifier = Modifier.weight(1f).padding(end = 12.dp))
-                        Switch(
-                            checked = layerOn[group] != false,
-                            onCheckedChange = { on ->
-                                layerOn[group] = on
-                                layerPrefs.edit().putBoolean(group, on).apply()
-                                style?.let { s -> setVisible(s, groupLayers(s, group), on) }
-                            },
-                            colors = SwitchDefaults.colors(checkedTrackColor = TG.Accent),
-                        )
-                    }
-                    if (layerOn[group] == true) LayerLegend(group)
+                fun setGroup(group: String, on: Boolean) {
+                    layerOn[group] = on
+                    layerPrefs.edit().putBoolean(group, on).apply()
+                    style?.let { s -> setVisible(s, groupLayers(s, group), on) }
                 }
-                val fStatus by vm.firesStatus.collectAsStateWithLifecycle()
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        fStatus ?: fireData?.let {
-                            "Wildfires: ${it.count} in and around Oregon, as of " +
-                                java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it.fetchedAt))
-                        } ?: "Wildfires: not downloaded yet. Connect to update.",
-                        fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = { vm.refreshFires(force = true) }) { Text("Update", color = TG.Accent, fontSize = 13.sp) }
-                }
+                LayersContent(
+                    base = baseMap,
+                    onBase = { b ->
+                        baseMap = b
+                        layerPrefs.edit().putString("base", b).apply()
+                        style?.let { s -> applyBase(s, b) }
+                    },
+                    thumbs = thumbs,
+                    online = isOnline(context),
+                    satelliteAreaCount = satAreas.count { it.ready },
+                    layerOn = layerOn,
+                    onToggle = { g, on -> setGroup(g, on) },
+                    onPreset = { set -> OVERLAY_GROUPS.forEach { g -> if ((layerOn[g] == true) != (g in set)) setGroup(g, g in set) } },
+                    sectionOpen = { id -> sectionOpen[id] ?: layerPrefs.getBoolean("sec_$id", false) },
+                    onSection = { id, open -> sectionOpen[id] = open; layerPrefs.edit().putBoolean("sec_$id", open).apply() },
+                    firesFooter = {
+                        val fStatus by vm.firesStatus.collectAsStateWithLifecycle()
+                        Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                fStatus ?: fireData?.let {
+                                    "Wildfires: ${it.count} in and around Oregon, as of " +
+                                        java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it.fetchedAt))
+                                } ?: "Wildfires: not downloaded yet. Connect to update.",
+                                fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { vm.refreshFires(force = true) }) { Text("Update", color = TG.Accent, fontSize = 13.sp) }
+                        }
+                    },
+                )
                 HorizontalDivider(Modifier.padding(vertical = 12.dp), color = TG.Line)
                 Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1102,21 +1116,33 @@ private fun BottomPanel(
     onFollow: () -> Unit,
     onStopFollowing: () -> Unit,
     placeDescription: String?,
+    startExpanded: Boolean = false,
 ) {
     // Something new to show brings the panel back up.
     LaunchedEffect(selected, selectedWaypoint?.id, recording != null, shownRoute?.id, goTo, following != null) {
         if (selected != null || selectedWaypoint != null || shownRoute != null || goTo != null || following != null) onHide(false)
     }
     var drag by remember { mutableFloatStateOf(0f) }
+    val hasPlace = selected != null || selectedWaypoint != null
+    var placeExpanded by remember(selected, selectedWaypoint?.id) { mutableStateOf(startExpanded) }
+    val onPlaceExpanded: (Boolean) -> Unit = { placeExpanded = it }
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         shadowElevation = 12.dp,
         // Swipe down to hide the panel, up to bring it back.
-        modifier = Modifier.fillMaxWidth().animateContentSize().pointerInput(hidden) {
+        // With a place card open, swipe up for its details and down to shrink it again.
+        modifier = Modifier.fillMaxWidth().animateContentSize().pointerInput(hidden, hasPlace, placeExpanded) {
             detectVerticalDragGestures(
                 onDragStart = { drag = 0f },
-                onDragEnd = { if (drag > 60f && !hidden) onHide(true) else if (drag < -60f && hidden) onHide(false) },
+                onDragEnd = {
+                    when {
+                        drag < -60f && hidden -> onHide(false)
+                        drag < -60f && hasPlace && !placeExpanded -> placeExpanded = true
+                        drag > 60f && hasPlace && placeExpanded -> placeExpanded = false
+                        drag > 60f && !hidden -> onHide(true)
+                    }
+                },
             ) { _, dy -> drag += dy }
         },
     ) {
@@ -1144,65 +1170,82 @@ private fun BottomPanel(
                 return@Column
             }
 
-            // Details for whatever was tapped on the map.
-            if (selectedWaypoint != null) {
+            // Details for whatever was tapped on the map: a short card, pulled up for more.
+            if (selectedWaypoint != null || selected != null) {
+                val context = LocalContext.current
+                val title = selectedWaypoint?.name ?: selected!!.title
+                val lat = selectedWaypoint?.lat ?: selected!!.lat
+                val lon = selectedWaypoint?.lon ?: selected!!.lon
                 Row(verticalAlignment = Alignment.Top) {
-                    Box(Modifier.padding(top = 4.dp).size(14.dp).background(Color(android.graphics.Color.parseColor(selectedWaypoint.color)), CircleShape))
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(selectedWaypoint.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
-                        val (la, lo) = Geo.decimal(selectedWaypoint.lat, selectedWaypoint.lon)
-                        Text("Waypoint · $la, $lo" + (selectedWaypoint.eleM?.let { " · ${Geo.formatFeet(it)}" } ?: ""), fontSize = 13.sp, color = TG.Muted)
-                        if (selectedWaypoint.note.isNotBlank()) Text(selectedWaypoint.note, fontSize = 14.sp, color = TG.Ink)
+                    selectedWaypoint?.let { w ->
+                        Box(Modifier.padding(top = 6.dp, end = 10.dp).size(14.dp).background(Color(android.graphics.Color.parseColor(w.color)), CircleShape))
+                    }
+                    Column(Modifier.weight(1f).clickable { onPlaceExpanded(!placeExpanded) }) {
+                        Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TG.Ink, maxLines = if (placeExpanded) 3 else 1)
+                        val sub = if (selectedWaypoint != null) {
+                            "Waypoint" + (selectedWaypoint.eleM?.let { " · ${Geo.formatFeet(it)}" } ?: "")
+                        } else selected!!.subtitle
+                        Text(sub, fontSize = 13.sp, color = TG.Muted, maxLines = if (placeExpanded) 4 else 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         fix?.let { f ->
-                            val d = Geo.distanceM(f.lat, f.lon, selectedWaypoint.lat, selectedWaypoint.lon)
-                            val dir = Geo.compassPoint(Geo.bearingDeg(f.lat, f.lon, selectedWaypoint.lat, selectedWaypoint.lon))
-                            Text("${Geo.formatDistance(d)} $dir of you (straight line)", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
+                            val d = Geo.distanceM(f.lat, f.lon, lat, lon)
+                            val dir = Geo.compassPoint(Geo.bearingDeg(f.lat, f.lon, lat, lon))
+                            Text("${Geo.formatDistance(d)} $dir of you (straight line)", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 2.dp))
                         }
                     }
-                    IconButton(onClick = { onEditWaypoint(selectedWaypoint) }) { Icon(Icons.Filled.Edit, contentDescription = "Edit waypoint", tint = TG.Ink) }
+                    if (selectedWaypoint != null) {
+                        IconButton(onClick = { onEditWaypoint(selectedWaypoint) }) { Icon(Icons.Filled.Edit, contentDescription = "Edit waypoint", tint = TG.Ink) }
+                    }
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
-                PlaceActions(selectedWaypoint.lat, selectedWaypoint.lon, selectedWaypoint.name, onGoTo)
-                PlaceExtras(selectedWaypoint.name, selectedWaypoint.lat, selectedWaypoint.lon, onPeaks, onWeather, onPin = null)
-                HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
-            } else if (selected != null) {
-                Row(verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f)) {
-                        Text(selected.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
-                        Text(selected.subtitle, fontSize = 13.sp, color = TG.Muted)
-                        selected.note?.let { Text(it, fontSize = 13.sp, color = TG.Ink, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp)) }
-                        if (selected.isWater) {
+                val coords = "%.6f, %.6f".format(java.util.Locale.US, lat, lon)
+                val primary = listOf(
+                    Action(Icons.Filled.Navigation, "Go to") { onGoTo(title, lat, lon) },
+                    Action(Icons.Filled.DirectionsCar, "Drive") { openDirections(context, lat, lon, title) },
+                    Action(Icons.Filled.ContentCopy, "Copy") { copyCoords(context, title, coords) },
+                    if (selectedWaypoint != null) Action(Icons.Filled.Edit, "Edit") { onEditWaypoint(selectedWaypoint) }
+                    else Action(Icons.Filled.PushPin, "Pin") { onPinAt(title, lat, lon) },
+                )
+                val more = listOfNotNull(
+                    Action(Icons.Filled.Landscape, "Peaks in view") { onPeaks(title, lat, lon) },
+                    Action(Icons.Filled.WbSunny, "Weather") { onWeather(title, lat, lon) },
+                    if (selected?.isWater == true && selected.osmId != null) Action(Icons.Filled.EditNote, if (waterNote == null) "Add note" else "Edit note") { onEditNote() } else null,
+                )
+                if (!placeExpanded) {
+                    ActionGrid(primary, Modifier.padding(top = 6.dp))
+                    Row(Modifier.fillMaxWidth().clickable { onPlaceExpanded(true) }.padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
+                        Text("More ▲", fontSize = 12.sp, color = TG.Accent)
+                    }
+                } else {
+                    Column(Modifier.padding(top = 4.dp)) {
+                        Text(coords + (selectedWaypoint?.eleM?.let { " · ${Geo.formatFeet(it)}" } ?: ""), fontSize = 13.sp, color = TG.Muted)
+                        selectedWaypoint?.note?.takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp)) }
+                        selected?.note?.let { Text(it, fontSize = 13.sp, color = TG.Ink, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp)) }
+                        if (selected?.isWater == true) {
                             if (waterNote != null) {
                                 Text("Your note (${waterNote.date}): ${waterNote.text}", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
                             } else {
                                 Text("Map data can't tell you if it's flowing. Check recent trip reports, and add a note when you visit.", fontSize = 13.sp, color = Color(0xFF6B3A00), modifier = Modifier.padding(top = 4.dp))
                             }
                         }
-                        fix?.let { f ->
-                            val d = Geo.distanceM(f.lat, f.lon, selected.lat, selected.lon)
-                            val dir = Geo.compassPoint(Geo.bearingDeg(f.lat, f.lon, selected.lat, selected.lon))
-                            Text("${Geo.formatDistance(d)} $dir of you (straight line)", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
-                        }
-                        if (selected.links.isNotEmpty()) {
-                            val uri = androidx.compose.ui.platform.LocalUriHandler.current
-                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                selected.links.forEach { (label, url) ->
-                                    TextButton(onClick = { runCatching { uri.openUri(url) } }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
-                                        Text("$label ↗", color = TG.Accent, fontSize = 14.sp, maxLines = 1)
-                                    }
-                                }
+                    }
+                    ActionGrid(primary + more, Modifier.padding(top = 8.dp))
+                    if (selected != null && selected.links.isNotEmpty()) {
+                        val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                        selected.links.forEach { (label, url) ->
+                            Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { runCatching { uri.openUri(url) } }, verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.OpenInNew, contentDescription = null, tint = TG.Accent, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Text(label, fontSize = 14.sp, color = TG.Ink, maxLines = 1)
                             }
-                            Text("Links need a connection.", fontSize = 11.sp, color = TG.Muted)
                         }
+                        Text("Links need a connection.", fontSize = 11.sp, color = TG.Muted)
                     }
-                    if (selected.isWater && selected.osmId != null) {
-                        TextButton(onClick = onEditNote) { Text(if (waterNote == null) "Add note" else "Edit note", color = TG.Accent) }
+                    Row(Modifier.fillMaxWidth().clickable { onPlaceExpanded(false) }.padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
+                        Text("Less ▼", fontSize = 12.sp, color = TG.Accent)
                     }
-                    IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
-                PlaceActions(selected.lat, selected.lon, selected.title, onGoTo)
-                PlaceExtras(selected.title, selected.lat, selected.lon, onPeaks, onWeather, onPin = onPinAt)
+                if (recording == null && goTo == null && following == null) return@Column
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             }
 
@@ -1270,7 +1313,10 @@ private fun BottomPanel(
                     daylightLine(fix.lat, fix.lon)?.let { Text(it, fontSize = 13.sp, color = TG.Muted) }
                     placeDescription?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 2) }
                     if (selected == null && selectedWaypoint == null && shownRoute == null && goTo == null && following == null) {
-                        PlaceExtras("your location", fix.lat, fix.lon, onPeaks, onWeather)
+                        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PillButton(Icons.Filled.Landscape, "Peaks in view") { onPeaks("your location", fix.lat, fix.lon) }
+                            PillButton(Icons.Filled.WbSunny, "Weather here") { onWeather("your location", fix.lat, fix.lon) }
+                        }
                     }
                 }
             }
@@ -1315,15 +1361,17 @@ private fun BottomPanel(
                     }
                 }
                 daysLine(r, pace)?.let { Text(it, fontSize = 12.sp, color = TG.Ink) }
-                if (shownRouteCount > 1) Text("$shownRouteCount routes on the map · tap a line to switch", fontSize = 12.sp, color = TG.Muted)
-                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { onWater(r.name, r.coords) }) { Text("Water", fontSize = 13.sp, color = TG.Accent) }
-                    TextButton(onClick = { onDays(r) }) { Text("Days", fontSize = 13.sp, color = TG.Accent) }
-                    TextButton(onClick = { onRouteWeather(r) }) { Text("Weather", fontSize = 13.sp, color = TG.Accent) }
-                    TextButton(onClick = { onReverse(r.id) }) { Text("Reverse", fontSize = 13.sp, color = TG.Accent) }
-                    TextButton(onClick = { showTripPlan = true }) { Text("Trip plan", fontSize = 13.sp, color = TG.Accent) }
-                    if (shownRouteCount > 1) TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 13.sp, color = TG.Accent) }
+                if (shownRouteCount > 1) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("$shownRouteCount routes on the map · tap a line to switch", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 12.sp, color = TG.Accent) }
                 }
+                ActionGrid(listOf(
+                    Action(Icons.Filled.WaterDrop, "Water") { onWater(r.name, r.coords) },
+                    Action(Icons.Filled.NightsStay, "Days") { onDays(r) },
+                    Action(Icons.Filled.WbSunny, "Weather") { onRouteWeather(r) },
+                    Action(Icons.Filled.SwapHoriz, "Reverse") { onReverse(r.id) },
+                    Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
+                ), Modifier.padding(top = 4.dp), columns = 5)
                 if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
             }
             shownTrackName?.let { name ->
@@ -1382,46 +1430,42 @@ private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/**
- * Driving directions in Google Maps (or the phone's maps app), and copying the
- * coordinates to paste anywhere. Directions need a signal, or Google's own offline maps.
- */
+/** The bottom panel with fixed contents, for the screenshot tests. */
 @Composable
-private fun PlaceActions(lat: Double, lon: Double, label: String, onGoTo: (String, Double, Double) -> Unit) {
-    val context = LocalContext.current
-    val coords = "%.6f, %.6f".format(java.util.Locale.US, lat, lon)
-    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        OutlinedButton(
-            onClick = { onGoTo(label, lat, lon) }, shape = RoundedCornerShape(12.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
-            modifier = Modifier.weight(0.8f).heightIn(min = 44.dp),
-        ) { Text("Go to", fontSize = 14.sp, color = TG.Accent, maxLines = 1) }
-        OutlinedButton(
-            onClick = {
-                val dest = android.net.Uri.encode("%.6f,%.6f".format(java.util.Locale.US, lat, lon))
-                val google = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$dest&travelmode=driving"))
-                val any = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse("geo:0,0?q=$dest(${android.net.Uri.encode(label)})"))
-                runCatching { context.startActivity(google) }.recoverCatching { context.startActivity(any) }
-            },
-            shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-        ) { Text("Drive here", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
-        OutlinedButton(
-            onClick = {
-                val cm = context.getSystemService(android.content.ClipboardManager::class.java)
-                cm.setPrimaryClip(android.content.ClipData.newPlainText(label, coords))
-                // Android 13+ shows its own "copied" message.
-                if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(context, "Copied $coords", android.widget.Toast.LENGTH_SHORT).show()
-            },
-            shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-        ) { Text("Copy", fontSize = 14.sp, color = TG.Ink, maxLines = 1) }
-    }
+internal fun BottomPanelForTests(vm: AppViewModel, fix: Fix, selected: Selected?, expanded: Boolean) {
+    BottomPanel(
+        hidden = false, onHide = {}, onPinAt = { _, _, _ -> }, fix = fix, hasLocationPermission = true, gpsOn = true,
+        selected = selected, waterNote = null, onEditNote = {}, selectedWaypoint = null, shownTrackName = null, recording = null,
+        onCloseSelected = {}, onEditWaypoint = {}, onHideTrack = {}, onRequestPermission = {}, onRecord = {}, onPause = {},
+        onStop = {}, onPin = {}, onSaved = {}, onRoute = {}, shownRoute = null, shownRouteCount = 0, onHideAllRoutes = {},
+        pace = Pace(), onHideRoute = {}, onRouteScrub = {}, following = null, goTo = null, heading = null,
+        onGoTo = { _, _, _ -> }, onStopGoTo = {}, onWater = { _, _ -> }, onReverse = {}, onPeaks = { _, _, _ -> },
+        onWeather = { _, _, _ -> }, onDays = {}, onRouteWeather = {}, tripVm = vm, onFollow = {}, onStopFollowing = {},
+        placeDescription = "On Pacific Crest Trail, 0.4 mi N of Lost Creek Spring", startExpanded = expanded,
+    )
+}
+
+/** Driving directions in Google Maps (or the phone's maps app). Needs a signal, or Google's own offline maps. */
+private fun openDirections(context: android.content.Context, lat: Double, lon: Double, label: String) {
+    val dest = android.net.Uri.encode("%.6f,%.6f".format(java.util.Locale.US, lat, lon))
+    val google = android.content.Intent(android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$dest&travelmode=driving"))
+    val any = android.content.Intent(android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("geo:0,0?q=$dest(${android.net.Uri.encode(label)})"))
+    runCatching { context.startActivity(google) }.recoverCatching { context.startActivity(any) }
+}
+
+/** Copies coordinates to paste anywhere. */
+private fun copyCoords(context: android.content.Context, label: String, coords: String) {
+    val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+    cm.setPrimaryClip(android.content.ClipData.newPlainText(label, coords))
+    // Android 13+ shows its own "copied" message.
+    if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(context, "Copied $coords", android.widget.Toast.LENGTH_SHORT).show()
 }
 
 /** A one-line color key under a layer switch. */
 @Composable
-private fun LayerLegend(group: String) {
+fun LayerLegend(group: String) {
     val items = when (group) {
         "slope" -> listOf(0xFFF2E205 to "25°", 0xFFF59B00 to "30°", 0xFFE3241B to "35°", 0xFF9C27B0 to "45°", 0xFF3B0B59 to "60°+")
         "roadaccess" -> listOf(0xFF2E7D32 to "Car", 0xFFE65100 to "High clearance", 0xFFC62828 to "OHV/closed", 0xFF6A1B9A to "Rough/4WD")
@@ -1483,6 +1527,34 @@ private fun RoundButton(onClick: () -> Unit, description: String, active: Boolea
         modifier = Modifier.size(48.dp),
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().semantics { contentDescription = description }) { content() }
+    }
+}
+
+/** Shows one base map: topo, satellite imagery alone, or imagery with roads and names. */
+private fun applyBase(style: Style, base: String) {
+    setVisible(style, groupLayers(style, "satellite"), base != MapStyle.BASE_TOPO)
+    setVisible(style, MapStyle.TOPO_FILLS, base == MapStyle.BASE_TOPO)
+    setVisible(style, MapStyle.TOPO_DETAIL, base != MapStyle.BASE_SATELLITE)
+}
+
+private fun isOnline(context: android.content.Context): Boolean {
+    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+    return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+}
+
+/** A small picture of the map with [styleJson] at [camera], or null if it takes over 10 seconds (satellite offline). */
+private suspend fun snapshotBase(
+    context: android.content.Context, styleJson: String, camera: org.maplibre.android.camera.CameraPosition,
+): android.graphics.Bitmap? = kotlinx.coroutines.withTimeoutOrNull(10_000) {
+    kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+        val opts = org.maplibre.android.snapshotter.MapSnapshotter.Options(200, 160)
+            .withStyleBuilder(Style.Builder().fromJson(styleJson))
+            .withCameraPosition(camera).withPixelRatio(2f).withLogo(false)
+        val snap = org.maplibre.android.snapshotter.MapSnapshotter(context, opts)
+        cont.invokeOnCancellation { runCatching { snap.cancel() } }
+        snap.start({ s -> if (cont.isActive) cont.resumeWith(Result.success(s.bitmap)) },
+            { _ -> if (cont.isActive) cont.resumeWith(Result.success(null)) })
     }
 }
 

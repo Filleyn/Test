@@ -61,19 +61,6 @@ private val Amber = Color(0xFF8A4B00)
 private fun mi(m: Double) = "%.1f mi".format(m / Geo.M_PER_MI)
 private fun ft(m: Double) = "%,d ft".format((m * Geo.FT_PER_M).roundToInt())
 
-/** Two or three small text buttons under a place card: peaks in view, weather. */
-@Composable
-fun PlaceExtras(
-    label: String, lat: Double, lon: Double, onPeaks: (String, Double, Double) -> Unit, onWeather: (String, Double, Double) -> Unit,
-    onPin: ((String, Double, Double) -> Unit)? = null,
-) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        onPin?.let { pin -> TextButton(onClick = { pin(label, lat, lon) }) { Text("Pin", fontSize = 13.sp, color = TG.Accent) } }
-        TextButton(onClick = { onPeaks(label, lat, lon) }) { Text("Peaks in view", fontSize = 13.sp, color = TG.Accent) }
-        TextButton(onClick = { onWeather(label, lat, lon) }) { Text("Weather", fontSize = 13.sp, color = TG.Accent) }
-    }
-}
-
 // ---- Peaks in view ----
 
 /** Which named peaks can be seen from a spot, with the one you're facing when the compass is on. */

@@ -61,6 +61,39 @@ object MapStyle {
     /** Layer groups that start switched off. */
     val DEFAULT_OFF = setOf("landmanager", "satellite", "slope", "roadaccess", "burns")
 
+    // ---- Base maps: what's under the overlays ----
+    const val BASE_TOPO = "topo"
+    const val BASE_SATELLITE = "satellite"
+    const val BASE_HYBRID = "hybrid"
+    val BASES = listOf(BASE_TOPO, BASE_SATELLITE, BASE_HYBRID)
+    /** Topo's own colored areas, hidden over imagery. */
+    val TOPO_FILLS = listOf("landcover-wood", "landcover-grass", "landcover-rock", "park", "water")
+    /** Roads, streams and names: kept on the hybrid map, hidden on plain satellite. */
+    val TOPO_DETAIL = listOf("waterway", "road-casing", "road", "place-names", "water-names", "waterway-names")
+
+    /**
+     * A copy of [styleJson] showing only one base map, for the picture on its button in the
+     * layers screen: topo with contours and trails, imagery alone, or imagery with roads and names.
+     */
+    fun thumbnailStyle(styleJson: String, base: String): String {
+        val keepTopo = setOf("ground", "hillshade", "contours-minor", "contours-major", "track", "trail", "trail-names",
+            "peak-labels", "peaks") + TOPO_FILLS + TOPO_DETAIL
+        val keepHybrid = setOf("ground", "track", "trail", "trail-names", "peak-labels") + TOPO_DETAIL
+        val o = JSONObject(styleJson)
+        val layers = o.getJSONArray("layers")
+        for (i in 0 until layers.length()) {
+            val l = layers.getJSONObject(i)
+            val id = l.getString("id")
+            val show = when (base) {
+                BASE_SATELLITE -> id == "ground" || id.startsWith("satellite")
+                BASE_HYBRID -> id in keepHybrid || id.startsWith("satellite")
+                else -> id in keepTopo
+            }
+            l.put("layout", (l.optJSONObject("layout") ?: JSONObject()).put("visibility", if (show) "visible" else "none"))
+        }
+        return o.toString()
+    }
+
     /** Tap these (in order) for who manages the land, when nothing else was tapped. */
     val LAND_TAP_LAYERS = arrayOf(LAYER_SPECIAL_FILL, LAYER_BOUNDARY_HIT, LAYER_LAND_FILL)
 
