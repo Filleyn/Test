@@ -459,11 +459,11 @@ fun MapScreen(
     }
 
     // (Re)load the style whenever new map files are installed.
-    LaunchedEffect(map, mapVersion, satVersion) {
+    LaunchedEffect(map, mapVersion, satVersion, Look.dark, Look.sun) {
         val m = map ?: return@LaunchedEffect
         style = null
         val areas = vm.satellite.areas.value.filter { it.ready && vm.satellite.file(it).exists() }.map { it.id to vm.satellite.file(it) }
-        m.setStyle(Style.Builder().fromJson(MapStyle.build(vm.store, areas))) { s ->
+        m.setStyle(Style.Builder().fromJson(MapStyle.forLook(MapStyle.build(vm.store, areas), Look.dark, Look.sun))) { s ->
             MapIcons.addAll(context, s)
             MapStyle.GROUPS.keys.filter { it != "satellite" }.forEach { group -> setVisible(s, groupLayers(s, group), layerOn[group] != false) }
             applyBase(s, baseMap)
@@ -637,7 +637,7 @@ fun MapScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (measure != null) {
-                Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
+                Surface(shape = RoundedCornerShape(24.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { vm.stopMeasure() }) { Icon(Icons.Filled.Close, contentDescription = "Stop measuring", tint = TG.Ink) }
                         Column(Modifier.weight(1f)) {
@@ -650,7 +650,7 @@ fun MapScreen(
                     }
                 }
             } else if (satSelect != null) {
-                Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
+                Surface(shape = RoundedCornerShape(24.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { vm.cancelSatSelect() }) { Icon(Icons.Filled.Close, contentDescription = "Cancel", tint = TG.Ink) }
                         Column(Modifier.weight(1f)) {
@@ -661,7 +661,7 @@ fun MapScreen(
                     }
                 }
             } else if (plan.active) {
-                Surface(shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
+                Surface(shape = RoundedCornerShape(24.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                     Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { if (plan.points.size >= 2) askDiscardRoute = true else vm.cancelPlanning() }) {
                             Icon(Icons.Filled.Close, contentDescription = "Stop planning", tint = TG.Ink)
@@ -680,7 +680,7 @@ fun MapScreen(
                     }
                 }
             } else {
-            Surface(onClick = onOpenSearch, shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
+            Surface(onClick = onOpenSearch, shape = RoundedCornerShape(24.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Search, contentDescription = null, tint = TG.Muted)
                     Spacer(Modifier.width(10.dp))
@@ -712,7 +712,7 @@ fun MapScreen(
         LaunchedEffect(Unit) { if (vm.settings.value.value.checkUpdatesOnLaunch) vm.checkForMapUpdate() }
         val dl = download
         if (dl is DownloadState.Downloading) {
-            Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+            Surface(shape = RoundedCornerShape(14.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text("Updating maps: ${percent(dl.done, dl.total)}%", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
                     Spacer(Modifier.height(6.dp))
@@ -725,7 +725,7 @@ fun MapScreen(
             }
         } else if (update != null && !updateDismissed) {
             val u = update!!
-            Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
+            Surface(shape = RoundedCornerShape(14.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Map update available", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
@@ -752,8 +752,8 @@ fun MapScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text("You're outside your downloaded maps", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF6B3A00))
-                    Text("Tap to show the area your maps cover.", fontSize = 13.sp, color = Color(0xFF6B3A00))
+                    Text("You're outside your downloaded maps", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Warn)
+                    Text("Tap to show the area your maps cover.", fontSize = 13.sp, color = TG.Warn)
                 }
             }
         }
@@ -778,7 +778,7 @@ fun MapScreen(
             }
             if (measure != null) {
                 Surface(
-                    color = Color.White, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    color = TG.Surface, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
@@ -787,7 +787,7 @@ fun MapScreen(
                 }
             } else if (satSelect != null) {
                 Surface(
-                    color = Color.White, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    color = TG.Surface, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
@@ -805,7 +805,7 @@ fun MapScreen(
                 }
             } else if (plan.active) {
                 Surface(
-                    color = Color.White, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    color = TG.Surface, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
@@ -993,7 +993,7 @@ fun MapScreen(
         }
     }
     if (showLayers) {
-        ModalBottomSheet(onDismissRequest = { showLayers = false }, containerColor = Color.White) {
+        ModalBottomSheet(onDismissRequest = { showLayers = false }, containerColor = TG.Surface) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
                 Text("Map layers", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
                 Spacer(Modifier.height(8.dp))
@@ -1164,7 +1164,7 @@ private fun BottomPanel(
     var placeExpanded by remember(selected, selectedWaypoint?.id) { mutableStateOf(startExpanded) }
     val onPlaceExpanded: (Boolean) -> Unit = { placeExpanded = it }
     Surface(
-        color = Color.White,
+        color = TG.Surface,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         shadowElevation = 12.dp,
         // Swipe down to hide the panel, up to bring it back.
@@ -1262,7 +1262,7 @@ private fun BottomPanel(
                             if (waterNote != null) {
                                 Text("Your note (${waterNote.date}): ${waterNote.text}", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
                             } else {
-                                Text("Map data can't tell you if it's flowing. Check recent trip reports, and add a note when you visit.", fontSize = 13.sp, color = Color(0xFF6B3A00), modifier = Modifier.padding(top = 4.dp))
+                                Text("Map data can't tell you if it's flowing. Check recent trip reports, and add a note when you visit.", fontSize = 13.sp, color = TG.Warn, modifier = Modifier.padding(top = 4.dp))
                             }
                         }
                     }
@@ -1394,7 +1394,7 @@ private fun BottomPanel(
                 }
                 r.coords.firstOrNull()?.let { s ->
                     afterDarkWarning(s[0], s[1], System.currentTimeMillis(), pace.minutes(r.stats.distanceM, r.stats.gainM))?.let {
-                        Text("If you start now: $it", fontSize = 12.sp, color = Color(0xFF8A4B00), lineHeight = 16.sp)
+                        Text("If you start now: $it", fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp)
                     }
                 }
                 daysLine(r, pace)?.let { Text(it, fontSize = 12.sp, color = TG.Ink) }
@@ -1460,7 +1460,7 @@ private fun StatCell(value: String, label: String, modifier: Modifier = Modifier
 private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick, shape = RoundedCornerShape(20.dp),
-        color = if (selected) RoutePurple else Color.White, shadowElevation = 3.dp,
+        color = if (selected) RoutePurple else TG.Surface, shadowElevation = 3.dp,
         modifier = Modifier.heightIn(min = 40.dp).semantics { contentDescription = "$label${if (selected) ", selected" else ""}" },
     ) {
         Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
@@ -1561,7 +1561,7 @@ private fun RoundButton(onClick: () -> Unit, description: String, active: Boolea
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = if (active) TG.Accent else Color.White,
+        color = if (active) TG.Accent else TG.Surface,
         shadowElevation = 4.dp,
         modifier = Modifier.size(48.dp),
     ) {

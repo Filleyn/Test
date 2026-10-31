@@ -46,7 +46,26 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
 
+        // The look (dark, sunlight) is known before the first screen draws, so it doesn't flash.
+        com.trailguidegps.app.data.SettingsStore.get(this).value.value.let { st ->
+            com.trailguidegps.app.ui.Look.sun = st.sunlight
+            com.trailguidegps.app.ui.Look.dark = st.look == "dark" ||
+                (st.look == "system" && (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                    android.content.res.Configuration.UI_MODE_NIGHT_YES)
+        }
         setContent {
+            val settings by vm.settings.value.collectAsStateWithLifecycle()
+            val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            LaunchedEffect(settings.look, settings.sunlight, systemDark) {
+                val dark = settings.look == "dark" || (settings.look == "system" && systemDark)
+                com.trailguidegps.app.ui.Look.dark = dark
+                com.trailguidegps.app.ui.Look.sun = settings.sunlight
+                val clear = android.graphics.Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = if (dark) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear),
+                    navigationBarStyle = if (dark) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear),
+                )
+            }
             TrailGuideTheme {
                 var hasPermission by rememberSaveable { mutableStateOf(locationGranted()) }
                 var showEmergency by rememberSaveable { mutableStateOf(false) }
@@ -136,6 +155,10 @@ class MainActivity : ComponentActivity() {
                     if (showSettings) SettingsScreen(vm, onClose = { showSettings = false })
                     if (showSatellite) com.trailguidegps.app.ui.SatelliteScreen(vm, onClose = { showSatellite = false })
                     if (showEmergency) EmergencyScreen(vm, onClose = { showEmergency = false })
+                    // Quick tips the first time the maps are ready.
+                    if (mapsReady && !settings.introSeen && !showEmergency) {
+                        com.trailguidegps.app.ui.IntroScreen(onDone = { vm.settings.update { it.copy(introSeen = true) } })
+                    }
                 }
             }
         }

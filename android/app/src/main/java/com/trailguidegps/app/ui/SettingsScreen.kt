@@ -52,12 +52,34 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
     var showPace by remember { mutableStateOf(false) }
     BackHandler(onBack = onClose)
 
-    Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize().background(TG.Surface).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to map", tint = TG.Ink) }
             Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Section("Appearance")
+            Text("Look", fontSize = 16.sp, color = TG.Ink, modifier = Modifier.padding(top = 8.dp))
+            Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("light" to "Light", "dark" to "Dark", "system" to "Follow phone").forEach { (k, label) ->
+                    androidx.compose.material3.FilterChip(selected = s.look == k, onClick = { vm.settings.update { it.copy(look = k) } },
+                        label = { Text(label) },
+                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Accent, selectedLabelColor = Color.White))
+                }
+            }
+            Text("Dark is easier on the eyes at night and in the tent, and saves battery.", fontSize = 12.sp, color = TG.Muted)
+            ToggleRow(
+                "Sunlight mode",
+                "Bolder lines, stronger labels and bigger text, for reading the map in bright sun.",
+                s.sunlight,
+            ) { on -> vm.settings.update { it.copy(sunlight = on) } }
+            Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Quick tips", fontSize = 16.sp, color = TG.Ink)
+                    Text("The short tour shown the first time", fontSize = 12.sp, color = TG.Muted)
+                }
+                TextButton(onClick = { vm.settings.update { it.copy(introSeen = false) }; onClose() }) { Text("Show", color = TG.Accent) }
+            }
             Section("Following a route")
             ToggleRow(
                 "Off-route alerts",

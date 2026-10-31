@@ -41,17 +41,20 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
 class ScreenshotTest {
     @get:Rule val compose = createComposeRule()
+
+    @org.junit.After fun resetLook() { Look.dark = false; Look.sun = false }
     private fun out(name: String) = "build/outputs/roborazzi/$name.png"
 
-    @Test
-    fun layersScreen() {
+    @Test fun layersScreen() = renderLayers("layers")
+
+    private fun renderLayers(name: String) {
         compose.setContent {
             val on = remember {
                 mutableStateMapOf<String, Boolean>().apply {
                     LAYER_PRESETS.first().second.forEach { put(it, true) }
                 }
             }
-            Column(Modifier.fillMaxWidth().background(Color.White).padding(20.dp)) {
+            Column(Modifier.fillMaxWidth().background(TG.Surface).padding(20.dp)) {
                 LayersContent(
                     base = MapStyle.BASE_TOPO, onBase = {}, thumbs = emptyMap(), online = false, satelliteAreaCount = 1,
                     layerOn = on, onToggle = { g, v -> on[g] = v }, onPreset = {},
@@ -60,7 +63,7 @@ class ScreenshotTest {
                 )
             }
         }
-        compose.onRoot().captureRoboImage(out("layers"))
+        compose.onRoot().captureRoboImage(out(name))
     }
 
     @Test
@@ -81,7 +84,7 @@ class ScreenshotTest {
         val vm = AppViewModel(ApplicationProvider.getApplicationContext())
         val loc = Location("gps").apply { latitude = 44.1; longitude = -121.7; altitude = 1500.0; accuracy = 5f; time = System.currentTimeMillis() }
         compose.setContent {
-            BottomPanelForTests(vm, Fix(loc, 9, 14), selected, expanded)
+            TrailGuideTheme { BottomPanelForTests(vm, Fix(loc, 9, 14), selected, expanded) }
         }
         compose.onRoot().captureRoboImage(out(name))
     }
@@ -166,6 +169,15 @@ class ScreenshotTest {
         }
         compose.onRoot().captureRoboImage(out("screen-days"))
     }
+
+    @Test fun intro() {
+        compose.setContent { TrailGuideTheme { IntroContent(onDone = {}, startPage = 1) } }
+        compose.onRoot().captureRoboImage(out("intro"))
+    }
+
+    @Test fun darkPlaceCard() { Look.dark = true; panel("dark-panel-place", spring, true) }
+    @Test fun sunMainPanel() { Look.sun = true; panel("sun-panel-main", null, false) }
+    @Test fun darkLayers() { Look.dark = true; renderLayers("dark-layers") }
 
     @Test fun mainPanel() = panel("panel-main", null, false)
     @Test fun placeCard() = panel("panel-place", spring, false)

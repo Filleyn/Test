@@ -154,7 +154,7 @@ fun SatelliteScreen(vm: AppViewModel, onClose: () -> Unit) {
     var deleting by remember { mutableStateOf<SatArea?>(null) }
     BackHandler(onBack = onClose)
 
-    Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize().background(TG.Surface).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to map", tint = TG.Ink) }
             Text("Satellite areas", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink, modifier = Modifier.weight(1f))

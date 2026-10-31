@@ -104,8 +104,8 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private val Amber = Color(0xFF8A4B00)
-private val WaterBlue = Color(0xFF1F5FA8)
+private val Amber get() = TG.Warn
+private val WaterBlue get() = TG.WaterText
 private val CampBrown = Color(0xFFB4491A)
 private fun mi(m: Double) = "%.1f mi".format(m / Geo.M_PER_MI)
 private fun ft(m: Double) = "%,d ft".format((m * Geo.FT_PER_M).roundToInt())
@@ -126,7 +126,7 @@ fun ScreenFrame(
     bottom: (@Composable () -> Unit)? = null,
     body: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(Modifier.fillMaxSize(), color = Color.White) {
+    Surface(Modifier.fillMaxSize(), color = TG.Surface) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to the map", tint = TG.Ink) }
@@ -195,7 +195,7 @@ fun PeaksContent(result: PeakView.Result?, done: Boolean, heading: Float?, onPic
                 fontSize = 12.sp, color = TG.Muted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
             if (facing != null) {
-                Surface(color = Color(0xFFEFF5EC), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                Surface(color = TG.CardGreen, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
                     Column(Modifier.clickable { onPick(facing.lat, facing.lon) }.padding(12.dp)) {
                         Text("You're facing", fontSize = 12.sp, color = TG.Muted)
                         Text(facing.name, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
@@ -261,7 +261,7 @@ private fun PeakDial(peaks: List<PeakView.Seen>, heading: Float?, facing: PeakVi
             drawText(tm, "${(d / Geo.M_PER_MI).roundToInt()} mi", Offset(c.x + 4.dp.toPx(), c.y - rr + 1.dp.toPx()),
                 TextStyle(fontSize = 9.sp, color = TG.Muted))
         }
-        drawCircle(Color(0xFFF7F8F4), rMax * 0.04f + 6.dp.toPx(), c)
+        drawCircle(TG.Card, rMax * 0.04f + 6.dp.toPx(), c)
         // Everything is placed by its direction turned by the compass, with names drawn upright,
         // and a name is skipped if it would overlap one already drawn.
         fun at(bearing: Double, radius: Float): Offset {
@@ -294,7 +294,7 @@ private fun PeakDial(peaks: List<PeakView.Seen>, heading: Float?, facing: PeakVi
             val box = androidx.compose.ui.geometry.Rect(tl, Size(lay.size.width.toFloat(), lay.size.height.toFloat()))
             // The peak's own dot doesn't count against its name.
             if (pk == facing || taken.none { it.overlaps(box) && !(it.center.x == p.x && it.center.y == p.y) }) {
-                drawRect(Color.White.copy(alpha = 0.7f), tl, box.size)
+                drawRect(TG.Surface.copy(alpha = 0.7f), tl, box.size)
                 drawText(lay, topLeft = tl)
                 taken += box
             }
@@ -395,7 +395,7 @@ fun DaysContent(
     }
 
     tripDays.forEachIndexed { i, d ->
-        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFFF7F8F4), modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Surface(shape = RoundedCornerShape(12.dp), color = TG.Card, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(26.dp).background(TG.Accent, CircleShape), contentAlignment = Alignment.Center) {
@@ -489,7 +489,7 @@ private fun DaysProfile(
         // Alternate shading per day.
         val marks = listOf(0.0) + camps.map { it.alongM } + listOf(total)
         marks.zipWithNext().forEachIndexed { i, (a, b) ->
-            if (i % 2 == 1) drawRect(Color(0xFFF1F3EC), Offset(x(a), top), Size(x(b) - x(a), h))
+            if (i % 2 == 1) drawRect(TG.Card, Offset(x(a), top), Size(x(b) - x(a), h))
         }
         val path = Path()
         prof.forEachIndexed { i, (d, e) -> if (i == 0) path.moveTo(x(d), y(e)) else path.lineTo(x(d), y(e)) }

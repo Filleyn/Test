@@ -116,7 +116,7 @@ fun WaterAlongRouteDialog(
                         Text(
                             "If seasonal sources are dry: ${miles(drySeasonal.second - drySeasonal.first)} (miles %.1f–%.1f).".format(
                                 drySeasonal.first / Geo.M_PER_MI, drySeasonal.second / Geo.M_PER_MI),
-                            fontSize = 13.sp, color = Color(0xFF8A4B00),
+                            fontSize = 13.sp, color = TG.Warn,
                         )
                     }
                 }
@@ -138,7 +138,7 @@ fun WaterAlongRouteDialog(
                                     if (p.seasonal) "seasonal" else null,
                                     if (s.offM < 30) "on the route" else "${Geo.formatDistance(s.offM)} off",
                                 )
-                                Text(bits.joinToString(" · "), fontSize = 12.sp, color = if (p.seasonal) Color(0xFF8A4B00) else TG.Muted)
+                                Text(bits.joinToString(" · "), fontSize = 12.sp, color = if (p.seasonal) TG.Warn else TG.Muted)
                                 p.osmId?.let { notes[it] }?.let { Text("Your note (${it.date}): ${it.text}", fontSize = 12.sp, color = TG.Ink, maxLines = 2) }
                             }
                         }

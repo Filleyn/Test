@@ -125,7 +125,7 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
         onClose()
     }
 
-    Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize().background(TG.Surface).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to map", tint = TG.Ink) }
             OutlinedTextField(
@@ -224,7 +224,7 @@ private fun ResultRow(r: SearchResult, note: String?, onClick: () -> Unit) {
             if (r.point?.seasonal == true) parts += "seasonal"
             r.near?.let { parts += it }
             Text(parts.joinToString(" · "), fontSize = 13.sp, color = TG.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            r.detail?.let { Text(it, fontSize = 13.sp, color = Color(0xFF1F5FA8), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            r.detail?.let { Text(it, fontSize = 13.sp, color = TG.WaterText, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             note?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
         val ref = r.distanceM

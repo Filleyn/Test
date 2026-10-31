@@ -278,7 +278,7 @@ fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: ()
                 modifier = Modifier.padding(top = 2.dp))
             f.nearest?.let { n ->
                 afterDarkWarning(n[0], n[1], System.currentTimeMillis(), mins)?.let {
-                    Text(it, fontSize = 12.sp, color = Color(0xFF8A4B00), lineHeight = 16.sp)
+                    Text(it, fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp)
                 }
             }
         }
@@ -355,7 +355,7 @@ fun RoutePlannerPanel(
     Column {
         // A point picked on the map: move it with the next tap, or take it out.
         plan.selected?.let { i ->
-            Surface(color = Color(0xFFFFF4D6), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+            Surface(color = TG.CardYellow, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                 Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(when (i) { 0 -> "Start point"; plan.points.size - 1 -> "End point"; else -> "Point ${i + 1}" } + " picked",
@@ -397,7 +397,7 @@ fun RoutePlannerPanel(
             }
             plan.points.firstOrNull()?.let { s ->
                 afterDarkWarning(s.lat, s.lon, System.currentTimeMillis(), pace.minutes(plan.stats.distanceM, plan.stats.gainM))?.let {
-                    Text("If you start now: $it", fontSize = 12.sp, color = Color(0xFF8A4B00), lineHeight = 16.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text("If you start now: $it", fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             if (plan.via.isNotEmpty()) {

@@ -226,7 +226,7 @@ def peaks(img, feats, hybrid):
         d.polygon([(x, y - 9), (x - 9, y + 7), (x + 9, y + 7)], fill=hexc("#5A4636" if not hybrid else "#FFFFFF"))
         name = p["name"]
         tw = d.textlength(name, font=f)
-        d.text((x - tw / 2, y + 10), name, font=f, fill=hexc("#FFFFFF" if hybrid else "#3D2E22"),
+        d.text((min(max(x - tw / 2, 10), W * SS - tw - 10), y + 10), name, font=f, fill=hexc("#FFFFFF" if hybrid else "#3D2E22"),
                stroke_width=3, stroke_fill=hexc("#000000", 170) if hybrid else hexc("#FFFFFF"))
 
 
@@ -270,7 +270,7 @@ def main():
             continue
         major = p.get("major") == 1
         for pts in parts:
-            d.line(pts, fill=hexc("#A47448", 220) if major else hexc("#B88A5B", 130), width=3 if major else 1)
+            d.line(pts, fill=hexc("#A47448", 220) if major else hexc("#B88A5B", 75), width=3 if major else 1)
     for lname, p, t, parts in feats:
         if lname == "water" and t == "poly":
             for ring in parts:

@@ -108,7 +108,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         context.startActivity(Intent.createChooser(send, "Export GPX"))
     }
 
-    Column(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize().background(TG.Surface).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to map", tint = TG.Ink) }
             Text("Saved", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink, modifier = Modifier.weight(1f))
@@ -196,7 +196,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             }
         } else {
         TabRow(
-            selectedTabIndex = tab, containerColor = Color.White, contentColor = TG.Ink,
+            selectedTabIndex = tab, containerColor = TG.Surface, contentColor = TG.Ink,
             indicator = { pos -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(pos[tab]), color = TG.Accent) },
         ) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Folders", maxLines = 1, fontSize = 13.sp) })

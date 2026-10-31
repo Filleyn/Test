@@ -61,6 +61,62 @@ object MapStyle {
     /** Layer groups that start switched off. */
     val DEFAULT_OFF = setOf("landmanager", "satellite", "slope", "roadaccess", "burns")
 
+    // ---- Dark and sunlight versions of the map ----
+
+    /** Day colors → night colors. Anything not listed (route colors, warnings) stays as it is. */
+    private val NIGHT = mapOf(
+        "#EFEEE2" to "#1A1D1B", "#D5E3C3" to "#1E2A1F", "#E7EBD6" to "#222820", "#E6E0D2" to "#2A2621",
+        "#A9CFEA" to "#17344D", "#4A8FC7" to "#3F82BC", "#B88A5B" to "#6A5643", "#A47448" to "#8B7157",
+        "#C9B48F" to "#6E624E", "#8A6A43" to "#B38D5E", "#B5462A" to "#E3714D", "#FFFFFF" to "#121514",
+        "#23271F" to "#DCE2DD", "#1F5F92" to "#7DB7E6", "#8E3218" to "#F08B6A", "#6B4F2E" to "#D2AE80",
+        "#2E5E1E" to "#7FB86A", "#2F5520" to "#7FB86A", "#3E6B2A" to "#8CC476", "#4E4232" to "#000000",
+        "#6B5A44" to "#0E100F", "#5A4636" to "#CDB8A3", "#4A3A2C" to "#D7C4B0", "#5E8A4A" to "#6FA35A",
+        "#5D4037" to "#A1887F", "#6D4C41" to "#8D6E63",
+    )
+
+    private fun recolor(v: Any?, table: Map<String, String>): Any? = when (v) {
+        is String -> table[v.uppercase()] ?: v
+        is JSONArray -> JSONArray().apply { for (i in 0 until v.length()) put(recolor(v.get(i), table)) }
+        else -> v
+    }
+
+    /** Line widths a third wider: plain numbers, and the outputs of zoom curves and case/match. */
+    private fun wider(v: Any?, k: Double): Any? = when {
+        v is Number -> v.toDouble() * k
+        v is JSONArray && v.optString(0) == "interpolate" -> JSONArray().apply {
+            for (i in 0 until v.length()) put(if (i >= 4 && (i - 4) % 2 == 1 && v.get(i) is Number) (v.get(i) as Number).toDouble() * k else v.get(i))
+        }
+        v is JSONArray && (v.optString(0) == "case" || v.optString(0) == "match") -> JSONArray().apply {
+            for (i in 0 until v.length()) put(if (i >= 2 && v.get(i) is Number) (v.get(i) as Number).toDouble() * k else v.get(i))
+        }
+        else -> v
+    }
+
+    /**
+     * The map for the current look: [dark] swaps in night colors; [sun] (bright sunlight) makes
+     * lines wider, labels bigger with stronger halos, and contours and hillshade stronger.
+     */
+    fun forLook(styleJson: String, dark: Boolean, sun: Boolean): String {
+        if (!dark && !sun) return styleJson
+        val o = JSONObject(styleJson)
+        val layers = o.getJSONArray("layers")
+        for (i in 0 until layers.length()) {
+            val l = layers.getJSONObject(i)
+            val paint = l.optJSONObject("paint") ?: continue
+            val layout = l.optJSONObject("layout")
+            if (dark) paint.keys().asSequence().toList().forEach { k -> if (k.endsWith("color")) paint.put(k, recolor(paint.get(k), NIGHT)) }
+            if (dark && l.optString("type") == "raster") paint.put("raster-brightness-max", 0.8)
+            if (sun) {
+                if (paint.has("line-width") && paint.optDouble("line-opacity", 1.0) > 0.05) paint.put("line-width", wider(paint.get("line-width"), 1.35))
+                if (paint.has("line-opacity") && l.getString("id").startsWith("contours")) paint.put("line-opacity", 1.0)
+                if (paint.has("text-halo-width")) paint.put("text-halo-width", paint.optDouble("text-halo-width", 1.0) + 0.8)
+                if (layout?.opt("text-size") is Number) layout.put("text-size", layout.getDouble("text-size") * 1.15)
+                if (paint.has("hillshade-exaggeration")) paint.put("hillshade-exaggeration", 0.65)
+            }
+        }
+        return o.toString()
+    }
+
     // ---- Base maps: what's under the overlays ----
     const val BASE_TOPO = "topo"
     const val BASE_SATELLITE = "satellite"
