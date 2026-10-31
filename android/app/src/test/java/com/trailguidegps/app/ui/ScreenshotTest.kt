@@ -120,7 +120,7 @@ class ScreenshotTest {
             seen("Diamond Peak", 8744, 42.0, 205.0, -10.0), seen("Mount Hood", 11249, 58.0, 8.0),
         ).sortedBy { it.bearingDeg }, 37, 120)
         compose.setContent {
-            ScreenFrame("Peaks in view", "From Lost Creek Spring · 6,070 ft", onBack = {}) { PeaksContent(r, true, 178f) {} }
+            ScreenFrame("Peaks in view", "From Lost Creek Spring · 6,070 ft", onBack = {}) { PeaksContent(r, true, 178f) { _, _ -> } }
         }
         compose.onRoot().captureRoboImage(out("screen-peaks"))
     }
