@@ -1,0 +1,42 @@
+name: Make base map pictures
+
+# Draws the Topo / Satellite / Hybrid pictures for the app's layers screen from the latest
+# map files and USGS imagery, and attaches them to the "ui-screenshots" pre-release.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "pipeline/make_thumbnails.py"
+      - ".github/workflows/make-thumbnails.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  thumbnails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install packages
+        run: pip install pmtiles mapbox-vector-tile pillow numpy requests
+      - name: Draw the pictures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          TAG=$(gh api "repos/${{ github.repository }}/releases?per_page=30" -q '[.[] | select(.tag_name|startswith("maps-oregon-"))] | max_by(.published_at) | .tag_name')
+          echo "Using $TAG"
+          if ! python3 pipeline/make_thumbnails.py --release-url "https://github.com/${{ github.repository }}/releases/download/$TAG" --out out 2>&1 | tee log.txt; then
+            msg=$(tail -25 log.txt | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Thumbnails failed::${msg}"
+            exit 1
+          fi
+          R=${{ github.repository }}
+          gh release view ui-screenshots -R "$R" >/dev/null 2>&1 || gh release create ui-screenshots -R "$R" --prerelease \
+            --title "UI screenshots" --notes "Pictures of the app's main screens from the latest build. Not an app release."
+          gh release upload ui-screenshots out/*.jpg -R "$R" --clobber
+          echo "::notice::$(grep bytes log.txt | tr '\n' ' ')"
