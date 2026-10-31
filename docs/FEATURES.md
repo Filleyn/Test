@@ -27,6 +27,7 @@ Current as of app 1.2 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Forest road access:** Forest Service roads colored by who can drive them (passenger car, high clearance, OHV only or closed), dashed where open only part of the year; tap one for its maintenance level, surface, open dates and forest. Rough and 4WD roads from OpenStreetMap are dotted purple (from the November map build on).
 - **Past wildfire burns:** fires since 2000 over 50 acres, shaded darker the more recent; tap one for its name, year and size, with a warning about snags, blowdown and washouts.
 - **Live GPS:** blue dot with heading, center-on-me, and a north-up or heading-up compass mode.
+- **Hideable bottom panel:** swipe it down (or tap its handle) to see more map; swipe up to bring it back. It comes back by itself when you tap something.
 - **Off-the-map notice:** says when you're outside the downloaded area.
 
 ## Places and water
@@ -49,7 +50,7 @@ Current as of app 1.2 and the October 30, 2026 maps. Ideas not yet built are in 
 
 ## Waypoints and tracks
 
-- **Waypoints:** drop with Pin or a long-press; name, color, note and elevation; edit, delete.
+- **Waypoints:** drop with Pin (your location) or Pin on any place card, or long-press and choose "Waypoint instead"; name, color, note and elevation; edit, delete.
 - **Track recording:** keeps recording with the screen off; pause and resume; live miles, climb, moving time and speed; survives the app being closed (recovered on restart).
 - **Saved tracks:** show on the map, rename, delete.
 - **GPX import and export:** waypoints, tracks and routes to and from other apps and GPS units.
@@ -57,6 +58,7 @@ Current as of app 1.2 and the October 30, 2026 maps. Ideas not yet built are in 
 ## Route planning
 
 - **Plan by tapping:** a route follows the trails between your points, fully offline (Oregon trail network of about 170,000 mi).
+- **Long-press to route:** long-press anywhere to plan a route there, from where you are if you're within about 25 mi, otherwise starting at that spot.
 - **Straight-line legs:** for off-trail parts, drawn dashed.
 - **Planning tools:** undo, add a saved waypoint as a stop, discard confirmation.
 - **Live totals:** miles, feet of climb and descent, estimated time, and the trails used ("Via …").
