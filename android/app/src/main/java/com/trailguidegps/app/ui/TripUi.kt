@@ -63,8 +63,12 @@ private fun ft(m: Double) = "%,d ft".format((m * Geo.FT_PER_M).roundToInt())
 
 /** Two or three small text buttons under a place card: peaks in view, weather. */
 @Composable
-fun PlaceExtras(label: String, lat: Double, lon: Double, onPeaks: (String, Double, Double) -> Unit, onWeather: (String, Double, Double) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+fun PlaceExtras(
+    label: String, lat: Double, lon: Double, onPeaks: (String, Double, Double) -> Unit, onWeather: (String, Double, Double) -> Unit,
+    onPin: ((String, Double, Double) -> Unit)? = null,
+) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        onPin?.let { pin -> TextButton(onClick = { pin(label, lat, lon) }) { Text("Pin", fontSize = 13.sp, color = TG.Accent) } }
         TextButton(onClick = { onPeaks(label, lat, lon) }) { Text("Peaks in view", fontSize = 13.sp, color = TG.Accent) }
         TextButton(onClick = { onWeather(label, lat, lon) }) { Text("Weather", fontSize = 13.sp, color = TG.Accent) }
     }

@@ -66,6 +66,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -173,6 +178,14 @@ fun MapScreen(
     // Weather: (saved-forecast key, title, spots).
     var weatherFor by remember { mutableStateOf<Triple<String, String, List<Triple<String, Double, Double>>>?>(null) }
     var daysFor by remember { mutableStateOf<SavedRoute?>(null) }
+    // Where a long-press started a route, so it can be a waypoint instead.
+    var longPressSpot by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var longPressPoints by remember { mutableStateOf(0) }
+    var panelHidden by rememberSaveable { mutableStateOf(false) }
+    // The "waypoint instead" offer goes once you add more points or stop planning.
+    LaunchedEffect(plan.active, plan.points.size) {
+        if (!plan.active || plan.points.size > longPressPoints) longPressSpot = null
+    }
     // The compass runs only while a Go to target is set.
     DisposableEffect(goTo != null) {
         if (goTo != null) vm.compass.start()
@@ -248,12 +261,22 @@ fun MapScreen(
                 val t = m.cameraPosition.target
                 if (t != null) vm.mapCenter = t.latitude to t.longitude
             }
+            // Long-press starts a route to that spot: from where you are if you're nearby, otherwise
+            // starting there. While planning it adds a point, like a tap.
             m.addOnMapLongClickListener { latLng ->
-                if (vm.plan.value.active) return@addOnMapLongClickListener true
-                editing = Waypoint(
-                    name = vm.waypoints.nextName(), lat = latLng.latitude, lon = latLng.longitude,
-                    eleM = vm.elevationAt(latLng.latitude, latLng.longitude),
-                )
+                if (vm.satSelect.value != null || vm.measure.value != null) return@addOnMapLongClickListener true
+                if (vm.plan.value.active) {
+                    vm.addPlanPoint(latLng.latitude, latLng.longitude)
+                    return@addOnMapLongClickListener true
+                }
+                val me = vm.tracker.fix.value
+                vm.startPlanning()
+                selectedWaypointId = null
+                val fromMe = me != null && Geo.distanceM(me.lat, me.lon, latLng.latitude, latLng.longitude) in 30.0..40_000.0
+                if (fromMe) vm.addPlanPoint(me!!.lat, me.lon)
+                longPressPoints = if (fromMe) 2 else 1
+                vm.addPlanPoint(latLng.latitude, latLng.longitude)
+                longPressSpot = latLng.latitude to latLng.longitude
                 true
             }
             m.addOnMapClickListener { latLng ->
@@ -546,7 +569,7 @@ fun MapScreen(
     fun dropPinHere() {
         val f = fix
         if (f == null) {
-            Toast.makeText(context, "Waiting for GPS. You can also long-press the map to drop a pin.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Waiting for GPS. You can also tap a place and choose Pin, or long-press the map and choose Waypoint.", Toast.LENGTH_LONG).show()
             return
         }
         editing = Waypoint(name = vm.waypoints.nextName(), lat = f.lat, lon = f.lon, eleM = f.altitudeM)
@@ -766,6 +789,17 @@ fun MapScreen(
                     shadowElevation = 12.dp, modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
+                        longPressSpot?.let { (la, lo) ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
+                                Text("Route started from a long-press.", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    longPressSpot = null
+                                    vm.cancelPlanning()
+                                    editing = Waypoint(name = vm.waypoints.nextName(), lat = la, lon = lo, eleM = vm.elevationAt(la, lo))
+                                }) { Text("Waypoint instead", fontSize = 13.sp, color = TG.Accent) }
+                                IconButton(onClick = { longPressSpot = null }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = TG.Muted) }
+                            }
+                        }
                         RoutePlannerPanel(
                             plan = plan, pace = pace, routingReady = routingReady,
                             onAddWaypoint = { showWaypointPicker = true },
@@ -779,6 +813,12 @@ fun MapScreen(
                     }
                 }
             } else BottomPanel(
+                hidden = panelHidden,
+                onHide = { panelHidden = it },
+                onPinAt = { name, la, lo ->
+                    editing = Waypoint(name = name.takeIf { it != "your location" } ?: vm.waypoints.nextName(), lat = la, lon = lo,
+                        eleM = vm.elevationAt(la, lo))
+                },
                 fix = fix,
                 hasLocationPermission = hasLocationPermission,
                 gpsOn = vm.tracker.isGpsEnabled(),
@@ -1018,6 +1058,9 @@ fun MapScreen(
 
 @Composable
 private fun BottomPanel(
+    hidden: Boolean,
+    onHide: (Boolean) -> Unit,
+    onPinAt: (String, Double, Double) -> Unit,
     fix: Fix?,
     hasLocationPermission: Boolean,
     gpsOn: Boolean,
@@ -1059,15 +1102,46 @@ private fun BottomPanel(
     onStopFollowing: () -> Unit,
     placeDescription: String?,
 ) {
+    // Something new to show brings the panel back up.
+    LaunchedEffect(selected, selectedWaypoint?.id, recording != null, shownRoute?.id, goTo, following != null) {
+        if (selected != null || selectedWaypoint != null || shownRoute != null || goTo != null || following != null) onHide(false)
+    }
+    var drag by remember { mutableFloatStateOf(0f) }
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         shadowElevation = 12.dp,
-        modifier = Modifier.fillMaxWidth(),
+        // Swipe down to hide the panel, up to bring it back.
+        modifier = Modifier.fillMaxWidth().animateContentSize().pointerInput(hidden) {
+            detectVerticalDragGestures(
+                onDragStart = { drag = 0f },
+                onDragEnd = { if (drag > 60f && !hidden) onHide(true) else if (drag < -60f && hidden) onHide(false) },
+            ) { _, dy -> drag += dy }
+        },
     ) {
-        Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 16.dp)) {
-            Box(Modifier.align(Alignment.CenterHorizontally).size(width = 36.dp, height = 4.dp).background(TG.Line, RoundedCornerShape(2.dp)))
-            Spacer(Modifier.height(10.dp))
+        Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = if (hidden) 6.dp else 16.dp)) {
+            // The handle: tap or swipe to hide and show.
+            Box(
+                Modifier.fillMaxWidth().height(28.dp).clickable(onClickLabel = if (hidden) "Show panel" else "Hide panel") { onHide(!hidden) }
+                    .semantics { contentDescription = if (hidden) "Show panel" else "Hide panel" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(width = 36.dp, height = 4.dp).background(TG.Line, RoundedCornerShape(2.dp)))
+            }
+            if (hidden) {
+                Row(Modifier.fillMaxWidth().clickable { onHide(false) }.padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val line = when {
+                        recording != null -> (if (recording.paused) "Paused · " else "Recording · ") + Geo.formatMiles(recording.stats.distanceM)
+                        fix != null -> Geo.decimal(fix.lat, fix.lon).let { (la, lo) -> "$la, $lo" } + (fix.altitudeM?.let { " · ${Geo.formatFeet(it)}" } ?: "")
+                        else -> "Map"
+                    }
+                    if (recording != null) Box(Modifier.size(8.dp).background(if (recording.paused) TG.Muted else Color(0xFFE53935), CircleShape))
+                    Text(line, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1,
+                        modifier = Modifier.weight(1f).padding(start = if (recording != null) 8.dp else 0.dp))
+                    Text("Show ▲", fontSize = 13.sp, color = TG.Accent)
+                }
+                return@Column
+            }
 
             // Details for whatever was tapped on the map.
             if (selectedWaypoint != null) {
@@ -1089,7 +1163,7 @@ private fun BottomPanel(
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
                 PlaceActions(selectedWaypoint.lat, selectedWaypoint.lon, selectedWaypoint.name, onGoTo)
-                PlaceExtras(selectedWaypoint.name, selectedWaypoint.lat, selectedWaypoint.lon, onPeaks, onWeather)
+                PlaceExtras(selectedWaypoint.name, selectedWaypoint.lat, selectedWaypoint.lon, onPeaks, onWeather, onPin = null)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             } else if (selected != null) {
                 Row(verticalAlignment = Alignment.Top) {
@@ -1127,7 +1201,7 @@ private fun BottomPanel(
                     IconButton(onClick = onCloseSelected) { Icon(Icons.Filled.Close, contentDescription = "Close details", tint = TG.Muted) }
                 }
                 PlaceActions(selected.lat, selected.lon, selected.title, onGoTo)
-                PlaceExtras(selected.title, selected.lat, selected.lon, onPeaks, onWeather)
+                PlaceExtras(selected.title, selected.lat, selected.lon, onPeaks, onWeather, onPin = onPinAt)
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = TG.Line)
             }
 
