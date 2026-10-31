@@ -109,6 +109,64 @@ class ScreenshotTest {
         compose.onRoot().captureRoboImage(out("route-planner"))
     }
 
+    @Test
+    fun peaksScreen() {
+        fun seen(n: String, ft: Int, mi: Double, brg: Double, clear: Double = 200.0) =
+            com.trailguidegps.app.data.PeakView.Seen(n, 44.0, -121.0, ft / 3.28084, mi * 1609.34, brg, clear, 0.5)
+        val r = com.trailguidegps.app.data.PeakView.Result(1850.0, listOf(
+            seen("Mount Jefferson", 10497, 24.0, 2.0), seen("Three Fingered Jack", 7841, 9.5, 12.0), seen("Mount Washington", 7794, 4.2, 20.0),
+            seen("Black Crater", 7251, 6.0, 70.0, 8.0), seen("Broken Top", 9175, 11.0, 150.0), seen("South Sister", 10358, 8.0, 175.0),
+            seen("Middle Sister", 10047, 6.2, 182.0), seen("North Sister", 10085, 5.1, 190.0), seen("Mount Bachelor", 9065, 19.0, 160.0),
+            seen("Diamond Peak", 8744, 42.0, 205.0, -10.0), seen("Mount Hood", 11249, 58.0, 8.0),
+        ).sortedBy { it.bearingDeg }, 37, 120)
+        compose.setContent {
+            ScreenFrame("Peaks in view", "From Lost Creek Spring · 6,070 ft", onBack = {}) { PeaksContent(r, true, 178f) {} }
+        }
+        compose.onRoot().captureRoboImage(out("screen-peaks"))
+    }
+
+    @Test
+    fun weatherScreen() {
+        fun per(n: String, day: Boolean, t: Int, short: String, rain: Int?) =
+            com.trailguidegps.app.data.Weather.Period(n, t, day, "5 to 10 mph NW", short, "$short, with a high near $t. Northwest wind 5 to 10 mph.", rain)
+        val f = com.trailguidegps.app.data.Weather.Forecast(
+            "Start", 44.1, -121.7, 1850.0, 1250.0, null, System.currentTimeMillis(), listOf(
+                per("Today", true, 68, "Sunny", null), per("Tonight", false, 38, "Clear", null),
+                per("Sunday", true, 64, "Partly Sunny", 10), per("Sunday Night", false, 36, "Mostly Cloudy", 20),
+                per("Monday", true, 52, "Rain Showers Likely", 70), per("Monday Night", false, 31, "Rain And Snow Showers", 60),
+                per("Tuesday", true, 49, "Chance Thunderstorms", 40), per("Tuesday Night", false, 30, "Patchy Fog", null),
+            ), "Sisters, OR")
+        compose.setContent {
+            ScreenFrame("Weather", "Obsidian loop", onBack = {}) { WeatherContent(listOf(f, f.copy(label = "High point"), f.copy(label = "Night 1: Lost Lake")), false, null) }
+        }
+        compose.onRoot().captureRoboImage(out("screen-weather"))
+    }
+
+    @Test
+    fun daysScreen() {
+        val n = 60
+        val coords = (0..n).map { i -> doubleArrayOf(44.1 + i * 0.0025, -121.7 - i * 0.002) }
+        val total = com.trailguidegps.app.data.RouteNear.lengthM(coords)
+        val prof = (0..n).map { i -> total * i / n to 1300.0 + 500 * kotlin.math.sin(i / 9.0) + i * 4 }
+        val route = com.trailguidegps.app.data.SavedRoute("r", "Obsidian loop", 0L, emptyList(), coords,
+            com.trailguidegps.app.data.RouteStats(total, 1100.0, 900.0, prof), listOf("Obsidian Trail"))
+        fun pt(name: String, kind: String, i: Int, water: Boolean = false) =
+            com.trailguidegps.app.data.Features.Point(name, kind, coords[i][0], coords[i][1], isWater = water)
+        val spots = listOf(
+            com.trailguidegps.app.data.CampSpot(pt("Sunshine Camp", "campsite", 18), total * 18 / n, 40.0, pt("Glacier Creek", "stream", 18, true) to 60.0),
+            com.trailguidegps.app.data.CampSpot(pt("Glacier Creek", "stream", 22, true), total * 22 / n, 0.0, null),
+            com.trailguidegps.app.data.CampSpot(pt("Linton Meadows", "campsite", 41), total * 41 / n, 120.0, null),
+            com.trailguidegps.app.data.CampSpot(pt("Linton Spring", "spring", 44, true), total * 44 / n, 80.0, null),
+        )
+        val camps = listOf(com.trailguidegps.app.data.Camp(total * 18 / n, "Sunshine Camp"), com.trailguidegps.app.data.Camp(total * 41 / n, "Linton Meadows"))
+        compose.setContent {
+            ScreenFrame("Days and camps", route.name, onBack = {}) {
+                DaysContent(route, Pace(), 3, {}, camps, {}, spots, { _, _ -> spots[0].water }, listOf(total * 22 / n, total * 44 / n))
+            }
+        }
+        compose.onRoot().captureRoboImage(out("screen-days"))
+    }
+
     @Test fun mainPanel() = panel("panel-main", null, false)
     @Test fun placeCard() = panel("panel-place", spring, false)
     @Test fun placeCardExpanded() = panel("panel-place-expanded", spring, true)

@@ -22,12 +22,22 @@ object MapIcons {
         fun put(name: String, bg: Int, dashed: Boolean = false, glyph: (Canvas, Float, Paint) -> Unit) {
             style.addImage(name, icon(d, bg, dashed, glyph))
         }
-        put("water-spring", 0xFF2E7DBF.toInt()) { c, s, p -> drop(c, s, p) }
-        put("water-tap", 0xFF0D47A1.toInt()) { c, s, p -> drop(c, s, p); tapBar(c, s, p) }
-        put("water-point", 0xFF00838F.toInt()) { c, s, p -> drop(c, s, p) }
-        put("water-well", 0xFF455A64.toInt()) { c, s, p -> drop(c, s, p) }
+        // Water: a different symbol for each kind, so a spring, a tap and a creek crossing look different.
+        // Seasonal ones ("-s") are paler with a dashed ring.
+        val water = listOf(
+            Triple("water-spring", 0xFF2E7DBF.toInt(), 0xFF8DB9E0.toInt()) to { c: Canvas, s: Float, p: Paint -> drop(c, s, p); ground(c, s, p) },
+            Triple("water-tap", 0xFF0D47A1.toInt(), 0xFF7F9BD0.toInt()) to { c: Canvas, s: Float, p: Paint -> faucet(c, s, p) },
+            Triple("water-point", 0xFF00838F.toInt(), 0xFF7FC3C9.toInt()) to { c: Canvas, s: Float, p: Paint -> drop(c, s, p); tapBar(c, s, p) },
+            Triple("water-well", 0xFF455A64.toInt(), 0xFFA2ADB2.toInt()) to { c: Canvas, s: Float, p: Paint -> letters(c, s, p, "W") },
+            Triple("water-stream", 0xFF3F88C5.toInt(), 0xFF9FC4E2.toInt()) to { c: Canvas, s: Float, p: Paint -> waves(c, s, p) },
+        )
+        water.forEach { (spec, glyph) ->
+            put(spec.first, spec.second, glyph = glyph)
+            put(spec.first + "-s", spec.third, dashed = true, glyph = glyph)
+        }
         put("water-seasonal", 0xFF7FB3DE.toInt(), dashed = true) { c, s, p -> drop(c, s, p) }
-        put("water-stream", 0xFF3F88C5.toInt()) { c, s, p -> drop(c, s, p) }
+        // Direction arrows along routes, tinted to each route's color (an SDF image takes any color).
+        style.addImage("route-arrow", arrow(d), true)
         put("poi-lookout", 0xFFBF360C.toInt()) { c, s, p -> lookout(c, s, p) }
         put("poi-historic", 0xFF6D4C41.toInt()) { c, s, p -> letters(c, s, p, "H") }
         put("poi-campsite", 0xFFB4491A.toInt()) { c, s, p -> tent(c, s, p) }
@@ -69,6 +79,41 @@ object MapIcons {
             close()
         }
         c.drawPath(path, p)
+    }
+
+    /** A chevron pointing right (the way a line runs), white on transparent. */
+    private fun arrow(density: Float): Bitmap {
+        val s = 16f * density
+        val bmp = Bitmap.createBitmap(s.toInt(), s.toInt(), Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = s * 0.2f
+            strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+        }
+        c.drawPath(Path().apply { moveTo(s * 0.32f, s * 0.2f); lineTo(s * 0.68f, s * 0.5f); lineTo(s * 0.32f, s * 0.8f) }, p)
+        return bmp
+    }
+
+    /** A short line under a drop: water coming out of the ground. */
+    private fun ground(c: Canvas, s: Float, p: Paint) {
+        c.drawRect(s * 0.24f, s * 0.84f, s * 0.76f, s * 0.88f, p)
+    }
+
+    /** A faucet with a drop below it. */
+    private fun faucet(c: Canvas, s: Float, p: Paint) {
+        c.drawRect(s * 0.26f, s * 0.30f, s * 0.62f, s * 0.40f, p)   // pipe
+        c.drawRect(s * 0.40f, s * 0.22f, s * 0.48f, s * 0.30f, p)   // handle stem
+        c.drawRect(s * 0.33f, s * 0.19f, s * 0.55f, s * 0.23f, p)   // handle
+        c.drawRect(s * 0.54f, s * 0.30f, s * 0.64f, s * 0.50f, p)   // spout
+        val dropPath = Path().apply {
+            moveTo(s * 0.59f, s * 0.56f)
+            cubicTo(s * 0.64f, s * 0.64f, s * 0.67f, s * 0.68f, s * 0.67f, s * 0.72f)
+            cubicTo(s * 0.67f, s * 0.77f, s * 0.63f, s * 0.80f, s * 0.59f, s * 0.80f)
+            cubicTo(s * 0.55f, s * 0.80f, s * 0.51f, s * 0.77f, s * 0.51f, s * 0.72f)
+            cubicTo(s * 0.51f, s * 0.68f, s * 0.54f, s * 0.64f, s * 0.59f, s * 0.56f)
+            close()
+        }
+        c.drawPath(dropPath, p)
     }
 
     private fun tapBar(c: Canvas, s: Float, p: Paint) {

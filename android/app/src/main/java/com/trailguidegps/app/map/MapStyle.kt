@@ -300,7 +300,7 @@ object MapStyle {
         layer("trail-names", "symbol", "topo", "transportation_name", inClass(trails),
             halo("#FFFFFF", "#8E3218").put("text-color", arr("match", arr("get", "class"), "track", "#6B4F2E", "#8E3218")),
             JSONObject().put("symbol-placement", "line").put("text-font", arr(MEDIUM))
-                .put("text-size", 12).put("text-field", arr("get", "name")), minzoom = 12.0)
+                .put("text-size", 12).put("text-field", arr("get", "name")), minzoom = 11.0)
         if (hasLand) {
             val upper = arr("upcase", arr("get", "name"))
             // Names along the boundary when zoomed in, one name in the middle when zoomed out.
@@ -359,11 +359,12 @@ object MapStyle {
         }
         // Creek crossings: many of them, so only when zoomed in, smaller, and under the other water icons.
         layer("water-crossings", "symbol", "water", filter = arr("==", arr("get", "kind"), "stream"), layout = JSONObject()
-            .put("icon-image", arr("case", arr("==", arr("get", "seasonal"), true), "water-seasonal", "water-stream"))
+            .put("icon-image", arr("case", arr("==", arr("get", "seasonal"), true), "water-stream-s", "water-stream"))
             .put("icon-size", 0.7).put("icon-allow-overlap", true), minzoom = 13.0)
         layer("water-points", "symbol", "water", filter = arr("!=", arr("get", "kind"), "stream"), layout = JSONObject()
-            .put("icon-image", arr("case", arr("==", arr("get", "seasonal"), true), "water-seasonal",
-                arr("match", arr("get", "kind"), "drinking_water", "water-tap", "water_point", "water-point", "well", "water-well", "water-spring")))
+            .put("icon-image", arr("concat",
+                arr("match", arr("get", "kind"), "drinking_water", "water-tap", "water_point", "water-point", "well", "water-well", "water-spring"),
+                arr("case", arr("==", arr("get", "seasonal"), true), "-s", "")))
             .put("icon-allow-overlap", true).put("icon-size", 1))
         layer("water-labels", "symbol", "water", filter = arr("!=", arr("get", "kind"), "stream"), paint = halo("#FFFFFF", "#1F5F92"),
             layout = JSONObject().put("text-font", arr(ITALIC)).put("text-size", 11).put("text-offset", arr(0, 1.4))
@@ -387,6 +388,15 @@ object MapStyle {
             .put("line-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("line-width", focusWidth(5.0, 3.5))
             .put("line-opacity", focusWidth(1.0, 0.55)),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        // Which way each route runs: small arrows along it in its color.
+        layer("shown-route-arrows", "symbol", SRC_SHOWN_ROUTE,
+            paint = JSONObject().put("icon-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
+                .put("icon-halo-color", "#FFFFFF").put("icon-halo-width", 1.5)
+                .put("icon-opacity", arr("case", arr("==", arr("get", "focus"), true), 1.0, 0.6)),
+            layout = JSONObject().put("symbol-placement", "line").put("symbol-spacing", 110).put("icon-image", "route-arrow")
+                .put("icon-size", 0.75).put("icon-allow-overlap", true).put("icon-ignore-placement", true)
+                .put("icon-rotation-alignment", "map").put("icon-keep-upright", false),
+            minzoom = 12.0)
         // Each route's name along its line, so you can tell several apart.
         layer("shown-route-labels", "symbol", SRC_SHOWN_ROUTE,
             paint = JSONObject().put("text-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
