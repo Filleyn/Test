@@ -45,6 +45,9 @@ Ideas, roughly most useful first. All are public data; each would follow the sat
 - 1.2: **slope angle shading**, **forest road access** (Forest Service MVUM, plus rough/4WD roads from OpenStreetMap), **past wildfire burns** (since 2000), **dispersed camping rules** on land cards, **peaks in view** with compass, **multi-day trips** with camps, **camps by water** search filter, **weather** (National Weather Service) for places and routes. Hunting and fishing areas moved to the backlog above.
 - 1.1: **reverse a route**, **measuring tool**, **Go to** with compass, **water along a route** (with stream crossings in the map build), **sunrise/sunset** and after-dark warnings, **fire lookouts and historic sites**, **monthly automatic map builds** (keeping the last 3); the app now picks the most recently published map release.
 
+## Two repositories (decided 2026-10-31, later)
+Stay on this one public repository while testing. Later, move to two new repositories, for example **Tripguide** (public: only the finished app and map files) and **Tripguideprivate** (private: code, build pipeline, secrets). Steps then: create both; move the code; builds publish releases to the public one with a token limited to it (stored as a secret); point the app's `MAPS_REPO` at the public one; copy the current maps across once. Private builds use the free plan's 2,000 Actions minutes a month (an Oregon map build is about 100, an app build about 10). Selling later would move map files to Cloudflare R2 instead.
+
 ## Publishing on Google Play (discussed 2026-10-28)
 
 Not decided. If it goes ahead, a sensible order: register as a developer → internal testing with family → ask Oregon GEO about the 2024 imagery → move map files to proper hosting → add more states → 12-tester closed test → public listing. Findings:
