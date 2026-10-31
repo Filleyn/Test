@@ -239,7 +239,6 @@ fun MapScreen(
             }
         }.getOrDefault(emptyList()))
     }
-    var thumbs by remember { mutableStateOf<Map<String, android.graphics.Bitmap>>(emptyMap()) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -982,16 +981,6 @@ fun MapScreen(
         )
     }
 
-    // Pictures for the base map buttons, drawn from where you're looking.
-    LaunchedEffect(showLayers, mapVersion) {
-        if (!showLayers) return@LaunchedEffect
-        val m = map ?: return@LaunchedEffect
-        val areas = vm.satellite.areas.value.filter { it.ready && vm.satellite.file(it).exists() }.map { it.id to vm.satellite.file(it) }
-        val json = MapStyle.build(vm.store, areas)
-        MapStyle.BASES.forEach { b ->
-            snapshotBase(context, MapStyle.thumbnailStyle(json, b), m.cameraPosition)?.let { bmp -> thumbs = thumbs + (b to bmp) }
-        }
-    }
     if (showLayers) {
         ModalBottomSheet(onDismissRequest = { showLayers = false }, containerColor = TG.Surface) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
@@ -1009,7 +998,6 @@ fun MapScreen(
                         layerPrefs.edit().putString("base", b).apply()
                         style?.let { s -> applyBase(s, b) }
                     },
-                    thumbs = thumbs,
                     online = isOnline(context),
                     satelliteAreaCount = satAreas.count { it.ready },
                     layerOn = layerOn,
@@ -1580,21 +1568,6 @@ private fun isOnline(context: android.content.Context): Boolean {
     val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
     val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
     return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
-}
-
-/** A small picture of the map with [styleJson] at [camera], or null if it takes over 10 seconds (satellite offline). */
-private suspend fun snapshotBase(
-    context: android.content.Context, styleJson: String, camera: org.maplibre.android.camera.CameraPosition,
-): android.graphics.Bitmap? = kotlinx.coroutines.withTimeoutOrNull(10_000) {
-    kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-        val opts = org.maplibre.android.snapshotter.MapSnapshotter.Options(200, 160)
-            .withStyleBuilder(Style.Builder().fromJson(styleJson))
-            .withCameraPosition(camera).withPixelRatio(2f).withLogo(false)
-        val snap = org.maplibre.android.snapshotter.MapSnapshotter(context, opts)
-        cont.invokeOnCancellation { runCatching { snap.cancel() } }
-        snap.start({ s -> if (cont.isActive) cont.resumeWith(Result.success(s.bitmap)) },
-            { _ -> if (cont.isActive) cont.resumeWith(Result.success(null)) })
-    }
 }
 
 /** A switch's layers; satellite also covers each saved area's layer. */

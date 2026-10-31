@@ -56,7 +56,7 @@ class ScreenshotTest {
             }
             Column(Modifier.fillMaxWidth().background(TG.Surface).padding(20.dp)) {
                 LayersContent(
-                    base = MapStyle.BASE_TOPO, onBase = {}, thumbs = emptyMap(), online = false, satelliteAreaCount = 1,
+                    base = MapStyle.BASE_TOPO, onBase = {}, online = false, satelliteAreaCount = 1,
                     layerOn = on, onToggle = { g, v -> on[g] = v }, onPreset = {},
                     customPresets = listOf("Elk season" to setOf("trails", "roadaccess")), onCustomPresets = {},
                     sectionOpen = { it == "trails" || it == "hazards" }, onSection = { _, _ -> }, firesFooter = {},

@@ -1,6 +1,6 @@
 # TrailGuide GPS: features and requirements
 
-Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
+Current as of app 1.4 and the October 30, 2026 maps. Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
 
 ## Requirements set at the start
 
@@ -22,7 +22,7 @@ Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Contour lines:** every 40 ft, with 200 ft index lines labeled in feet.
 - **Hillshade:** terrain shading from USGS 3DEP elevation data.
 - **Trails vs forest roads:** trails are dashed red-brown; dirt and forest roads are solid brown.
-- **Base maps:** Topo, Satellite and Hybrid (imagery with roads, streams and names) as picture buttons showing the area you're looking at.
+- **Base maps:** Topo, Satellite and Hybrid (imagery with roads, streams and names) as picture buttons, with sample pictures built into the app so they show offline.
 - **Overlays:** grouped in sections that open and close (Terrain, Trails and water, Places, Land and roads, Hazards), each showing how many are on, with a color key under the newer ones; all remembered.
 - **Quick sets:** Hiking, Driving to the trailhead, Snow and scrambling, and Minimal switch a whole set of overlays at once.
 - **Slope angle shading:** slopes of 25°, 30°, 35°, 45° and 60°+ in yellow to purple, computed from the elevation data (zoom in to see it). For snow travel and scrambling.
@@ -111,6 +111,9 @@ Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in 
 ## Settings, battery and data
 
 - **Settings screen:** its own gear button.
+- **Dark mode:** Light, Dark or Follow phone, for night and the tent; the map switches to night colors too.
+- **Sunlight mode:** bolder lines, stronger labels and bigger text for bright sun.
+- **Quick tips:** a short tour the first time the app opens, and again from Settings.
 - **Hiking pace:** adjustable, with defaults of 2 mph, 30 min per 1,000 ft and 10 min breaks per hour.
 - **Pace from your hikes:** after 3 recorded hikes of a mile or more, suggests a pace from how you actually hike.
 - **Battery saver:** GPS every 15 seconds instead of 5.

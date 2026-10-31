@@ -120,7 +120,6 @@ val OVERLAY_GROUPS: List<String> get() = layerNames.keys.toList()
 fun LayersContent(
     base: String,
     onBase: (String) -> Unit,
-    thumbs: Map<String, Bitmap>,
     online: Boolean,
     satelliteAreaCount: Int,
     layerOn: Map<String, Boolean>,
@@ -139,11 +138,11 @@ fun LayersContent(
             satelliteAreaCount > 0 -> "Saved areas only"
             else -> "Needs signal"
         }
-        BaseCard("Topo", "Works offline", Icons.Filled.Terrain, Color(0xFFE8E4D0), thumbs[MapStyle.BASE_TOPO],
+        BaseCard("Topo", "Works offline", com.trailguidegps.app.R.drawable.base_topo,
             base == MapStyle.BASE_TOPO, { onBase(MapStyle.BASE_TOPO) }, Modifier.weight(1f))
-        BaseCard("Satellite", satNote, Icons.Filled.SatelliteAlt, Color(0xFF3E4B3A), thumbs[MapStyle.BASE_SATELLITE],
+        BaseCard("Satellite", satNote, com.trailguidegps.app.R.drawable.base_satellite,
             base == MapStyle.BASE_SATELLITE, { onBase(MapStyle.BASE_SATELLITE) }, Modifier.weight(1f))
-        BaseCard("Hybrid", "Imagery + roads, names", Icons.Filled.Layers, Color(0xFF56604D), thumbs[MapStyle.BASE_HYBRID],
+        BaseCard("Hybrid", "Imagery + roads, names", com.trailguidegps.app.R.drawable.base_hybrid,
             base == MapStyle.BASE_HYBRID, { onBase(MapStyle.BASE_HYBRID) }, Modifier.weight(1f))
     }
 
@@ -232,7 +231,7 @@ fun LayersContent(
 
 @Composable
 private fun BaseCard(
-    label: String, sub: String, icon: ImageVector, placeholder: Color, picture: Bitmap?,
+    label: String, sub: String, picture: Int,
     selected: Boolean, onClick: () -> Unit, modifier: Modifier,
 ) {
     Column(
@@ -242,15 +241,13 @@ private fun BaseCard(
         },
     ) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(1.25f).clip(RoundedCornerShape(12.dp)).background(placeholder)
+            Modifier.fillMaxWidth().aspectRatio(1.25f).clip(RoundedCornerShape(12.dp)).background(TG.Card)
                 .border(if (selected) 3.dp else 1.dp, if (selected) TG.Accent else TG.Line, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            if (picture != null) {
-                Image(picture.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            } else {
-                Icon(icon, contentDescription = null, tint = if (placeholder.luminance() > 0.5f) TG.Muted else Color.White.copy(alpha = 0.85f), modifier = Modifier.size(30.dp))
-            }
+            // A sample spot (Green Lakes and Broken Top) drawn each way; built into the app so it shows offline.
+            Image(androidx.compose.ui.res.painterResource(picture), contentDescription = null, contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize())
             if (selected) {
                 Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).background(TG.Accent, CircleShape), contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
