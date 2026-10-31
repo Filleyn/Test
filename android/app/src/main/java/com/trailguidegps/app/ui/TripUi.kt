@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -165,11 +166,25 @@ fun PeaksDialog(vm: AppViewModel, title: String, lat: Double, lon: Double, onPic
 @Composable
 fun PeaksContent(result: PeakView.Result?, done: Boolean, heading: Float?, onPick: (Double, Double) -> Unit) {
     var byDistance by remember { mutableStateOf(false) }
-    val r = result
+    var types by remember { mutableStateOf(emptySet<String>()) }
+    var higherOnly by remember { mutableStateOf(false) }
+    val r0 = result
+    // Filters: kinds of summit (none picked = all), and only ones higher than you.
+    val r = r0?.copy(visible = r0.visible.filter { (types.isEmpty() || PeakView.type(it) in types) && (!higherOnly || it.eleM > r0.fromEleM) })
     when {
         !done -> Text("Checking sight lines to peaks within 60 miles…", fontSize = 15.sp, color = TG.Ink)
         r == null -> Text("This needs the offline terrain data, and a spot inside the map area.", fontSize = 15.sp, color = TG.Ink)
         else -> {
+            val counts = r0!!.visible.groupingBy { PeakView.type(it) }.eachCount()
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                val chip = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Accent, selectedLabelColor = Color.White)
+                FilterChip(selected = types.isEmpty(), onClick = { types = emptySet() }, label = { Text("All ${r0.visible.size}") }, colors = chip)
+                PeakView.TYPES.filter { (counts[it] ?: 0) > 0 }.forEach { t ->
+                    FilterChip(selected = t in types, onClick = { types = if (t in types) types - t else types + t },
+                        label = { Text("$t ${counts[t]}") }, colors = chip)
+                }
+                FilterChip(selected = higherOnly, onClick = { higherOnly = !higherOnly }, label = { Text("Higher than me") }, colors = chip)
+            }
             val facing = PeakView.facing(r.visible, heading)
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 PeakDial(r.visible, heading, facing, Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f))
@@ -197,7 +212,8 @@ fun PeaksContent(result: PeakView.Result?, done: Boolean, heading: Float?, onPic
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Accent, selectedLabelColor = Color.White))
             }
             if (list.isEmpty()) {
-                Text("No named peaks in view. Ridges or trees may block the view, or it's a low spot.", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 8.dp))
+                Text(if (r0.visible.isEmpty()) "No named peaks in view. Ridges or trees may block the view, or it's a low spot."
+                    else "None of the peaks in view match these filters.", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 8.dp))
             }
             list.forEach { p ->
                 HorizontalDivider(color = TG.Line)
@@ -562,12 +578,32 @@ private fun pairDays(periods: List<Weather.Period>): List<DayCard> {
     return out
 }
 
+/** A cloud with rain falling from it (the stock icons only have an umbrella). */
+private val RainCloud: ImageVector by lazy {
+    ImageVector.Builder("RainCloud", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = androidx.compose.ui.graphics.SolidColor(Color.Black)) {
+            moveTo(7f, 14.5f)
+            horizontalLineTo(17.5f)
+            arcTo(3f, 3f, 0f, false, false, 17.5f, 8.5f)
+            arcTo(4.6f, 4.6f, 0f, false, false, 8.3f, 9.1f)
+            arcTo(2.7f, 2.7f, 0f, false, false, 7f, 14.5f)
+            close()
+        }
+        path(stroke = androidx.compose.ui.graphics.SolidColor(Color.Black), strokeLineWidth = 1.8f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round) {
+            moveTo(8.8f, 17f); lineTo(7.8f, 20.5f)
+            moveTo(12.8f, 17f); lineTo(11.8f, 20.5f)
+            moveTo(16.8f, 17f); lineTo(15.8f, 20.5f)
+        }
+    }.build()
+}
+
 private fun weatherIcon(short: String, isDay: Boolean): Pair<ImageVector, Color> {
     val s = short.lowercase()
     return when {
         "thunder" in s -> Icons.Filled.Thunderstorm to Color(0xFF6A1B9A)
         "snow" in s || "flurr" in s || "sleet" in s || "ice" in s -> Icons.Filled.AcUnit to Color(0xFF3A8DC5)
-        "rain" in s || "shower" in s || "drizzle" in s -> Icons.Filled.Umbrella to WaterBlue
+        "rain" in s || "shower" in s || "drizzle" in s -> RainCloud to WaterBlue
         "fog" in s || "haze" in s || "smoke" in s -> Icons.Filled.Dehaze to Color(0xFF78909C)
         "partly" in s || "mostly sunny" in s || "mostly clear" in s -> (if (isDay) Icons.Filled.WbCloudy else Icons.Filled.NightsStay) to Color(0xFF8D9AA5)
         "cloud" in s || "overcast" in s -> Icons.Filled.Cloud to Color(0xFF78909C)

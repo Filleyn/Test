@@ -42,6 +42,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -346,9 +347,35 @@ fun RoutePlannerPanel(
     onEditPace: () -> Unit,
     onScrub: (Double?) -> Unit = {},
     onWater: () -> Unit = {},
+    onRemoveSelected: () -> Unit = {},
+    onClearSelected: () -> Unit = {},
+    onAddAtStart: (Boolean) -> Unit = {},
 ) {
     var showDifficulty by remember { mutableStateOf(false) }
     Column {
+        // A point picked on the map: move it with the next tap, or take it out.
+        plan.selected?.let { i ->
+            Surface(color = Color(0xFFFFF4D6), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(when (i) { 0 -> "Start point"; plan.points.size - 1 -> "End point"; else -> "Point ${i + 1}" } + " picked",
+                            fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                        Text("Tap the map where it should go", fontSize = 12.sp, color = TG.Muted)
+                    }
+                    TextButton(onClick = onRemoveSelected) { Text("Remove", color = TG.Danger) }
+                    TextButton(onClick = onClearSelected) { Text("Done", color = TG.Accent) }
+                }
+            }
+        }
+        if (plan.points.size >= 2 && plan.selected == null) {
+            Row(Modifier.padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("New points go at the", fontSize = 13.sp, color = TG.Muted)
+                androidx.compose.material3.FilterChip(selected = !plan.addAtStart, onClick = { onAddAtStart(false) }, label = { Text("End") },
+                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = RoutePurple, selectedLabelColor = Color.White))
+                androidx.compose.material3.FilterChip(selected = plan.addAtStart, onClick = { onAddAtStart(true) }, label = { Text("Start") },
+                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = RoutePurple, selectedLabelColor = Color.White))
+            }
+        }
         if (plan.points.isEmpty()) {
             Text("Tap the map where your route starts.", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
             Text(
@@ -491,16 +518,18 @@ private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: (
 /** Ask for a name when saving a planned route. */
 @Composable
 fun SaveRouteDialog(
-    defaultName: String, onSave: (name: String, color: String, folderId: String?) -> Unit, onDismiss: () -> Unit,
+    defaultName: String, onSave: (name: String, color: String, folderId: String?, asNew: Boolean) -> Unit, onDismiss: () -> Unit,
     folders: List<com.trailguidegps.app.data.Folder> = emptyList(), folderId: String? = null,
     onCreateFolder: (String) -> com.trailguidegps.app.data.Folder,
+    editing: Boolean = false, initialColor: String = RouteColors.DEFAULT,
 ) {
     var name by remember { mutableStateOf(defaultName) }
     var folder by remember { mutableStateOf(folderId) }
-    var color by remember { mutableStateOf(RouteColors.DEFAULT) }
+    var color by remember { mutableStateOf(initialColor) }
+    var asNew by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Save route") },
+        title = { Text(if (editing) "Save changes" else "Save route") },
         text = {
             Column {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Route name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -508,9 +537,15 @@ fun SaveRouteDialog(
                 RouteColorPicker(color) { color = it }
                 Text("Folder", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
                 FolderPicker(folders, folder, { folder = it }, onCreateFolder)
+                if (editing) {
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp).clickable { asNew = !asNew }, verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = asNew, onCheckedChange = { asNew = it })
+                        Text("Save as a new route and keep the original", fontSize = 14.sp, color = TG.Ink)
+                    }
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(name.trim(), color, folder) }) { Text("Save") } },
+        confirmButton = { TextButton(onClick = { onSave(name.trim(), color, folder, asNew) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Keep planning") } },
     )
 }

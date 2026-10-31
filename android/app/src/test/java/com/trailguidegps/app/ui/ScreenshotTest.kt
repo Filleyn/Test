@@ -99,7 +99,7 @@ class ScreenshotTest {
             active = true, points = pts,
             legs = listOf(com.trailguidegps.app.data.RouteLeg(listOf(doubleArrayOf(44.1, -121.7), doubleArrayOf(44.12, -121.74)), 5600.0,
                 listOf("Obsidian Trail #3528"), true, doubleArrayOf(5600.0, 0.0, 0.0))),
-            stats = com.trailguidegps.app.data.RouteStats(5600.0, 354.0, 24.0, prof),
+            stats = com.trailguidegps.app.data.RouteStats(5600.0, 354.0, 24.0, prof), selected = 1,
         )
         compose.setContent {
             Box(Modifier.background(Color.White).padding(16.dp)) {

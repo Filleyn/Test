@@ -295,7 +295,14 @@ fun MapScreen(
                 }
                 val point = m.projection.toScreenLocation(latLng)
                 if (vm.plan.value.active) {
-                    // Planning: each tap adds a point. Tapping one of your waypoints uses its exact spot.
+                    // Tapping one of the route's own points picks it to move or remove.
+                    val hitPoint = m.queryRenderedFeatures(android.graphics.RectF(point.x - 24, point.y - 24, point.x + 24, point.y + 24), MapStyle.LAYER_PLAN_POINTS)
+                        .firstOrNull()?.takeIf { it.hasProperty("i") }?.getNumberProperty("i")?.toInt()
+                    if (hitPoint != null && vm.plan.value.selected == null) {
+                        vm.selectPlanPoint(hitPoint)
+                        return@addOnMapClickListener true
+                    }
+                    // Planning: each tap adds a point (or moves the picked one). Tapping one of your waypoints uses its exact spot.
                     val wp = m.queryRenderedFeatures(point, MapStyle.LAYER_WAYPOINTS).firstOrNull()
                         ?.takeIf { it.hasProperty("id") }?.let { vm.waypoints.get(it.getStringProperty("id")) }
                     if (wp != null) vm.addPlanPoint(wp.lat, wp.lon, wp.name) else vm.addPlanPoint(latLng.latitude, latLng.longitude)
@@ -507,9 +514,9 @@ fun MapScreen(
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_RECORDING)
             ?.setGeoJson(TrackStore.lineGeoJson(recording?.points.orEmpty()))
     }
-    LaunchedEffect(style, plan.legs, plan.points) {
+    LaunchedEffect(style, plan.legs, plan.points, plan.selected) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PLAN)?.setGeoJson(RouteStore.legsGeoJson(plan.legs))
-        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PLAN_POINTS)?.setGeoJson(RouteStore.pointsGeoJson(plan.points))
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PLAN_POINTS)?.setGeoJson(RouteStore.pointsGeoJson(plan.points, plan.selected))
     }
     LaunchedEffect(style, shownRoutes, shownRoute?.id) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SHOWN_ROUTE)
@@ -660,8 +667,12 @@ fun MapScreen(
                             Icon(Icons.Filled.Close, contentDescription = "Stop planning", tint = TG.Ink)
                         }
                         Column(Modifier.weight(1f)) {
-                            Text("Plan a route", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
-                            Text("Tap the map to add points", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
+                            Text(plan.editing?.let { "Edit ${it.name}" } ?: "Plan a route", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+                            Text(when {
+                                plan.selected != null -> "Tap the map to move the point"
+                                plan.editing != null || plan.points.size >= 2 -> "Tap the map to add · tap a point to change it"
+                                else -> "Tap the map to add points"
+                            }, fontSize = 12.sp, color = TG.Muted, maxLines = 1)
                         }
                         IconButton(onClick = { vm.undoPlanPoint() }, enabled = plan.points.isNotEmpty() && !plan.busy) {
                             Icon(Icons.Filled.Undo, contentDescription = "Undo last point", tint = if (plan.points.isNotEmpty()) TG.Ink else TG.Line)
@@ -818,6 +829,9 @@ fun MapScreen(
                                 profileMark = d?.let { RouteStore.pointAt(plan.legs.flatMap { leg -> leg.coords }, it) }
                             },
                             onWater = { waterFor = "this route" to plan.legs.flatMap { leg -> leg.coords } },
+                            onRemoveSelected = { plan.selected?.let { vm.removePlanPoint(it) } },
+                            onClearSelected = { vm.selectPlanPoint(null) },
+                            onAddAtStart = { vm.setAddAtStart(it) },
                         )
                     }
                 }
@@ -937,10 +951,14 @@ fun MapScreen(
             plan.via.isNotEmpty() -> plan.via.first()
             else -> "Route ${java.text.SimpleDateFormat("MMM d", java.util.Locale.US).format(java.util.Date())}"
         }
+        val ed = plan.editing
         SaveRouteDialog(
-            suggested, onSave = { name, color, folder -> askSaveRoute = false; vm.savePlan(name, color, folder) }, onDismiss = { askSaveRoute = false },
-            folders = vm.folders.folders.collectAsStateWithLifecycle().value, folderId = vm.lastFolder(),
+            ed?.name ?: suggested, onSave = { name, color, folder, asNew -> askSaveRoute = false; vm.savePlan(name, color, folder, asNew) },
+            onDismiss = { askSaveRoute = false },
+            folders = vm.folders.folders.collectAsStateWithLifecycle().value,
+            folderId = ed?.let { vm.folders.members.value[com.trailguidegps.app.data.FolderStore.routeKey(it.id)] } ?: vm.lastFolder(),
             onCreateFolder = { vm.folders.create(it) },
+            editing = ed != null, initialColor = ed?.color ?: com.trailguidegps.app.data.RouteColors.DEFAULT,
         )
     }
     if (askDiscardRoute) {
@@ -1386,12 +1404,13 @@ private fun BottomPanel(
                 }
                 ActionGrid(listOf(
                     Action(Icons.Filled.Info, "Details") { showDifficulty = true },
+                    Action(Icons.Filled.Edit, "Edit") { tripVm.editRoute(r.id) },
                     Action(Icons.Filled.WaterDrop, "Water") { onWater(r.name, r.coords) },
                     Action(Icons.Filled.NightsStay, "Days") { onDays(r) },
                     Action(Icons.Filled.WbSunny, "Weather") { onRouteWeather(r) },
                     Action(Icons.Filled.SwapHoriz, "Reverse") { onReverse(r.id) },
                     Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
-                ), Modifier.padding(top = 4.dp), columns = 6)
+                ), Modifier.padding(top = 4.dp), columns = 4)
                 if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
             }
             shownTrackName?.let { name ->

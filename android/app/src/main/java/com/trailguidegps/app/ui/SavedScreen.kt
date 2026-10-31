@@ -137,6 +137,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 r, pace, shownRoutes.any { it.id == r.id }, if (inFolder) null else folderName(FolderStore.routeKey(r.id)),
                 onShow = { vm.showRoute(r.id); onClose() },
                 onHide = { vm.hideRoute(r.id) },
+                onEdit = { vm.editRoute(r.id); onClose() },
                 onToggleMap = { on -> if (on) vm.addRouteToMap(r.id) else vm.hideRoute(r.id) },
                 onRename = { renamingRoute = r },
                 onColor = { recoloring = r },
@@ -464,7 +465,7 @@ private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, o
 @Composable
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?,
-    onShow: () -> Unit, onHide: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onTripPlan: () -> Unit,
+    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onTripPlan: () -> Unit,
     onWater: () -> Unit, onReverse: () -> Unit,
     onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
 ) {
@@ -495,6 +496,7 @@ private fun RouteRow(
         RowMenu(listOfNotNull(
             "Show on map" to onShow,
             if (onMap) "Hide from map" to onHide else null,
+            "Edit route" to onEdit,
             "Water along route" to onWater,
             "Reverse for the hike out" to onReverse,
             "Trip plan (PDF)" to onTripPlan,

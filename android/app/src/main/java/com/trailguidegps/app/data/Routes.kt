@@ -411,11 +411,12 @@ class RouteStore(context: Context) {
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
         }
 
-        fun pointsGeoJson(points: List<RoutePoint>): String {
+        fun pointsGeoJson(points: List<RoutePoint>, selected: Int? = null): String {
             val features = JSONArray()
             points.forEachIndexed { i, p ->
                 val role = when (i) { 0 -> "start"; points.size - 1 -> "end"; else -> "mid" }
-                features.put(JSONObject().put("type", "Feature").put("properties", JSONObject().put("role", if (points.size == 1) "start" else role))
+                features.put(JSONObject().put("type", "Feature").put("properties", JSONObject().put("role", if (points.size == 1) "start" else role)
+                    .put("i", i).put("sel", i == selected))
                     .put("geometry", JSONObject().put("type", "Point").put("coordinates", JSONArray().put(p.lon).put(p.lat))))
             }
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()

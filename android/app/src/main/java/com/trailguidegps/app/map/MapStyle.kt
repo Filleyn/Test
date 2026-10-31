@@ -422,9 +422,10 @@ object MapStyle {
         layer("plan-straight", "line", SRC_PLAN, filter = arr("==", arr("get", "trail"), false),
             paint = JSONObject().put("line-color", ROUTE_PURPLE).put("line-width", 3.5).put("line-dasharray", arr(2, 1.5)),
             layout = JSONObject().put("line-cap", "round"))
-        layer("plan-points", "circle", SRC_PLAN_POINTS, paint = JSONObject()
-            .put("circle-radius", arr("match", arr("get", "role"), "mid", 6, 8))
-            .put("circle-color", arr("match", arr("get", "role"), "start", "#2E8B57", "end", ROUTE_PURPLE, "#FFFFFF"))
+        layer(LAYER_PLAN_POINTS, "circle", SRC_PLAN_POINTS, paint = JSONObject()
+            .put("circle-radius", arr("case", arr("==", arr("get", "sel"), true), 11, arr("match", arr("get", "role"), "mid", 6, 8)))
+            .put("circle-color", arr("case", arr("==", arr("get", "sel"), true), "#FFB300",
+                arr("match", arr("get", "role"), "start", "#2E8B57", "end", ROUTE_PURPLE, "#FFFFFF")))
             .put("circle-stroke-color", arr("match", arr("get", "role"), "mid", ROUTE_PURPLE, "#FFFFFF"))
             .put("circle-stroke-width", 3))
         // Current wildfires (online data, last copy kept): orange areas, flame-red dots.
@@ -472,6 +473,7 @@ object MapStyle {
     const val SRC_SHOWN_TRACK = "user-shown-track"
     const val SRC_SHOWN_ROUTE = "user-shown-route"
     const val SRC_CAMPS = "user-camps"
+    const val LAYER_PLAN_POINTS = "plan-points"
     const val LAYER_SHOWN_ROUTE_HIT = "shown-route-hit"
     const val SRC_PLAN = "user-plan"
     const val SRC_PLAN_POINTS = "user-plan-points"

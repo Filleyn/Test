@@ -91,6 +91,22 @@ object PeakView {
         return Result(ground, seen.sortedBy { it.bearingDeg }, hidden, checked)
     }
 
+    /** Kinds of summit for filtering, from the name (and height when the name doesn't say). */
+    val TYPES = listOf("Mountains", "Buttes", "Hills", "Rocks and points", "Other")
+
+    fun type(s: Seen): String {
+        val n = " " + s.name.lowercase() + " "
+        return when {
+            "butte" in n -> "Buttes"
+            " hill" in n || "knob" in n || "knoll" in n || "mound" in n -> "Hills"
+            listOf("rock", "point", "pinnacle", "spire", "crag", "tooth", "needle", "bluff", "cliff", "tower", "dome").any { it in n } -> "Rocks and points"
+            listOf("mount ", "mountain", " mt ", " mt. ", "peak", "sister", "summit", "volcano").any { it in n } -> "Mountains"
+            // Names like "Broken Top" or "Three Fingered Jack": high ones are mountains.
+            s.eleM >= 1800 -> "Mountains"
+            else -> "Other"
+        }
+    }
+
     /** The visible peak nearest to [headingDeg], within 20°. */
     fun facing(list: List<Seen>, headingDeg: Float?): Seen? {
         val h = headingDeg?.toDouble() ?: return null
