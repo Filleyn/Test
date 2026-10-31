@@ -34,7 +34,7 @@ Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in 
 
 ## Places and water
 
-- **Water sources:** springs, taps, water points and wells, with seasonal ones marked.
+- **Water sources:** springs, taps, water points, wells and creek crossings, each with its own icon; seasonal ones paler with a dashed ring.
 - **Water notes:** add your own note to a water source ("flowing, Aug 2026").
 - **Fire lookouts (61) and historic sites (252)**, with their own layer switches and a History search filter.
 - **Places:** about 2,700 trailheads, 1,750 campsites, 4,500 peaks with elevation, plus lakes, waterfalls, shelters, viewpoints, hot springs and towns.
@@ -66,7 +66,7 @@ Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Live totals:** miles, feet of climb and descent, estimated time, and the trails used ("Via …").
 - **Elevation graph:** press or drag on it to mark that spot on the map.
 - **Difficulty rating:** the Shenandoah National Park scale, plus steepest stretch, high point, surface mix (trail, dirt road, road, off-trail) and the SAC technical rating where trails have one.
-- **Saved routes:** name, color (6 choices), rename, export, delete.
+- **Saved routes:** name, color (6 choices), rename, export, delete; arrows along the line show which way it runs.
 - **Several routes at once:** names on their lines; tap a line to see its details; Show all / Hide all.
 
 ## Tools
@@ -76,8 +76,8 @@ Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Go to:** compass arrow, distance, true bearing and climb to any place or waypoint.
 - **Water along a route:** water by mile with distance off route, seasonal flags and your notes; longest dry stretch, and how it changes if seasonal sources are dry. Includes about 30,000 trail and road creek crossings.
 - **Sunrise, sunset and daylight left**, offline, with after-dark warnings when planning, following and in trip plans.
-- **Peaks in view:** from any place, waypoint or your location, the named peaks within 60 mi you can see, worked out offline from the terrain with the earth's curve; sorted by direction or distance, with "only just visible" flags. Point the phone and it names the peak you're facing.
-- **Weather (online):** National Weather Service forecast for a place, or for a route's start, high point and camps; adjusted for how far you'll be above the forecast area, and kept for reading offline.
+- **Peaks in view:** from any place, waypoint or your location, the named peaks within 60 mi you can see, worked out offline from the terrain with the earth's curve. A full screen with a compass dial that turns as you do (up is where the phone points) and names the peak you're facing, plus a list by direction or distance with "only just visible" flags.
+- **Weather (online):** National Weather Service forecast for a place, or for a route's start, high point and camps, on a full screen with a day strip (icons, highs, lows, chance of rain or snow) and each day's full forecast; temperatures adjusted for how far you'll be above the forecast area; kept for reading offline.
 
 ## Following a route
 
@@ -90,7 +90,7 @@ Current as of app 1.3 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Emergency screen:** large coordinates in decimal, degrees-minutes-seconds and UTM, plus elevation and accuracy, for reading to 911; shareable as a text. It notes that the Pixel 9a has no satellite SOS.
 - **Trip plan PDF:** who's going, phones, start, expected return, call-for-help time, vehicle and trailhead, with the route map, numbers and elevation profile; sent by email or text.
 - **Trip folders:** any mix of routes, tracks and waypoints; pick a folder when saving; show a whole trip on the map; export it as GPX.
-- **Multi-day trips:** split a route into days. Camps are suggested so each day takes about the same time at your pace, then moved to a nearby campsite (with water if possible) or water source; move each camp by half a mile or pick from campsites nearby. Each day shows miles, climb, time and water; camps show on the map as "Night 1", "Night 2"; the trip plan PDF lists each day and camp.
+- **Multi-day trips:** split a route into days. Camps are suggested so each day takes about the same time at your pace, then moved to a nearby campsite (with water if possible) or water source. A full screen shows the elevation profile split into days with campsites and water marked; drag a camp along it, move it by half a mile, or pick from campsites nearby. Each day shows miles, climb, time and water; camps show on the map as "Night 1", "Night 2"; the trip plan PDF lists each day and camp.
 
 ## Public land and alerts
 

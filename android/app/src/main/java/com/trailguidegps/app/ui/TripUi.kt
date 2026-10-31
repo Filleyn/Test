@@ -246,26 +246,41 @@ private fun PeakDial(peaks: List<PeakView.Seen>, heading: Float?, facing: PeakVi
                 TextStyle(fontSize = 9.sp, color = TG.Muted))
         }
         drawCircle(Color(0xFFF7F8F4), rMax * 0.04f + 6.dp.toPx(), c)
-        rotate(rot, c) {
-            // Compass letters.
-            listOf("N" to 0.0, "E" to 90.0, "S" to 180.0, "W" to 270.0).forEach { (t, b) ->
-                val a = Math.toRadians(b)
-                val p = Offset(c.x + (sin(a) * (rMax + 16.dp.toPx())).toFloat(), c.y - (cos(a) * (rMax + 16.dp.toPx())).toFloat())
-                val lay = tm.measure(t, TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (t == "N") Color(0xFFC62828) else TG.Ink))
-                rotate(-rot, p) { drawText(lay, topLeft = Offset(p.x - lay.size.width / 2, p.y - lay.size.height / 2)) }
-            }
-            peaks.forEach { pk ->
-                val a = Math.toRadians(pk.bearingDeg)
-                val rr = (sqrt(pk.distanceM / maxD) * rMax).toFloat()
-                val p = Offset(c.x + (sin(a) * rr).toFloat(), c.y - (cos(a) * rr).toFloat())
-                val f = if (topEle > lowEle) ((pk.eleM - lowEle) / (topEle - lowEle)).toFloat() else 0.5f
-                val dot = (3.dp.toPx() + f * 5.dp.toPx())
-                val col = if (pk == facing) TG.Accent else Color(0xFF5A4636)
-                if (pk.visible) drawCircle(col, dot, p) else drawCircle(col, dot, p, style = Stroke(1.5.dp.toPx()))
-                if (pk in labelled) {
-                    val lay = tm.measure(pk.name, TextStyle(fontSize = 10.sp, color = col, fontWeight = if (pk == facing) FontWeight.Bold else FontWeight.Normal))
-                    rotate(-rot, p) { drawText(lay, topLeft = Offset(p.x - lay.size.width / 2, p.y + dot + 1.dp.toPx())) }
-                }
+        // Everything is placed by its direction turned by the compass, with names drawn upright,
+        // and a name is skipped if it would overlap one already drawn.
+        fun at(bearing: Double, radius: Float): Offset {
+            val a = Math.toRadians(bearing + rot)
+            return Offset(c.x + (sin(a) * radius).toFloat(), c.y - (cos(a) * radius).toFloat())
+        }
+        val taken = ArrayList<androidx.compose.ui.geometry.Rect>()
+        listOf("N" to 0.0, "E" to 90.0, "S" to 180.0, "W" to 270.0).forEach { (t, b) ->
+            val p = at(b, rMax + 16.dp.toPx())
+            val lay = tm.measure(t, TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (t == "N") Color(0xFFC62828) else TG.Ink))
+            val tl = Offset(p.x - lay.size.width / 2, p.y - lay.size.height / 2)
+            taken += androidx.compose.ui.geometry.Rect(tl, Size(lay.size.width.toFloat(), lay.size.height.toFloat()))
+            drawText(lay, topLeft = tl)
+        }
+        val dots = peaks.map { pk ->
+            val f = if (topEle > lowEle) ((pk.eleM - lowEle) / (topEle - lowEle)).toFloat() else 0.5f
+            Triple(pk, at(pk.bearingDeg, (sqrt(pk.distanceM / maxD) * rMax).toFloat()), 3.dp.toPx() + f * 5.dp.toPx())
+        }
+        dots.forEach { (pk, p, dot) ->
+            val col = if (pk == facing) TG.Accent else Color(0xFF5A4636)
+            if (pk.visible) drawCircle(col, dot, p) else drawCircle(col, dot, p, style = Stroke(1.5.dp.toPx()))
+            taken += androidx.compose.ui.geometry.Rect(p.x - dot, p.y - dot, p.x + dot, p.y + dot)
+        }
+        // Names: the facing peak first, then the most prominent, as long as they fit.
+        labelled.forEach { pk ->
+            val (_, p, dot) = dots.firstOrNull { it.first == pk } ?: return@forEach
+            val col = if (pk == facing) TG.Accent else Color(0xFF5A4636)
+            val lay = tm.measure(pk.name, TextStyle(fontSize = 10.sp, color = col, fontWeight = if (pk == facing) FontWeight.Bold else FontWeight.Normal))
+            val tl = Offset(p.x - lay.size.width / 2, p.y + dot + 1.dp.toPx())
+            val box = androidx.compose.ui.geometry.Rect(tl, Size(lay.size.width.toFloat(), lay.size.height.toFloat()))
+            // The peak's own dot doesn't count against its name.
+            if (pk == facing || taken.none { it.overlaps(box) && !(it.center.x == p.x && it.center.y == p.y) }) {
+                drawRect(Color.White.copy(alpha = 0.7f), tl, box.size)
+                drawText(lay, topLeft = tl)
+                taken += box
             }
         }
         // Where you're looking: a wedge pointing up.
@@ -345,9 +360,9 @@ fun DaysContent(
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Days", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = { onDays(days - 1); choosing = null }, enabled = days > 1, shape = RoundedCornerShape(10.dp)) { Text("−", fontSize = 18.sp) }
+        OutlinedButton(onClick = { onDays(days - 1); choosing = null }, enabled = days > 1, shape = RoundedCornerShape(10.dp)) { Text("−", fontSize = 18.sp, color = TG.Ink) }
         Text("$days", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink, modifier = Modifier.padding(horizontal = 16.dp))
-        OutlinedButton(onClick = { onDays(days + 1); choosing = null }, enabled = days < 10, shape = RoundedCornerShape(10.dp)) { Text("+", fontSize = 18.sp) }
+        OutlinedButton(onClick = { onDays(days + 1); choosing = null }, enabled = days < 10, shape = RoundedCornerShape(10.dp)) { Text("+", fontSize = 18.sp, color = TG.Ink) }
     }
     Text("Camps start where each day takes about the same time at your pace, moved to a campsite (with water within 1,000 ft if possible) " +
         "or water when one is close. Drag a camp along the profile to move it.", fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp,
