@@ -41,7 +41,7 @@ class MapStore(context: Context) {
 
     /** Newest GitHub release whose tag starts with maps-<region>-. */
     suspend fun findLatestRelease(): Release = withContext(Dispatchers.IO) {
-        val url = URL("https://api.github.com/repos/${BuildConfig.MAPS_REPO}/releases?per_page=30")
+        val url = URL("https://api.github.com/repos/${BuildConfig.MAPS_REPO}/releases?per_page=100")
         val conn = (url.openConnection() as HttpURLConnection).apply {
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("User-Agent", "TrailGuideGPS")
