@@ -36,6 +36,14 @@ object MapIcons {
             put(spec.first + "-s", spec.third, dashed = true, glyph = glyph)
         }
         put("water-seasonal", 0xFF7FB3DE.toInt(), dashed = true) { c, s, p -> drop(c, s, p) }
+        // Trail notes: a yellow disc with note lines; a small camera badge for things with photos.
+        put("note-pin", 0xFFF2B705.toInt()) { c, s, p ->
+            val dark = Paint(p).apply { color = 0xFF5A4300.toInt() }
+            c.drawRect(s * 0.30f, s * 0.32f, s * 0.70f, s * 0.38f, dark)
+            c.drawRect(s * 0.30f, s * 0.47f, s * 0.70f, s * 0.53f, dark)
+            c.drawRect(s * 0.30f, s * 0.62f, s * 0.58f, s * 0.68f, dark)
+        }
+        style.addImage("photo-badge", photoBadge(d))
         // Direction arrows along routes, tinted to each route's color (an SDF image takes any color).
         style.addImage("route-arrow", arrow(d), true)
         put("poi-lookout", 0xFFBF360C.toInt()) { c, s, p -> lookout(c, s, p) }
@@ -79,6 +87,19 @@ object MapIcons {
             close()
         }
         c.drawPath(path, p)
+    }
+
+    /** A small dark circle with a white camera. */
+    private fun photoBadge(density: Float): Bitmap {
+        val s = 14f * density
+        val bmp = Bitmap.createBitmap(s.toInt(), s.toInt(), Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.drawCircle(s / 2, s / 2, s / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF263238.toInt() })
+        val w = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+        c.drawRoundRect(s * 0.22f, s * 0.36f, s * 0.78f, s * 0.72f, s * 0.06f, s * 0.06f, w)
+        c.drawRect(s * 0.40f, s * 0.28f, s * 0.60f, s * 0.38f, w)
+        c.drawCircle(s / 2, s * 0.54f, s * 0.11f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF263238.toInt() })
+        return bmp
     }
 
     /** A chevron pointing right (the way a line runs), white on transparent. */

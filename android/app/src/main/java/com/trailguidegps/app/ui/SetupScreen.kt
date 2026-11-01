@@ -53,8 +53,8 @@ fun SetupScreen(vm: AppViewModel) {
         Text("TrailGuide GPS", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Download the offline Oregon maps once. After that the app works with no signal: " +
-                "topo map, trails, water sources and your GPS position, anywhere in the state.",
+            "Download the offline maps for ${com.trailguidegps.app.data.MapRegion.name} once. After that the app works with no signal: " +
+                "topo map, trails, water sources and your GPS position, anywhere in the map area.",
             fontSize = 16.sp, color = TG.Muted, lineHeight = 22.sp,
         )
         Spacer(Modifier.height(8.dp))
@@ -86,8 +86,8 @@ fun SetupScreen(vm: AppViewModel) {
                     Text(
                         when {
                             s is DownloadState.Error -> "Resume download"
-                            size != null -> "Download Oregon maps ($size)"
-                            else -> "Download Oregon maps"
+                            size != null -> "Download ${com.trailguidegps.app.data.MapRegion.name} maps ($size)"
+                            else -> "Download ${com.trailguidegps.app.data.MapRegion.name} maps"
                         },
                         fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                     )

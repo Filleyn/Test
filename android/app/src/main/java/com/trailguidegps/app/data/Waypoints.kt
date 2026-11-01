@@ -18,6 +18,8 @@ data class Waypoint(
     val color: String = WAYPOINT_COLORS.first(),
     val note: String = "",
     val createdAt: Long = System.currentTimeMillis(),
+    /** Photo file names in the app's photo folder. */
+    val photos: List<String> = emptyList(),
 )
 
 /** Pin colors offered in the editor: orange, blue, green, purple, red. */
@@ -63,6 +65,7 @@ class WaypointStore(context: Context) {
                 color = o.optString("color", WAYPOINT_COLORS.first()),
                 note = o.optString("note", ""),
                 createdAt = o.optLong("created", System.currentTimeMillis()),
+                photos = (o.optJSONArray("photos") ?: JSONArray()).let { a -> (0 until a.length()).map { a.getString(it) } },
             )
         }
     }.getOrDefault(emptyList())
@@ -71,7 +74,8 @@ class WaypointStore(context: Context) {
         val arr = JSONArray()
         _items.value.forEach { w ->
             arr.put(JSONObject().put("id", w.id).put("name", w.name).put("lat", w.lat).put("lon", w.lon)
-                .put("ele", w.eleM ?: JSONObject.NULL).put("color", w.color).put("note", w.note).put("created", w.createdAt))
+                .put("ele", w.eleM ?: JSONObject.NULL).put("color", w.color).put("note", w.note).put("created", w.createdAt)
+                .put("photos", JSONArray(w.photos)))
         }
         // Write to a temp file first so a crash mid-write can't wipe the list.
         val tmp = File(file.parentFile, "waypoints.json.tmp")
@@ -85,7 +89,7 @@ class WaypointStore(context: Context) {
         _items.value.forEach { w ->
             features.put(JSONObject().put("type", "Feature")
                 .put("geometry", JSONObject().put("type", "Point").put("coordinates", JSONArray().put(w.lon).put(w.lat)))
-                .put("properties", JSONObject().put("id", w.id).put("name", w.name).put("color", w.color).put("wp", true)))
+                .put("properties", JSONObject().put("id", w.id).put("name", w.name).put("color", w.color).put("wp", true).put("photo", w.photos.isNotEmpty())))
         }
         return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
     }

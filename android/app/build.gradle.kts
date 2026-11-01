@@ -75,6 +75,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.15.0")
+    // Reads a photo's orientation so it's saved upright.
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // MapLibre 11.7+ reads PMTiles files directly.
     implementation("org.maplibre.gl:android-sdk:[11.7.0,12.0.0)")

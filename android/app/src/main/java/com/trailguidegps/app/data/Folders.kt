@@ -84,5 +84,6 @@ class FolderStore(context: Context) {
         fun routeKey(id: String) = "route:$id"
         fun trackKey(id: String) = "track:$id"
         fun waypointKey(id: String) = "wp:$id"
+        fun noteKey(id: String) = "note:$id"
     }
 }

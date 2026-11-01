@@ -223,3 +223,9 @@ class MapStore(context: Context) {
         private const val TAG_FILE = "release-tag.txt"
     }
 }
+
+/** The map area's everyday name ("Oregon"), for wording that shouldn't assume one state. */
+object MapRegion {
+    val name: String = com.trailguidegps.app.BuildConfig.MAPS_REGION.split('-', '_', ' ')
+        .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+}

@@ -36,6 +36,8 @@ object Backup {
             File(dir, "waypoints.json").takeIf { it.exists() }?.let { put("waypoints.json", it.readBytes()) }
             File(dir, "water-notes.json").takeIf { it.exists() }?.let { put("water-notes.json", it.readBytes()) }
             File(dir, FolderStore.FILE).takeIf { it.exists() }?.let { put(FolderStore.FILE, it.readBytes()) }
+            File(dir, TrailNoteStore.FILE).takeIf { it.exists() }?.let { put(TrailNoteStore.FILE, it.readBytes()) }
+            File(dir, "photos").listFiles { f -> PhotoStore.SAFE.matches(f.name) }?.forEach { put("photos/${it.name}", it.readBytes()) }
             PREFS.forEach { name ->
                 val o = JSONObject()
                 context.getSharedPreferences(name, Context.MODE_PRIVATE).all.forEach { (k, v) ->
@@ -80,6 +82,21 @@ object Backup {
                         File(dir, folder).mkdirs()
                         File(dir, "$folder/$id.json").writeBytes(bytes)
                         if (folder == "routes") routes++ else tracks++
+                    }
+                    name.startsWith("photos/") -> {
+                        val n = name.removePrefix("photos/")
+                        if (!PhotoStore.SAFE.matches(n)) continue
+                        File(dir, "photos").mkdirs()
+                        File(dir, "photos/$n").writeBytes(bytes)
+                    }
+                    name == TrailNoteStore.FILE -> {
+                        val incoming = JSONArray(String(bytes))
+                        val f = File(dir, TrailNoteStore.FILE)
+                        val current = runCatching { JSONArray(f.readText()) }.getOrDefault(JSONArray())
+                        val byId = LinkedHashMap<String, JSONObject>()
+                        for (i in 0 until current.length()) current.getJSONObject(i).let { byId[it.getString("id")] = it }
+                        for (i in 0 until incoming.length()) incoming.getJSONObject(i).let { byId[it.getString("id")] = it; notes++ }
+                        writeAtomically(f, JSONArray(byId.values).toString())
                     }
                     name == "waypoints.json" -> {
                         val incoming = JSONArray(String(bytes))

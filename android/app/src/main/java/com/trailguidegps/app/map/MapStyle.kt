@@ -44,6 +44,7 @@ object MapStyle {
         "hillshade" to listOf("hillshade"),
         "contours" to listOf("contours-minor", "contours-major", "contour-labels"),
         "trails" to listOf("trail", "track", "trail-names", "trail-hit", "trail-hit-unnamed"),
+        "notes" to listOf(LAYER_NOTES, "user-notes-photo", "user-notes-labels"),
         "water" to listOf("water-crossings", "water-points", "water-labels"),
         "peaks" to listOf("peaks", "peak-labels"),
     ) + PLACE_GROUPS.associate { g -> g.id to g.layers } + linkedMapOf(
@@ -211,6 +212,7 @@ object MapStyle {
             .put(SRC_FIRE_POINTS, emptyGeoJson())
             .put(SRC_RECORDING, emptyGeoJson())
             .put(SRC_WAYPOINTS, emptyGeoJson())
+            .put(SRC_NOTES, emptyGeoJson())
 
         val roads = arr("motorway", "trunk", "primary", "secondary", "tertiary", "minor", "service")
         val trails = arr("path", "track")
@@ -511,8 +513,19 @@ object MapStyle {
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
         layer("recording", "line", SRC_RECORDING, paint = JSONObject().put("line-color", "#E0661F").put("line-width", 4.5),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
+        // Your trail notes: a yellow note icon, with a small camera when it has photos.
+        layer(LAYER_NOTES, "symbol", SRC_NOTES, layout = JSONObject().put("icon-image", "note-pin").put("icon-size", 0.9)
+            .put("icon-allow-overlap", true))
+        layer("user-notes-photo", "symbol", SRC_NOTES, filter = arr("==", arr("get", "photo"), true),
+            layout = JSONObject().put("icon-image", "photo-badge").put("icon-offset", arr(11, -11)).put("icon-allow-overlap", true))
+        layer("user-notes-labels", "symbol", SRC_NOTES, paint = halo("#FFFFFF", "#6B5300"),
+            layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 11).put("text-offset", arr(0, 1.3))
+                .put("text-anchor", "top").put("text-field", arr("get", "title")).put("text-optional", true).put("text-max-width", 9),
+            minzoom = 13.0)
         layer(LAYER_WAYPOINTS, "circle", SRC_WAYPOINTS, paint = JSONObject().put("circle-radius", 8)
             .put("circle-color", arr("get", "color")).put("circle-stroke-color", "#FFFFFF").put("circle-stroke-width", 2.5))
+        layer("waypoint-photo", "symbol", SRC_WAYPOINTS, filter = arr("==", arr("get", "photo"), true),
+            layout = JSONObject().put("icon-image", "photo-badge").put("icon-offset", arr(10, -10)).put("icon-allow-overlap", true))
         layer("waypoint-labels", "symbol", SRC_WAYPOINTS, paint = halo("#FFFFFF", "#23271F"),
             layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 12).put("text-offset", arr(0, 1.2))
                 .put("text-anchor", "top").put("text-field", arr("get", "name")).put("text-optional", true))
@@ -545,6 +558,8 @@ object MapStyle {
     const val ROUTE_PURPLE = "#6B3FA0"
     const val SRC_RECORDING = "user-recording"
     const val SRC_WAYPOINTS = "user-waypoints"
+    const val SRC_NOTES = "user-notes"
+    const val LAYER_NOTES = "user-notes"
     /**
      * Invisible tap targets must not be fully transparent: MapLibre skips drawing a layer at
      * opacity 0, and a layer it doesn't draw can't be tapped. 1% is invisible but counts.

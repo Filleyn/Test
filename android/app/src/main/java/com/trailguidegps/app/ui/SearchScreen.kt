@@ -188,7 +188,7 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
             }
             results.isEmpty() -> Message(
                 if (kinds != null) "No ${filter.lowercase()} match \"$query\". Try the All filter."
-                else "No matches for \"$query\" in the Oregon maps. Try part of the name, like \"pacific\" or \"spring\"."
+                else "No matches for \"$query\" in your maps. Try part of the name, like \"pacific\" or \"spring\"."
             )
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(results, key = { "${it.kind}-${it.name}-${it.lat}-${it.lon}" }) { r ->

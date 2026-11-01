@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android's automatic backup (Android 12 and newer); see backup_rules.xml. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="." />
+        <include domain="sharedpref" path="." />
+        <exclude domain="file" path="satellite" />
+        <exclude domain="file" path="photos" />
+        <exclude domain="file" path="fires" />
+        <exclude domain="file" path="maps" />
+        <exclude domain="file" path="weather.json" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="." />
+        <include domain="sharedpref" path="." />
+        <exclude domain="file" path="satellite" />
+        <exclude domain="file" path="maps" />
+    </device-transfer>
+</data-extraction-rules>

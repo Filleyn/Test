@@ -175,7 +175,7 @@ fun EmergencyScreen(vm: AppViewModel, onClose: () -> Unit) {
             ) { Text("Copy", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
         }
         Text(
-            "No bars? 911 can connect through any carrier's tower. Try higher ground. This phone does not support satellite SOS.",
+            "No bars? 911 can connect through any carrier's tower. Try higher ground. Some phones can text 911 by satellite with no signal; not all can, so check yours before a trip.",
             fontSize = 13.sp, color = TG.NightMuted, lineHeight = 18.sp,
         )
     }

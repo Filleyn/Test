@@ -44,7 +44,7 @@ private data class Tip(val icon: ImageVector, val title: String, val text: Strin
 
 private val TIPS = listOf(
     Tip(Icons.Filled.Terrain, "Your maps work offline",
-        "The Oregon maps are on your phone. The map, GPS, search, routes, water and peaks in view all work with no signal."),
+        "Your maps are on your phone. The map, GPS, search, routes, water and peaks in view all work with no signal."),
     Tip(Icons.Filled.Route, "Plan a route",
         "Long-press anywhere to plan a route there along the trails. Or tap Route, then tap the map. To change a saved route later, tap Edit."),
     Tip(Icons.Filled.TouchApp, "Tap anything",
@@ -52,7 +52,7 @@ private val TIPS = listOf(
     Tip(Icons.Filled.Layers, "Layers",
         "Pick Topo, Satellite or Hybrid, turn overlays on by section, or use a quick set like Hiking. You can save your own sets."),
     Tip(Icons.Filled.Sos, "In an emergency",
-        "The red SOS button shows your coordinates in large type to read to 911. The Pixel 9a has no satellite SOS, so take a satellite messenger on remote trips."),
+        "The red SOS button shows your coordinates in large type to read to 911. Many phones can't text 911 by satellite, so check yours, and take a satellite messenger on remote trips."),
     Tip(Icons.Filled.WbSunny, "Night and bright sun",
         "Settings has dark mode for night and the tent, and sunlight mode with bolder lines and bigger text for reading in bright sun."),
 )

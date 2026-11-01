@@ -72,6 +72,7 @@ val layerNames = linkedMapOf(
     "slope" to "Slope angle shading (zoom in)",
     "trails" to "Trails and tracks",
     "trailheads" to "Trailheads",
+    "notes" to "Your trail notes",
     "water" to "Water sources",
     "campsites" to "Campsites",
     "peaks" to "Peaks",
@@ -93,7 +94,7 @@ private data class Section(val id: String, val title: String, val groups: List<S
 
 private val SECTIONS = listOf(
     Section("terrain", "Terrain", listOf("hillshade", "contours", "slope")),
-    Section("trails", "Trails and water", listOf("trails", "trailheads", "water")),
+    Section("trails", "Trails and water", listOf("trails", "trailheads", "water", "notes")),
     Section("places", "Places", listOf("campsites", "peaks", "waterfalls", "shelters", "lookouts", "history", "restrooms", "other")),
     Section("land", "Land and roads", listOf("landmanager", "forests", "wilderness", "roadaccess")),
     Section("hazards", "Hazards", listOf("burns", "fires")),
@@ -101,12 +102,12 @@ private val SECTIONS = listOf(
 
 /** One-tap sets of overlays. The base map stays as it is. */
 val LAYER_PRESETS: List<Pair<String, Set<String>>> = listOf(
-    "Hiking" to setOf("hillshade", "contours", "trails", "water", "campsites", "trailheads", "peaks", "waterfalls", "shelters",
+    "Hiking" to setOf("hillshade", "contours", "trails", "notes", "water", "campsites", "trailheads", "peaks", "waterfalls", "shelters",
         "lookouts", "history", "restrooms", "other", "forests", "wilderness", "burns", "fires"),
     "Driving to the trailhead" to setOf("hillshade", "trails", "campsites", "trailheads", "peaks", "restrooms", "landmanager",
         "forests", "wilderness", "roadaccess", "fires"),
-    "Snow and scrambling" to setOf("hillshade", "contours", "slope", "trails", "peaks", "shelters", "forests", "wilderness", "fires"),
-    "Minimal" to setOf("hillshade", "trails", "water", "fires"),
+    "Snow and scrambling" to setOf("hillshade", "contours", "slope", "trails", "notes", "peaks", "shelters", "forests", "wilderness", "fires"),
+    "Minimal" to setOf("hillshade", "trails", "notes", "water", "fires"),
 )
 
 /** The switchable overlays (everything but the base map). */

@@ -108,6 +108,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Waypoints, tracks and recording (phase 3) ----
 
     val waypoints = WaypointStore(app)
+    val trailNotes = com.trailguidegps.app.data.TrailNoteStore(app)
+    val photos = com.trailguidegps.app.data.PhotoStore(app)
+
+    /** Copies in a photo (camera or gallery), shrunk. Returns its file name. */
+    suspend fun addPhoto(uri: android.net.Uri): String? = withContext(Dispatchers.IO) { photos.add(uri) }
+
+    fun deleteWaypoint(id: String) {
+        waypoints.get(id)?.let { photos.delete(it.photos) }
+        waypoints.delete(id)
+        folders.put(com.trailguidegps.app.data.FolderStore.waypointKey(id), null)
+    }
+
+    fun deleteNote(id: String) {
+        trailNotes.get(id)?.let { photos.delete(it.photos) }
+        trailNotes.delete(id)
+        folders.put(com.trailguidegps.app.data.FolderStore.noteKey(id), null)
+    }
+
+    /**
+     * Makes an editable route from a recorded track: the line kept to within about 25 ft, with
+     * planning points about every half mile, in the same folder as the track.
+     */
+    fun trackToRoute(id: String) {
+        viewModelScope.launch {
+            val (name, pts) = withContext(Dispatchers.IO) { tracks.load(id) } ?: return@launch
+            if (pts.size < 2) { _message.value = "That track is too short to make a route."; return@launch }
+            val r = withContext(Dispatchers.Default) {
+                val coords = com.trailguidegps.app.data.RouteNear.simplify(pts.map { doubleArrayOf(it.lat, it.lon) }, 8.0)
+                val dist = com.trailguidegps.app.data.RouteNear.lengthM(coords)
+                SavedRoute(RouteStore.newId(), "$name (route)", System.currentTimeMillis(),
+                    com.trailguidegps.app.data.RouteNear.planningPoints(coords), coords, RouteStats.compute(coords, dist, terrain), emptyList())
+            }
+            withContext(Dispatchers.IO) { routes.save(r) }
+            folders.folderOf(com.trailguidegps.app.data.FolderStore.trackKey(id))?.let { folders.put(com.trailguidegps.app.data.FolderStore.routeKey(r.id), it.id) }
+            setShown(_shownRoutes.value + r, r)
+            _message.value = "Made \"${r.name}\". Tap Edit to change it."
+        }
+    }
     val tracks = TrackStore(app)
     val recording: StateFlow<Recording?> = TrackRecorder.state
 
@@ -175,6 +213,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val links: List<Pair<String, String>> = emptyList(),
         /** A paragraph of advice (camping rules, burn hazards). */
         val note: String? = null,
+        /** Set when this is one of your trail notes. */
+        val noteId: String? = null,
+        val photos: List<String> = emptyList(),
     )
     private val _selected = MutableStateFlow<SelectedPlace?>(null)
     val selected: StateFlow<SelectedPlace?> = _selected.asStateFlow()
@@ -586,9 +627,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching { app.contentResolver.openInputStream(uri)!!.use { com.trailguidegps.app.data.Backup.restore(app, it) } }
             }
             r.onSuccess { c ->
-                waypoints.reload(); tracks.reload(); routes.reload(); waterNotes.reload(); folders.reload()
+                waypoints.reload(); tracks.reload(); routes.reload(); waterNotes.reload(); folders.reload(); trailNotes.reload()
                 _pace.value = Pace.load(app)
-                _message.value = "Restored ${c.routes} routes, ${c.tracks} tracks, ${c.waypoints} waypoints and ${c.notes} water notes."
+                _message.value = "Restored ${c.routes} routes, ${c.tracks} tracks, ${c.waypoints} waypoints and ${c.notes} notes."
             }.onFailure { _message.value = it.message ?: "That file couldn't be restored." }
         }
     }
@@ -626,8 +667,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Writes a GPX file to the app's share folder and returns a link other apps can open. */
-    fun exportGpx(fileName: String, wps: List<Waypoint>, trackIds: List<String>, routeIds: List<String> = emptyList()): android.net.Uri? {
+    fun exportGpx(fileName: String, wps0: List<Waypoint>, trackIds: List<String>, routeIds: List<String> = emptyList(),
+                  noteIds: List<String> = emptyList()): android.net.Uri? {
         val app = getApplication<Application>()
+        // Trail notes go out as waypoints, so other apps and GPS units can show them.
+        val wps = wps0 + noteIds.mapNotNull { trailNotes.get(it) }.map { n ->
+            Waypoint(id = n.id, name = n.title, lat = n.lat, lon = n.lon, note = n.text, createdAt = n.createdAt)
+        }
         return runCatching {
             val trk = trackIds.mapNotNull { tracks.load(it) }
             val rte = routeIds.mapNotNull { routes.load(it) }.map { it.name to it.coords }
@@ -709,14 +755,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun editRoute(id: String) {
         viewModelScope.launch {
             val r = withContext(Dispatchers.IO) { routes.load(id) } ?: return@launch
-            if (r.points.size < 2 || r.points.size > 400) {
-                _message.value = "This route can't be edited: it has no planning points (it was probably imported). Plan a new one over it instead."
-                return@launch
-            }
+            // Imported routes have no planning points (or one per GPS fix): give them some along the line.
+            val route = if (r.points.size < 2 || r.points.size > 120 || r.points.size == 2 && r.coords.size > 50) withContext(Dispatchers.Default) {
+                val coords = if (r.coords.size > 2000) com.trailguidegps.app.data.RouteNear.simplify(r.coords, 5.0) else r.coords
+                r.copy(coords = coords, points = com.trailguidegps.app.data.RouteNear.planningPoints(coords))
+            } else r
             select(null)
-            val legs = withContext(Dispatchers.Default) { splitIntoLegs(r) }
-            _plan.value = PlanState(active = true, points = r.points, legs = legs, stats = r.stats,
-                followTrails = r.points.last().followTrails, editing = r)
+            val legs = withContext(Dispatchers.Default) { splitIntoLegs(route) }
+            _plan.value = PlanState(active = true, points = route.points, legs = legs, stats = route.stats,
+                followTrails = route.points.last().followTrails, editing = route)
             hideRoute(id)
         }
     }

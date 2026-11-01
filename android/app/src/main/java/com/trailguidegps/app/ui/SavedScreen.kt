@@ -75,6 +75,8 @@ import kotlin.math.roundToInt
 fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint) -> Unit) {
     val context = LocalContext.current
     val waypoints by vm.waypoints.items.collectAsStateWithLifecycle()
+    val notes by vm.trailNotes.items.collectAsStateWithLifecycle()
+    var editingNote by remember { mutableStateOf<com.trailguidegps.app.data.TrailNote?>(null) }
     val tracks by vm.tracks.summaries.collectAsStateWithLifecycle()
     val routes by vm.routes.summaries.collectAsStateWithLifecycle()
     val pace by vm.pace.collectAsStateWithLifecycle()
@@ -99,8 +101,8 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         if (uri != null) vm.importGpx(uri)
     }
 
-    fun share(fileName: String, wps: List<Waypoint>, trackIds: List<String>, routeIds: List<String> = emptyList()) {
-        val uri = vm.exportGpx(fileName, wps, trackIds, routeIds) ?: return
+    fun share(fileName: String, wps: List<Waypoint>, trackIds: List<String>, routeIds: List<String> = emptyList(), noteIds: List<String> = emptyList()) {
+        val uri = vm.exportGpx(fileName, wps, trackIds, routeIds, noteIds) ?: return
         val send = Intent(Intent.ACTION_SEND)
             .setType("application/gpx+xml")
             .putExtra(Intent.EXTRA_STREAM, uri)
@@ -123,6 +125,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             TrackRow(
                 t, if (inFolder) null else folderName(FolderStore.trackKey(t.id)),
                 onShow = { vm.showTrack(t.id); onClose() },
+                onToRoute = { vm.trackToRoute(t.id); onClose() },
                 onRename = { renaming = t },
                 onMove = { moving = FolderStore.trackKey(t.id) to t.name },
                 onExport = { share(t.name, emptyList(), listOf(t.id)) },
@@ -159,8 +162,34 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 onEdit = { onEditWaypoint(w) },
                 onMove = { moving = FolderStore.waypointKey(w.id) to w.name },
                 onExport = { share(w.name, listOf(w), emptyList()) },
-                onDelete = { deleting = w.name to { vm.waypoints.delete(w.id); vm.folders.put(FolderStore.waypointKey(w.id), null) } },
+                onDelete = { deleting = w.name to { vm.deleteWaypoint(w.id) } },
             )
+            HorizontalDivider(color = TG.Line)
+        }
+
+        @Composable
+        fun NoteItem(n: com.trailguidegps.app.data.TrailNote, inFolder: Boolean) {
+            Row(Modifier.fillMaxWidth().clickable { vm.focusOn(listOf(n.lat to n.lon)); onClose() }.padding(start = 16.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(14.dp).background(Color(0xFFF2B705), CircleShape))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(n.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+                    if (!inFolder) folderName(FolderStore.noteKey(n.id))?.let { Text("In $it", fontSize = 12.sp, color = TG.Accent, maxLines = 1) }
+                    val parts = mutableListOf(dateFmt.format(Date(n.createdAt)))
+                    fix?.let { f -> parts += "${Geo.formatDistance(Geo.distanceM(f.lat, f.lon, n.lat, n.lon))} away" }
+                    if (n.photos.isNotEmpty()) parts += "${n.photos.size} photo${if (n.photos.size == 1) "" else "s"}"
+                    Text(parts.joinToString(" · "), fontSize = 13.sp, color = TG.Muted)
+                    if (n.text.trim() != n.title) Text(n.text, fontSize = 13.sp, color = TG.Ink, maxLines = 2)
+                }
+                RowMenu(listOf(
+                    "Show on map" to { vm.focusOn(listOf(n.lat to n.lon)); onClose() },
+                    "Edit" to { editingNote = n },
+                    "Move to folder" to { moving = FolderStore.noteKey(n.id) to n.title },
+                    "Export GPX" to { share(n.title, emptyList(), emptyList(), noteIds = listOf(n.id)) },
+                    "Delete" to { deleting = n.title to { vm.deleteNote(n.id) } },
+                ))
+            }
             HorizontalDivider(color = TG.Line)
         }
 
@@ -171,6 +200,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             val fRoutes = routes.filter { FolderStore.routeKey(it.id) in keys }
             val fTracks = tracks.filter { FolderStore.trackKey(it.id) in keys }
             val fWps = waypoints.filter { FolderStore.waypointKey(it.id) in keys }.sortedBy { it.name.lowercase() }
+            val fNotes = notes.filter { FolderStore.noteKey(it.id) in keys }
             BackHandler { openFolder = null }
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { openFolder = null }) { Text("‹ Folders", color = TG.Accent) }
@@ -178,13 +208,13 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 RowMenu(listOf(
                     "Show all on map" to { vm.showFolder(folder.id); onClose() },
                     "Add items" to { adding = folder.id },
-                    "Export GPX" to { share(folder.name, fWps, fTracks.map { it.id }, fRoutes.map { it.id }) },
+                    "Export GPX" to { share(folder.name, fWps, fTracks.map { it.id }, fRoutes.map { it.id }, fNotes.map { it.id }) },
                     "Rename" to { renamingFolder = folder },
                     "Delete folder" to { deleting = folder.name to { vm.folders.delete(folder.id); openFolder = null } },
                 ))
             }
             HorizontalDivider(color = TG.Line)
-            if (keys.isEmpty() || (fRoutes.isEmpty() && fTracks.isEmpty() && fWps.isEmpty())) {
+            if (keys.isEmpty() || (fRoutes.isEmpty() && fTracks.isEmpty() && fWps.isEmpty() && fNotes.isEmpty())) {
                 Empty("Empty folder", "Tap ⋮ → Add items, or choose this folder when you save a route, track or waypoint.")
                 Spacer(Modifier.weight(1f))
             } else {
@@ -192,6 +222,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                     if (fRoutes.isNotEmpty()) { item { Section("Routes") }; items(fRoutes, key = { "r" + it.id }) { RouteItem(it, true) } }
                     if (fTracks.isNotEmpty()) { item { Section("Tracks") }; items(fTracks, key = { "t" + it.id }) { TrackItem(it, true) } }
                     if (fWps.isNotEmpty()) { item { Section("Waypoints") }; items(fWps, key = { "w" + it.id }) { WaypointItem(it, true) } }
+                    if (fNotes.isNotEmpty()) { item { Section("Trail notes") }; items(fNotes, key = { "n" + it.id }) { NoteItem(it, true) } }
                 }
             }
         } else {
@@ -203,6 +234,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Routes", maxLines = 1, fontSize = 13.sp) })
             Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Tracks", maxLines = 1, fontSize = 13.sp) })
             Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Points", maxLines = 1, fontSize = 13.sp) })
+            Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("Notes", maxLines = 1, fontSize = 13.sp) })
         }
 
         when (tab) {
@@ -265,6 +297,13 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 Empty("No tracks yet", "Tap Record on the map to record your hike. It keeps recording with the screen off.")
                 Spacer(Modifier.weight(1f))
             } else LazyColumn(Modifier.weight(1f)) { items(tracks, key = { it.id }) { TrackItem(it, false) } }
+            4 -> if (notes.isEmpty()) {
+                Empty("No trail notes yet", "Tap Note on the map panel to note conditions where you are, or Trail note on any place's card. " +
+                    "Notes can have photos and go in trip folders.")
+                Spacer(Modifier.weight(1f))
+            } else LazyColumn(Modifier.weight(1f)) {
+                items(notes.sortedByDescending { it.createdAt }, key = { it.id }) { NoteItem(it, false) }
+            }
             else -> if (waypoints.isEmpty()) {
                 Empty("No waypoints yet", "Tap Pin on the map to mark where you are, or long-press anywhere on the map.")
                 Spacer(Modifier.weight(1f))
@@ -297,9 +336,18 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             onDismiss = { moving = null },
         )
     }
+    editingNote?.let { n ->
+        NoteEditor(
+            vm, n, isNew = false, folders = vm.folders.folders.collectAsStateWithLifecycle().value, folderId = vm.folders.members.value[FolderStore.noteKey(n.id)],
+            onSave = { saved, f -> vm.trailNotes.upsert(saved); vm.folders.put(FolderStore.noteKey(saved.id), f); editingNote = null },
+            onDelete = { vm.deleteNote(n.id); editingNote = null },
+            onDismiss = { editingNote = null },
+        )
+    }
+
     adding?.let { fid ->
         AddToFolderDialog(
-            routes = routes, tracks = tracks, waypoints = waypoints, members = vm.folders.members.value, folderId = fid,
+            routes = routes, tracks = tracks, waypoints = waypoints, notes = notes, members = vm.folders.members.value, folderId = fid,
             onAdd = { keys -> keys.forEach { vm.folders.put(it, fid) }; adding = null },
             onDismiss = { adding = null },
         )
@@ -400,13 +448,14 @@ private fun MoveToFolderDialog(
 /** Tick routes, tracks and waypoints to add to a folder. */
 @Composable
 private fun AddToFolderDialog(
-    routes: List<RouteSummary>, tracks: List<TrackSummary>, waypoints: List<Waypoint>,
+    routes: List<RouteSummary>, tracks: List<TrackSummary>, waypoints: List<Waypoint>, notes: List<com.trailguidegps.app.data.TrailNote>,
     members: Map<String, String>, folderId: String, onAdd: (List<String>) -> Unit, onDismiss: () -> Unit,
 ) {
-    val choices = remember(routes, tracks, waypoints, members) {
+    val choices = remember(routes, tracks, waypoints, notes, members) {
         routes.map { FolderStore.routeKey(it.id) to "Route: ${it.name}" } +
             tracks.map { FolderStore.trackKey(it.id) to "Track: ${it.name}" } +
-            waypoints.sortedBy { it.name.lowercase() }.map { FolderStore.waypointKey(it.id) to "Waypoint: ${it.name}" }
+            waypoints.sortedBy { it.name.lowercase() }.map { FolderStore.waypointKey(it.id) to "Waypoint: ${it.name}" } +
+            notes.map { FolderStore.noteKey(it.id) to "Note: ${it.title}" }
     }.filter { members[it.first] != folderId }
     val picked = remember { androidx.compose.runtime.mutableStateListOf<String>() }
     AlertDialog(
@@ -444,7 +493,7 @@ private fun Empty(title: String, body: String) {
 private val dateFmt = SimpleDateFormat("EEE, MMM d, yyyy", Locale.US)
 
 @Composable
-private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, onRename: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
+private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, onToRoute: () -> Unit, onRename: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 22.dp, height = 4.dp).background(Color(0xFF8E3218), RoundedCornerShape(2.dp)))
         Spacer(Modifier.width(12.dp))
@@ -458,7 +507,8 @@ private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, o
                 fontSize = 13.sp, color = TG.Muted,
             )
         }
-        RowMenu(listOf("Show on map" to onShow, "Rename" to onRename, "Move to folder" to onMove, "Export GPX" to onExport, "Delete" to onDelete))
+        RowMenu(listOf("Show on map" to onShow, "Make a route from it" to onToRoute, "Rename" to onRename, "Move to folder" to onMove,
+            "Export GPX" to onExport, "Delete" to onDelete))
     }
 }
 

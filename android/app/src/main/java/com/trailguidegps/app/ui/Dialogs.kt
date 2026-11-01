@@ -44,8 +44,14 @@ fun WaypointEditor(
     folderId: String? = null,
     onCreateFolder: ((String) -> com.trailguidegps.app.data.Folder)? = null,
     onFolder: (String?) -> Unit = {},
+    /** Given, the editor offers photos. */
+    vm: com.trailguidegps.app.AppViewModel? = null,
 ) {
     var name by remember(waypoint.id) { mutableStateOf(waypoint.name) }
+    var photos by remember(waypoint.id) { mutableStateOf(waypoint.photos) }
+    var added by remember(waypoint.id) { mutableStateOf(emptyList<String>()) }
+    var viewing by remember { mutableStateOf<String?>(null) }
+    val cancel = { vm?.photos?.delete(added); onDismiss() }
     var folder by remember(waypoint.id) { mutableStateOf(folderId) }
     var note by remember(waypoint.id) { mutableStateOf(waypoint.note) }
     var color by remember(waypoint.id) { mutableStateOf(waypoint.color) }
@@ -62,8 +68,9 @@ fun WaypointEditor(
         return
     }
 
+    viewing?.let { n -> vm?.let { PhotoViewer(n, it.photos) { viewing = null } } }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = cancel,
         title = { Text(if (isNew) "New waypoint" else "Edit waypoint") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -81,20 +88,27 @@ fun WaypointEditor(
                     }
                 }
                 OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("Note (optional)") }, modifier = Modifier.fillMaxWidth())
+                vm?.let { v ->
+                    PhotoStrip(photos, v.photos, onOpen = { viewing = it }, onRemove = { n -> photos = photos - n })
+                    AddPhotoButtons(v) { n -> photos = photos + n; added = added + n }
+                }
                 if (onCreateFolder != null) FolderPicker(folders, folder, { folder = it }, onCreateFolder)
                 val (la, lo) = Geo.decimal(waypoint.lat, waypoint.lon)
                 Text("$la, $lo" + (waypoint.eleM?.let { " · ${Geo.formatFeet(it)}" } ?: ""), fontSize = 13.sp, color = TG.Muted)
             }
         },
         confirmButton = {
-            TextButton(onClick = { onFolder(folder); onSave(waypoint.copy(name = name.ifBlank { waypoint.name }, note = note.trim(), color = color)) }) {
+            TextButton(onClick = {
+                vm?.photos?.delete(waypoint.photos.filter { it !in photos })
+                onFolder(folder); onSave(waypoint.copy(name = name.ifBlank { waypoint.name }, note = note.trim(), color = color, photos = photos))
+            }) {
                 Text("Save")
             }
         },
         dismissButton = {
             Row {
                 if (!isNew) TextButton(onClick = { confirmDelete = true }) { Text("Delete", color = TG.Danger) }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = cancel) { Text("Cancel") }
             }
         },
     )

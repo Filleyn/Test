@@ -94,6 +94,11 @@ fun WaterAlongRouteDialog(
 ) {
     var maxOff by remember { mutableDoubleStateOf(0.25 * Geo.M_PER_MI) }
     val plan = remember(coords, maxOff) { vm.waterPlan(coords, maxOff) }
+    // Your trail notes near the route, by mile, so conditions you noted show up while planning.
+    val trailNotes = remember(coords, maxOff) {
+        com.trailguidegps.app.data.RouteNear.project(coords,
+            vm.trailNotes.items.value.map { Features.Point(it.title, "note", it.lat, it.lon) }, maxOff) { true }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Water along $title", maxLines = 2) },
@@ -123,6 +128,17 @@ fun WaterAlongRouteDialog(
                 Text("Map data can't say what's flowing. Check recent trip reports, and add notes when you visit.",
                     fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(vertical = 4.dp))
                 HorizontalDivider(color = TG.Line)
+                if (trailNotes.isNotEmpty()) {
+                    Text("Your notes along the route", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.padding(top = 6.dp))
+                    trailNotes.forEach { (p, along, _) ->
+                        Row(Modifier.fillMaxWidth().clickable { onPick(p.lat, p.lon) }.padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
+                            Text("Mile %.1f".format(along / Geo.M_PER_MI), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFB08A00), modifier = Modifier.width(66.dp))
+                            Text(p.label, fontSize = 14.sp, color = TG.Ink, maxLines = 2)
+                        }
+                    }
+                    HorizontalDivider(color = TG.Line)
+                }
                 if (plan.stops.isEmpty()) {
                     Text("No mapped water this close to the route.", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 10.dp))
                 } else LazyColumn(Modifier.heightIn(max = 360.dp)) {

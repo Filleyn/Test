@@ -76,6 +76,7 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Description
@@ -171,6 +172,10 @@ fun MapScreen(
     // Where a long-press started a route, so it can be a waypoint instead.
     var longPressSpot by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var longPressPoints by remember { mutableStateOf(0) }
+    var editingNote by remember { mutableStateOf<com.trailguidegps.app.data.TrailNote?>(null) }
+    var viewingPhoto by remember { mutableStateOf<String?>(null) }
+    val trailNotes by vm.trailNotes.items.collectAsStateWithLifecycle()
+    fun newNote(lat: Double, lon: Double) { editingNote = com.trailguidegps.app.data.TrailNote(text = "", lat = lat, lon = lon) }
     var panelHidden by rememberSaveable { mutableStateOf(false) }
     // The "waypoint instead" offer goes once you add more points or stop planning.
     LaunchedEffect(plan.active, plan.points.size) {
@@ -314,6 +319,12 @@ fun MapScreen(
                     return@addOnMapClickListener true
                 }
                 selectedWaypointId = null
+                // One of your trail notes.
+                m.queryRenderedFeatures(point, MapStyle.LAYER_NOTES).firstOrNull()?.takeIf { it.hasProperty("id") }
+                    ?.let { vm.trailNotes.get(it.getStringProperty("id")) }?.let { n ->
+                        vm.select(noteSelection(n))
+                        return@addOnMapClickListener true
+                    }
                 // A wildfire: name, size, containment, and where closures are posted.
                 val fireHit = m.queryRenderedFeatures(point, MapStyle.LAYER_FIRE_POINTS, MapStyle.LAYER_FIRE_FILL).firstOrNull()
                 if (fireHit != null) {
@@ -508,6 +519,9 @@ fun MapScreen(
     // Your own data on the map: waypoints, the track being recorded, a saved track.
     LaunchedEffect(style, waypoints) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_WAYPOINTS)?.setGeoJson(vm.waypoints.geoJson())
+    }
+    LaunchedEffect(style, trailNotes) {
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_NOTES)?.setGeoJson(com.trailguidegps.app.data.TrailNoteStore.geoJson(trailNotes))
     }
     LaunchedEffect(style, recording?.points?.size) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_RECORDING)
@@ -810,12 +824,17 @@ fun MapScreen(
                     Column(Modifier.navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
                         longPressSpot?.let { (la, lo) ->
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
-                                Text("Route started from a long-press.", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.weight(1f))
+                                Text("Wanted something else here?", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.weight(1f))
                                 TextButton(onClick = {
                                     longPressSpot = null
                                     vm.cancelPlanning()
                                     editing = Waypoint(name = vm.waypoints.nextName(), lat = la, lon = lo, eleM = vm.elevationAt(la, lo))
-                                }) { Text("Waypoint instead", fontSize = 13.sp, color = TG.Accent) }
+                                }) { Text("Waypoint", fontSize = 13.sp, color = TG.Accent) }
+                                TextButton(onClick = {
+                                    longPressSpot = null
+                                    vm.cancelPlanning()
+                                    newNote(la, lo)
+                                }) { Text("Note", fontSize = 13.sp, color = TG.Accent) }
                                 IconButton(onClick = { longPressSpot = null }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = TG.Muted) }
                             }
                         }
@@ -837,6 +856,10 @@ fun MapScreen(
             } else BottomPanel(
                 hidden = panelHidden,
                 onHide = { panelHidden = it },
+                onNoteAt = { la, lo -> newNote(la, lo) },
+                onEditTrailNote = { id -> vm.trailNotes.get(id)?.let { editingNote = it } },
+                onOpenPhoto = { viewingPhoto = it },
+                onTrackToRoute = { shownTrack?.first?.let { vm.trackToRoute(it) } },
                 onPinAt = { name, la, lo ->
                     editing = Waypoint(name = name.takeIf { it != "your location" } ?: vm.waypoints.nextName(), lat = la, lon = lo,
                         eleM = vm.elevationAt(la, lo))
@@ -903,7 +926,7 @@ fun MapScreen(
             waypoint = w,
             isNew = vm.waypoints.get(w.id) == null,
             onSave = { vm.waypoints.upsert(it); editing = null; selectedWaypointId = it.id },
-            onDelete = { vm.waypoints.delete(w.id); editing = null; selectedWaypointId = null },
+            onDelete = { vm.deleteWaypoint(w.id); editing = null; selectedWaypointId = null },
             onDismiss = { editing = null },
             folders = vm.folders.folders.collectAsStateWithLifecycle().value,
             folderId = vm.folders.members.value[com.trailguidegps.app.data.FolderStore.waypointKey(w.id)]
@@ -913,8 +936,27 @@ fun MapScreen(
                 vm.folders.put(com.trailguidegps.app.data.FolderStore.waypointKey(w.id), f)
                 if (f != null) vm.rememberFolder(f)
             },
+            vm = vm,
         )
     }
+    editingNote?.let { n ->
+        val isNew = vm.trailNotes.get(n.id) == null
+        NoteEditor(
+            vm, n, isNew,
+            folders = vm.folders.folders.collectAsStateWithLifecycle().value,
+            folderId = vm.folders.members.value[com.trailguidegps.app.data.FolderStore.noteKey(n.id)] ?: if (isNew) vm.lastFolder() else null,
+            onSave = { saved, f ->
+                vm.trailNotes.upsert(saved)
+                vm.folders.put(com.trailguidegps.app.data.FolderStore.noteKey(saved.id), f)
+                if (f != null) vm.rememberFolder(f)
+                editingNote = null
+                vm.select(noteSelection(saved))
+            },
+            onDelete = { vm.deleteNote(n.id); editingNote = null; vm.select(null) },
+            onDismiss = { editingNote = null },
+        )
+    }
+    viewingPhoto?.let { PhotoViewer(it, vm.photos) { viewingPhoto = null } }
 
     waterFor?.let { (name, coords) ->
         WaterAlongRouteDialog(
@@ -1017,7 +1059,7 @@ fun MapScreen(
                         Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 fStatus ?: fireData?.let {
-                                    "Wildfires: ${it.count} in and around Oregon, as of " +
+                                    "Wildfires: ${it.count} in and around your map area, as of " +
                                         java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it.fetchedAt))
                                 } ?: "Wildfires: not downloaded yet. Connect to update.",
                                 fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f),
@@ -1098,6 +1140,10 @@ fun MapScreen(
 
 @Composable
 private fun BottomPanel(
+    onNoteAt: (Double, Double) -> Unit,
+    onEditTrailNote: (String) -> Unit,
+    onOpenPhoto: (String) -> Unit,
+    onTrackToRoute: () -> Unit,
     hidden: Boolean,
     onHide: (Boolean) -> Unit,
     onPinAt: (String, Double, Double) -> Unit,
@@ -1228,13 +1274,21 @@ private fun BottomPanel(
                     Action(Icons.Filled.Navigation, "Go to") { onGoTo(title, lat, lon) },
                     Action(Icons.Filled.DirectionsCar, "Drive") { openDirections(context, lat, lon, title) },
                     Action(Icons.Filled.ContentCopy, "Copy") { copyCoords(context, title, coords) },
-                    if (selectedWaypoint != null) Action(Icons.Filled.Edit, "Edit") { onEditWaypoint(selectedWaypoint) }
-                    else Action(Icons.Filled.PushPin, "Pin") { onPinAt(title, lat, lon) },
+                    when {
+                        selectedWaypoint != null -> Action(Icons.Filled.Edit, "Edit") { onEditWaypoint(selectedWaypoint) }
+                        selected?.noteId != null -> Action(Icons.Filled.Edit, "Edit") { onEditTrailNote(selected.noteId) }
+                        else -> Action(Icons.Filled.PushPin, "Pin") { onPinAt(title, lat, lon) }
+                    },
                 )
+                val photoNames = selectedWaypoint?.photos ?: selected?.photos.orEmpty()
+                if (photoNames.isNotEmpty()) {
+                    Box(Modifier.padding(top = 8.dp)) { PhotoStrip(photoNames, tripVm.photos, onOpen = onOpenPhoto) }
+                }
                 val more = listOfNotNull(
                     Action(Icons.Filled.Landscape, "Peaks in view") { onPeaks(title, lat, lon) },
                     Action(Icons.Filled.WbSunny, "Weather") { onWeather(title, lat, lon) },
-                    if (selected?.isWater == true && selected.osmId != null) Action(Icons.Filled.EditNote, if (waterNote == null) "Add note" else "Edit note") { onEditNote() } else null,
+                    if (selected?.isWater == true && selected.osmId != null) Action(Icons.Filled.EditNote, if (waterNote == null) "Water note" else "Edit water note") { onEditNote() } else null,
+                    if (selected?.noteId == null) Action(Icons.Filled.StickyNote2, "Trail note") { onNoteAt(lat, lon) } else null,
                 )
                 if (!placeExpanded) {
                     ActionGrid(primary, Modifier.padding(top = 6.dp))
@@ -1340,7 +1394,8 @@ private fun BottomPanel(
                     if (selected == null && selectedWaypoint == null && shownRoute == null && goTo == null && following == null) {
                         Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             PillButton(Icons.Filled.Landscape, "Peaks in view") { onPeaks("your location", fix.lat, fix.lon) }
-                            PillButton(Icons.Filled.WbSunny, "Weather here") { onWeather("your location", fix.lat, fix.lon) }
+                            PillButton(Icons.Filled.WbSunny, "Weather") { onWeather("your location", fix.lat, fix.lon) }
+                            PillButton(Icons.Filled.StickyNote2, "Note") { onNoteAt(fix.lat, fix.lon) }
                         }
                     }
                 }
@@ -1406,6 +1461,7 @@ private fun BottomPanel(
                     Box(Modifier.size(width = 18.dp, height = 4.dp).background(Color(0xFF8E3218), RoundedCornerShape(2.dp)))
                     Spacer(Modifier.width(8.dp))
                     Text("Showing $name", fontSize = 13.sp, color = TG.Ink, maxLines = 1, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onTrackToRoute) { Text("Make route", color = TG.Accent) }
                     TextButton(onClick = onHideTrack) { Text("Hide", color = TG.Accent) }
                 }
             }
@@ -1457,6 +1513,12 @@ private fun ModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/** A trail note shown in the place card. */
+private fun noteSelection(n: com.trailguidegps.app.data.TrailNote) = Selected(
+    n.title, "Your trail note · " + java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US).format(java.util.Date(n.createdAt)),
+    n.lat, n.lon, note = n.text.takeIf { it.trim() != n.title }, noteId = n.id, photos = n.photos,
+)
+
 /** The bottom panel with fixed contents, for the screenshot tests. */
 @Composable
 internal fun BottomPanelForTests(vm: AppViewModel, fix: Fix, selected: Selected?, expanded: Boolean) {
@@ -1468,6 +1530,7 @@ internal fun BottomPanelForTests(vm: AppViewModel, fix: Fix, selected: Selected?
         pace = Pace(), onHideRoute = {}, onRouteScrub = {}, following = null, goTo = null, heading = null,
         onGoTo = { _, _, _ -> }, onStopGoTo = {}, onWater = { _, _ -> }, onReverse = {}, onPeaks = { _, _, _ -> },
         onWeather = { _, _, _ -> }, onDays = {}, onRouteWeather = {}, tripVm = vm, onFollow = {}, onStopFollowing = {},
+        onNoteAt = { _, _ -> }, onEditTrailNote = {}, onOpenPhoto = {}, onTrackToRoute = {},
         placeDescription = "On Pacific Crest Trail, 0.4 mi N of Lost Creek Spring", startExpanded = expanded,
     )
 }

@@ -34,8 +34,49 @@ object WaterPlanner {
     }
 }
 
-/** Places near a line, and how far along and off it they are. */
+/** Places near a line, and how far along and off it they are; also simplifying a line. */
 object RouteNear {
+    /** Fewer points, keeping the shape to within [tolM] metres (Douglas-Peucker). */
+    fun simplify(coords: List<DoubleArray>, tolM: Double): List<DoubleArray> {
+        if (coords.size < 3) return coords
+        val lat0 = coords[0][0]
+        val kx = cos(Math.toRadians(lat0)) * 111_320.0
+        val ky = 110_540.0
+        val keep = BooleanArray(coords.size).also { it[0] = true; it[coords.size - 1] = true }
+        val stack = ArrayDeque<Pair<Int, Int>>().apply { add(0 to coords.size - 1) }
+        while (stack.isNotEmpty()) {
+            val (a, b) = stack.removeLast()
+            val ax = coords[a][1] * kx; val ay = coords[a][0] * ky
+            val bx = coords[b][1] * kx; val by = coords[b][0] * ky
+            val dx = bx - ax; val dy = by - ay
+            val l2 = dx * dx + dy * dy
+            var worst = -1.0; var wi = -1
+            for (i in a + 1 until b) {
+                val px = coords[i][1] * kx; val py = coords[i][0] * ky
+                val t = if (l2 == 0.0) 0.0 else (((px - ax) * dx + (py - ay) * dy) / l2).coerceIn(0.0, 1.0)
+                val d = hypot(px - (ax + t * dx), py - (ay + t * dy))
+                if (d > worst) { worst = d; wi = i }
+            }
+            if (worst > tolM && wi > 0) { keep[wi] = true; stack.add(a to wi); stack.add(wi to b) }
+        }
+        return coords.filterIndexed { i, _ -> keep[i] }
+    }
+
+    /** Points along a line about every [everyM] (at most [max]), first and last included, for editing it like a planned route. */
+    fun planningPoints(coords: List<DoubleArray>, everyM: Double = 800.0, max: Int = 60): List<RoutePoint> {
+        if (coords.size < 2) return coords.map { RoutePoint(it[0], it[1], true) }
+        val total = lengthM(coords)
+        val step = maxOf(everyM, total / max)
+        val out = arrayListOf(RoutePoint(coords[0][0], coords[0][1], true))
+        var since = 0.0
+        for (i in 1 until coords.size - 1) {
+            since += Geo.distanceM(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1])
+            if (since >= step) { out += RoutePoint(coords[i][0], coords[i][1], true); since = 0.0 }
+        }
+        out += RoutePoint(coords.last()[0], coords.last()[1], true)
+        return out
+    }
+
     fun lengthM(coords: List<DoubleArray>): Double {
         var t = 0.0
         for (i in 1 until coords.size) t += Geo.distanceM(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1])

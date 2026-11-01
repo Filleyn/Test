@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android's automatic backup to your Google account (Android 11 and older).
+     Your routes, tracks, waypoints, notes and settings are small and backed up; map files,
+     satellite areas, photos and downloaded data are left out (they're large, or download again),
+     which keeps the backup under Android's 25 MB limit. Photos go in the app's own backup file. -->
+<full-backup-content>
+    <include domain="file" path="." />
+    <include domain="sharedpref" path="." />
+    <exclude domain="file" path="satellite" />
+    <exclude domain="file" path="photos" />
+    <exclude domain="file" path="fires" />
+    <exclude domain="file" path="maps" />
+    <exclude domain="file" path="weather.json" />
+</full-backup-content>
