@@ -25,7 +25,6 @@ Looked at for 1.2 and held back:
 - **Fishing:** regulations are by water body and zone in the ODFW synopsis (a PDF); there's no clean statewide data layer. A link to the ODFW zone page from lake and river cards may be enough.
 
 ### Smaller ideas
-- **Photos on waypoints**, kept with the waypoint and included in GPX export.
 - **Battery settings prompt** for phones that kill background apps (Samsung, Xiaomi, OnePlus): send people to set the app to "Unrestricted".
 
 ### Other map layers
@@ -39,6 +38,7 @@ Ideas, roughly most useful first. All are public data; each would follow the sat
 - 1.0: **Backup and restore** (one .zip to the phone, Google Drive, OneDrive or any storage app); **trip plan PDF** to email or text; dirt and forest roads drawn differently from trails; place cards link to the official page, the forest's alerts and a web search; route names on their lines with unselected routes faded; separate Layers and Settings buttons with SOS under them; **search filters** by type.
 - 1.0.31: tapping routes, trails and forest boundaries fixed (fully transparent tap layers aren't tappable in MapLibre); backup through the share sheet so OneDrive appears.
 - 1.0.32: **trip folders** holding any mix of routes, tracks and waypoints; choose a folder when saving; show a whole folder on the map; export a folder as GPX; folders included in backups.
+- 1.4.48: **trail notes** (with folders, map icons and the route water list), **photos** on waypoints and notes, **tracks to routes** (and editable imported routes), **automatic Google backup** without map files, wording no longer assumes Oregon or a Pixel 9a.
 - 1.4: **dark mode** and **sunlight mode** (app and map), **quick tips** on first run, built-in base map pictures, route editing, peak filters.
 - 1.3.4x: full screens for **Days and camps** (draggable camps on the profile), **Weather** (day strip with icons) and **Peaks in view** (compass dial); route direction arrows; water icons by type; trail names a zoom earlier; section all-on/off and your own quick sets; pick routes for the map from Saved.
 - 1.3: **base map picker** (Topo, Satellite, Hybrid with live previews), overlays grouped with **quick sets**, **icon buttons** for actions, **pull-up place cards**, long-press starts a route, swipe-away bottom panel; automatic screenshots in the app build.

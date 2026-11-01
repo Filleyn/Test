@@ -52,7 +52,10 @@ Current as of app 1.4 and the October 30, 2026 maps. Ideas not yet built are in 
 
 ## Waypoints and tracks
 
+- **Photos:** take or pick photos on waypoints and trail notes; shrunk to save space, shown on their cards (tap for full size), with a small camera badge on the map.
+- **Trail notes:** notes pinned to a spot ("blowdown past here"), with photos; a yellow note icon on the map with a "Your trail notes" switch; made from the Note button on the map panel, Trail note on any card, or a long-press; listed in Saved → Notes, in folders, exported in GPX, and shown by mile in a route's water list.
 - **Waypoints:** drop with Pin (your location) or Pin on any place card, or long-press and choose "Waypoint instead"; name, color, note and elevation; edit, delete.
+- **Tracks to routes:** make an editable route from a recorded track (Saved, or "Make route" on a shown track); imported GPX routes become editable the same way.
 - **Track recording:** keeps recording with the screen off; pause and resume; live miles, climb, moving time and speed; survives the app being closed (recovered on restart).
 - **Saved tracks:** show on the map, rename, delete.
 - **GPX import and export:** waypoints, tracks and routes to and from other apps and GPS units.
@@ -90,7 +93,7 @@ Current as of app 1.4 and the October 30, 2026 maps. Ideas not yet built are in 
 
 - **Emergency screen:** large coordinates in decimal, degrees-minutes-seconds and UTM, plus elevation and accuracy, for reading to 911; shareable as a text. It notes that the Pixel 9a has no satellite SOS.
 - **Trip plan PDF:** who's going, phones, start, expected return, call-for-help time, vehicle and trailhead, with the route map, numbers and elevation profile; sent by email or text.
-- **Trip folders:** any mix of routes, tracks and waypoints; pick a folder when saving; show a whole trip on the map; export it as GPX.
+- **Trip folders:** any mix of routes, tracks, waypoints and trail notes; pick a folder when saving; show a whole trip on the map; export it as GPX.
 - **Multi-day trips:** split a route into days. Camps are suggested so each day takes about the same time at your pace, then moved to a nearby campsite (with water if possible) or water source. A full screen shows the elevation profile split into days with campsites and water marked; drag a camp along it, move it by half a mile, or pick from campsites nearby. Each day shows miles, climb, time and water; camps show on the map as "Night 1", "Night 2"; the trip plan PDF lists each day and camp.
 
 ## Public land and alerts
@@ -121,7 +124,8 @@ Current as of app 1.4 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Automatic battery saver:** switches on at 20%.
 - **Monthly map refresh:** the Oregon maps rebuild automatically on the 2nd of each month.
 - **Map updates:** checked when the app opens (can be turned off); only changed files download, and downloads resume.
-- **Backup and restore:** one file to the phone, Google Drive, OneDrive or email; restoring merges and never deletes.
+- **Backup and restore:** one file to the phone, Google Drive, OneDrive or email, including notes and photos; restoring merges and never deletes.
+- **Automatic Google backup:** routes, tracks, waypoints, notes and settings back up to your Google account through Android and come back on a new phone (map files, satellite areas and photos are left out to stay under Android's limit; photos are in the backup file).
 
 ## Behind the scenes
 
