@@ -39,6 +39,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.trailguidegps.app.data.CrashLog.install(this)
+        com.trailguidegps.app.data.CrashLog.checkLastExit(this)
         MapLibre.getInstance(this)
         // Dark clock and status icons over the light map (the emergency screen switches them to light).
         enableEdgeToEdge(

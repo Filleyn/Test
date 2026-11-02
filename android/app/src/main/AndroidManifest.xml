@@ -39,6 +39,11 @@
             android:foregroundServiceType="location" />
 
         <service
+            android:name=".record.MapDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
             android:name=".record.SatelliteDownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

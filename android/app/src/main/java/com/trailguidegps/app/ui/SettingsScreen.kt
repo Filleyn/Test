@@ -245,6 +245,28 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit, onOpenMaps: () -> Unit
 
             Section("About")
             Text("TrailGuide GPS ${BuildConfig.VERSION_NAME}", fontSize = 16.sp, color = TG.Ink)
+            // Why the app last closed unexpectedly, to copy and send.
+            var crash by remember { mutableStateOf(com.trailguidegps.app.data.CrashLog.read(context)) }
+            crash?.let { text ->
+                val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                Column(Modifier.fillMaxWidth().padding(top = 8.dp).background(TG.CardYellow, RoundedCornerShape(10.dp)).padding(12.dp)) {
+                    Text("The app closed unexpectedly", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                    Text(text.lineSequence().drop(1).take(2).joinToString("\n"), fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
+                    Row {
+                        TextButton(onClick = {
+                            clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+                            android.widget.Toast.makeText(context, "Crash report copied", android.widget.Toast.LENGTH_SHORT).show()
+                        }) { Text("Copy report", color = TG.Accent) }
+                        TextButton(onClick = {
+                            context.startActivity(android.content.Intent.createChooser(
+                                android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                                    .putExtra(android.content.Intent.EXTRA_SUBJECT, "TrailGuide crash report")
+                                    .putExtra(android.content.Intent.EXTRA_TEXT, text), "Send crash report"))
+                        }) { Text("Share", color = TG.Accent) }
+                        TextButton(onClick = { com.trailguidegps.app.data.CrashLog.clear(context); crash = null }) { Text("Clear", color = TG.Muted) }
+                    }
+                }
+            }
             Text("Maps © OpenStreetMap contributors. Elevation and public land from USGS.", fontSize = 12.sp, color = TG.Muted,
                 modifier = Modifier.padding(top = 2.dp, bottom = 24.dp))
         }

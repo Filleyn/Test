@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.trailguidegps.app.record.MapDownloads
 
 sealed interface DownloadState {
     data object Idle : DownloadState
@@ -136,21 +137,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             .minByOrNull { (_, b) -> (b[2] - b[0]) * (b[3] - b[1]) }?.first
     }
 
-    /** Downloads (or updates) one state's maps. */
+    /** Downloads (or updates) one state's maps, in the background download service. */
     fun downloadRegion(region: String) {
-        if (_download.value is DownloadState.Checking || _download.value is DownloadState.Downloading) return
-        viewModelScope.launch {
-            _download.value = DownloadState.Checking
-            try {
-                val st = MapStore(ctx, region)
-                val release = _catalog.value.firstOrNull { it.region == region }?.release ?: st.findLatestRelease()
-                st.download(release) { file, done, total -> _download.value = DownloadState.Downloading(file, done, total, region) }
-                mapsChanged()
-                _download.value = DownloadState.UpToDate(release.tag)
-            } catch (e: Exception) {
-                _download.value = DownloadState.Error(friendly(e))
-            }
-        }
+        if (MapDownloads.busy) return
+        MapDownloads.start(ctx, listOf(region), _catalog.value.associate { it.region to it.release })
     }
 
     /** Removes one state's maps from the phone. */
@@ -191,23 +181,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Updates every downloaded state that has newer maps, one after another. */
     fun updateAllMaps() {
         val regions = _updates.value
-        if (regions.isEmpty()) return
-        viewModelScope.launch {
-            for (r in regions) {
-                downloadRegion(r)
-                // Wait for this one to finish before the next.
-                while (_download.value is DownloadState.Checking || _download.value is DownloadState.Downloading) kotlinx.coroutines.delay(500)
-                if (_download.value is DownloadState.Error) break
-            }
-        }
+        if (regions.isEmpty() || MapDownloads.busy) return
+        MapDownloads.start(ctx, regions, _catalog.value.associate { it.region to it.release })
     }
 
     /** Bumped whenever new map files are installed so the map reloads its style. */
     private val _mapVersion = MutableStateFlow(0)
     val mapVersion: StateFlow<Int> = _mapVersion.asStateFlow()
 
-    private val _download = MutableStateFlow<DownloadState>(DownloadState.Idle)
-    val download: StateFlow<DownloadState> = _download.asStateFlow()
+    /** Map download progress, from the download service (it outlives this screen). */
+    val download: StateFlow<DownloadState> = MapDownloads.state
 
     /** The newest map release found on GitHub, for showing its size before downloading. */
     private val _release = MutableStateFlow<MapStore.Release?>(null)
@@ -225,6 +208,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val features: StateFlow<Features?> = _features.asStateFlow()
 
     init {
+        // When the download service installs a state, reload the maps, search and routing.
+        viewModelScope.launch {
+            var seen = MapDownloads.installed.value
+            MapDownloads.installed.collect { n -> if (n != seen) { seen = n; _update.value = null; mapsChanged() } }
+        }
         com.trailguidegps.app.data.MapRegion.names = _installed.value.map { MapStore.displayName(it) }
         loadFeatures()
     }
@@ -244,26 +232,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun downloadMapsSingle(force: Boolean) {
-        if (_download.value is DownloadState.Checking || _download.value is DownloadState.Downloading) return
+        if (MapDownloads.busy) return
         viewModelScope.launch {
-            _download.value = DownloadState.Checking
-            try {
-                val release = store.findLatestRelease().also { _release.value = it }
-                if (!force && store.isReady() && store.installedTag() == release.tag) {
-                    _update.value = null
-                    _download.value = DownloadState.UpToDate(release.tag)
-                    return@launch
-                }
-                val st = store
-                st.download(release) { file, done, total ->
-                    _download.value = DownloadState.Downloading(file, done, total, st.region)
-                }
+            val release = runCatching { store.findLatestRelease() }.getOrNull()?.also { _release.value = it }
+            if (!force && release != null && store.isReady() && store.installedTag() == release.tag) {
                 _update.value = null
-                mapsChanged()
-                _download.value = DownloadState.UpToDate(release.tag)
-            } catch (e: Exception) {
-                _download.value = DownloadState.Error(friendly(e))
+                return@launch
             }
+            MapDownloads.start(ctx, listOf(store.region), release?.let { mapOf(store.region to it) } ?: emptyMap())
         }
     }
 
