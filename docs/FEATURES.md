@@ -1,6 +1,6 @@
 # TrailGuide GPS: features and requirements
 
-Current as of app 1.4 and the October 30, 2026 maps. Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
+Current as of app 1.5 and the October 30, 2026 maps. Ideas not yet built are in [ROADMAP.md](ROADMAP.md).
 
 ## Requirements set at the start
 
@@ -17,6 +17,9 @@ Current as of app 1.4 and the October 30, 2026 maps. Ideas not yet built are in 
 | Satellite last, optional | Phase 7 |
 
 ## Map
+
+- **Several states:** Oregon, Washington, Idaho, California and Nevada so far. Pick your state at first run (GPS suggests the one you're in), download more any time, and update or delete each one in **Maps for each state** (Settings or the layers screen). Each state's files are trimmed to its outline so neighbours don't overlap.
+- **Online map:** states you haven't downloaded still show on the map while you have signal, streamed from the same map files; you can also start with the online map and download later.
 
 - **Topo map:** OpenStreetMap roads, trails, water, land cover, peaks and place names, drawn offline.
 - **Contour lines:** every 40 ft, with 200 ft index lines labeled in feet.
@@ -45,6 +48,7 @@ Current as of app 1.4 and the October 30, 2026 maps. Ideas not yet built are in 
 
 ## Search
 
+- **Search by state:** with more than one state downloaded, chips pick which state to search (the one you're in by default) or all of them.
 - **Offline search:** trails, water, peaks, lakes, campsites, trailheads and towns, nearest first, each with its nearest town.
 - **Filters:** All, Trails, Trailheads, Campsites, Water, Peaks, Waterfalls and Towns; with nothing typed, a filter lists the nearest of that type.
 - **Nearest lists:** with an empty search box, the nearest water, campsites and trailheads.
@@ -119,10 +123,11 @@ Current as of app 1.4 and the October 30, 2026 maps. Ideas not yet built are in 
 - **Quick tips:** a short tour the first time the app opens, and again from Settings.
 - **Hiking pace:** adjustable, with defaults of 2 mph, 30 min per 1,000 ft and 10 min breaks per hour.
 - **Pace from your hikes:** after 3 recorded hikes of a mile or more, suggests a pace from how you actually hike.
+- **Background battery check:** on phones that stop background apps (Samsung, Xiaomi, OnePlus and others), asks once before the first recording or route following to set battery use to Unrestricted; Settings shows the current setting with a button to change it.
 - **Battery saver:** GPS every 15 seconds instead of 5.
 - **Low battery warnings:** at 20% and 10%.
 - **Automatic battery saver:** switches on at 20%.
-- **Monthly map refresh:** the Oregon maps rebuild automatically on the 2nd of each month.
+- **Map builds:** each state is built on request on GitHub (no automatic schedule for now).
 - **Map updates:** checked when the app opens (can be turned off); only changed files download, and downloads resume.
 - **Backup and restore:** one file to the phone, Google Drive, OneDrive or email, including notes and photos; restoring merges and never deletes.
 - **Automatic Google backup:** routes, tracks, waypoints, notes and settings back up to your Google account through Android and come back on a new phone (map files, satellite areas and photos are left out to stay under Android's limit; photos are in the backup file).
