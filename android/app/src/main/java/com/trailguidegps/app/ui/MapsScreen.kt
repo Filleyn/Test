@@ -56,12 +56,26 @@ fun MapsScreen(vm: AppViewModel, onClose: () -> Unit, onShow: (DoubleArray) -> U
     val updates by vm.updates.collectAsStateWithLifecycle()
     val dl by vm.download.collectAsStateWithLifecycle()
     val error by vm.catalogError.collectAsStateWithLifecycle()
-    var deleting by remember { mutableStateOf<String?>(null) }
     BackHandler(onBack = onClose)
     LaunchedEffect(Unit) { vm.refreshCatalog() }
     val context = androidx.compose.ui.platform.LocalContext.current
     val free = remember { MapStore.root(context).apply { mkdirs() }.usableSpace }
+    MapsContent(
+        catalog, installed.toSet(), updates.toSet(), dl, error, free,
+        onDownload = vm::downloadRegion, onDelete = vm::deleteRegion, onRetry = vm::refreshCatalog,
+        onClose = onClose, onShow = onShow,
+    )
+}
 
+/** The list itself, without the view model (also used by the screenshot tests). */
+@Composable
+fun MapsContent(
+    catalog: List<AppViewModel.RegionInfo>, installed: Set<String>, updates: Set<String>,
+    dl: DownloadState, error: String?, free: Long,
+    onDownload: (String) -> Unit, onDelete: (String) -> Unit, onRetry: () -> Unit,
+    onClose: () -> Unit, onShow: (DoubleArray) -> Unit,
+) {
+    var deleting by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().background(TG.Surface).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to map", tint = TG.Ink) }
@@ -84,7 +98,7 @@ fun MapsScreen(vm: AppViewModel, onClose: () -> Unit, onShow: (DoubleArray) -> U
         if (catalog.isEmpty()) {
             Text(error?.let { "$it Connect to the internet to see which states have maps." } ?: "Finding which states have maps…",
                 fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(16.dp))
-            if (error != null) TextButton(onClick = { vm.refreshCatalog() }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Try again", color = TG.Accent) }
+            if (error != null) TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Try again", color = TG.Accent) }
         }
         val busy = dl is DownloadState.Downloading || dl is DownloadState.Checking
         LazyColumn(Modifier.weight(1f).padding(top = 8.dp)) {
@@ -110,11 +124,11 @@ fun MapsScreen(vm: AppViewModel, onClose: () -> Unit, onShow: (DoubleArray) -> U
                     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         when {
                             !have -> Button(
-                                onClick = { vm.downloadRegion(r.region) }, enabled = !busy, shape = RoundedCornerShape(10.dp),
+                                onClick = { onDownload(r.region) }, enabled = !busy, shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = TG.Accent, contentColor = Color.White),
                             ) { Text("Download") }
                             update -> Button(
-                                onClick = { vm.downloadRegion(r.region) }, enabled = !busy, shape = RoundedCornerShape(10.dp),
+                                onClick = { onDownload(r.region) }, enabled = !busy, shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = TG.Accent, contentColor = Color.White),
                             ) { Text("Update") }
                         }
@@ -133,7 +147,7 @@ fun MapsScreen(vm: AppViewModel, onClose: () -> Unit, onShow: (DoubleArray) -> U
             onDismissRequest = { deleting = null },
             title = { Text("Delete the ${MapStore.displayName(region)} maps?") },
             text = { Text("They'll still show while you're online, and you can download them again. Your routes, tracks and waypoints aren't touched.") },
-            confirmButton = { TextButton(onClick = { vm.deleteRegion(region); deleting = null }) { Text("Delete", color = TG.Danger) } },
+            confirmButton = { TextButton(onClick = { onDelete(region); deleting = null }) { Text("Delete", color = TG.Danger) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
         )
     }

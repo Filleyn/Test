@@ -23,6 +23,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.trailguidegps.app.AppViewModel
+import com.trailguidegps.app.data.MapStore
 import com.trailguidegps.app.data.Pace
 import com.trailguidegps.app.location.Fix
 import com.trailguidegps.app.map.MapStyle
@@ -182,4 +183,20 @@ class ScreenshotTest {
     @Test fun mainPanel() = panel("panel-main", null, false)
     @Test fun placeCard() = panel("panel-place", spring, false)
     @Test fun placeCardExpanded() = panel("panel-place-expanded", spring, true)
+
+    @Test fun mapsScreen() {
+        fun rel(r: String, mb: Long) = MapStore.Release("maps-$r-2026-11-02-run1", listOf(MapStore.Asset("topo.pmtiles", "", mb * 1_000_000)))
+        fun info(r: String, mb: Long) = AppViewModel.RegionInfo(r, r, rel(r, mb), doubleArrayOf(0.0, 0.0, 1.0, 1.0), "2026-11-02")
+        val catalog = listOf(info("oregon", 2100), info("washington", 1900), info("idaho", 1700), info("california", 4300), info("nevada", 1300))
+        compose.setContent {
+            TrailGuideTheme {
+                MapsContent(
+                    catalog, setOf("oregon", "washington"), setOf("washington"),
+                    com.trailguidegps.app.DownloadState.Downloading("terrain.pmtiles", 640_000_000, 1_700_000_000, "idaho"),
+                    null, 38_000_000_000, {}, {}, {}, {}, {},
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage(out("maps-screen"))
+    }
 }
