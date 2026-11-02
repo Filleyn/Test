@@ -140,6 +140,7 @@ fun MapScreen(
     onOpenSettings: () -> Unit,
     onStartFollowing: () -> Unit,
     onOpenSatellite: () -> Unit,
+    onOpenMaps: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -355,10 +356,10 @@ fun MapScreen(
                     vm.select(null)
                     return@addOnMapClickListener true
                 }
-                val hit = m.queryRenderedFeatures(point, *MapStyle.TAP_LAYERS).firstOrNull()
+                val hit = m.queryRenderedFeatures(point, *MapStyle.all(MapStyle.TAP_LAYERS.toList()).toTypedArray()).firstOrNull()
                 if (hit == null) {
                     // A Forest Service road: who can drive it and when.
-                    m.queryRenderedFeatures(point, MapStyle.LAYER_ROAD_HIT).firstOrNull()?.let { r ->
+                    m.queryRenderedFeatures(point, *MapStyle.all(MapStyle.LAYER_ROAD_HIT)).firstOrNull()?.let { r ->
                         fun rp(k: String) = if (r.hasProperty(k) && !r.getProperty(k).isJsonNull) r.getProperty(k).asString else null
                         val access = when (rp("access")) {
                             "car" -> "Passenger cars OK"
@@ -376,7 +377,7 @@ fun MapScreen(
                         return@addOnMapClickListener true
                     }
                     // A past wildfire.
-                    m.queryRenderedFeatures(point, MapStyle.LAYER_BURN_FILL).maxByOrNull {
+                    m.queryRenderedFeatures(point, *MapStyle.all(MapStyle.LAYER_BURN_FILL)).maxByOrNull {
                         if (it.hasProperty("year")) it.getNumberProperty("year").toInt() else 0
                     }?.let { b ->
                         fun bp(k: String) = if (b.hasProperty(k) && !b.getProperty(k).isJsonNull) b.getProperty(k).asString else null
@@ -387,7 +388,7 @@ fun MapScreen(
                         return@addOnMapClickListener true
                     }
                     // Nothing else here: say whose land it is, if a land layer is on.
-                    fun propsOf(layer: String): Map<String, String?>? = m.queryRenderedFeatures(point, layer)
+                    fun propsOf(layer: String): Map<String, String?>? = m.queryRenderedFeatures(point, *MapStyle.all(layer))
                         .maxByOrNull { f -> if (f.hasProperty("acres")) -(f.getNumberProperty("acres")?.toDouble() ?: 0.0) else 0.0 }
                         ?.let { f ->
                             listOf("name", "mgr", "mgr_type", "des", "access").associateWith { k ->
@@ -426,7 +427,7 @@ fun MapScreen(
                     )?.let { parts += it }
                     prop("last_edit")?.let { parts += "map data edited $it" }
                     // Links: the place's own page, the land manager's alerts, and a web search.
-                    fun landProps(layer: String): Map<String, String?>? = m.queryRenderedFeatures(point, layer).firstOrNull()?.let { lf ->
+                    fun landProps(layer: String): Map<String, String?>? = m.queryRenderedFeatures(point, *MapStyle.all(layer)).firstOrNull()?.let { lf ->
                         listOf("name", "mgr", "des").associateWith { k ->
                             if (lf.hasProperty(k) && !lf.getProperty(k).isJsonNull) lf.getProperty(k).asString else null
                         }
@@ -473,12 +474,13 @@ fun MapScreen(
         val m = map ?: return@LaunchedEffect
         style = null
         val areas = vm.satellite.areas.value.filter { it.ready && vm.satellite.file(it).exists() }.map { it.id to vm.satellite.file(it) }
-        m.setStyle(Style.Builder().fromJson(MapStyle.forLook(MapStyle.build(vm.store, areas), Look.dark, Look.sun))) { s ->
+        m.setStyle(Style.Builder().fromJson(MapStyle.forLook(MapStyle.build(vm.mapSources(), areas), Look.dark, Look.sun))) { s ->
             MapIcons.addAll(context, s)
             MapStyle.GROUPS.keys.filter { it != "satellite" }.forEach { group -> setVisible(s, groupLayers(s, group), layerOn[group] != false) }
             applyBase(s, baseMap)
             if (!cameraPlaced) {
-                vm.store.bbox()?.let { b ->
+                (vm.store.bbox() ?: vm.catalog.value.firstOrNull { it.region == com.trailguidegps.app.BuildConfig.MAPS_REGION }?.bbox
+                    ?: doubleArrayOf(-124.7, 41.95, -116.45, 46.3)).let { b ->
                     val bounds = LatLngBounds.Builder()
                         .include(LatLng(b[1], b[0])).include(LatLng(b[3], b[2])).build()
                     m.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 40))
@@ -504,9 +506,9 @@ fun MapScreen(
     LaunchedEffect(fix, style) {
         val m = map ?: return@LaunchedEffect
         val f = fix ?: return@LaunchedEffect
-        val b = vm.store.bbox()
-        if (!zoomedToMe && style != null && b != null &&
-            f.lon >= b[0] && f.lat >= b[1] && f.lon <= b[2] && f.lat <= b[3]
+        // Zoom to you once, if you're in a state the app has maps for (downloaded or online).
+        if (!zoomedToMe && style != null && (vm.regionAt(f.lat, f.lon) != null || vm.stores.any { s ->
+                s.bbox()?.let { b -> f.lon >= b[0] && f.lat >= b[1] && f.lon <= b[2] && f.lat <= b[3] } == true })
         ) {
             zoomedToMe = true
             m.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(f.lat, f.lon), 13.0))
@@ -641,8 +643,11 @@ fun MapScreen(
 
         // Top: offline badge and layers button, plus a notice when you're off the map
         val bbox = remember(mapVersion) { vm.store.bbox() }
-        val outside = fix != null && bbox != null &&
-            (fix!!.lon < bbox[0] || fix!!.lat < bbox[1] || fix!!.lon > bbox[2] || fix!!.lat > bbox[3])
+        // Off the downloaded maps: outside every downloaded state's area.
+        val installedBoxes = remember(mapVersion) { vm.stores.mapNotNull { it.bbox() } }
+        val outside = fix != null && installedBoxes.isNotEmpty() && installedBoxes.none { b ->
+            fix!!.lon >= b[0] && fix!!.lat >= b[1] && fix!!.lon <= b[2] && fix!!.lat <= b[3]
+        }
         Column(Modifier.statusBarsPadding().padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             Modifier.fillMaxWidth(),
@@ -699,7 +704,7 @@ fun MapScreen(
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text("Search trails, water, places", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
-                        Text("Offline · ${vm.store.title().substringBefore(" (")} maps, ${vm.store.builtDate() ?: ""}", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
+                        Text(if (vm.stores.isEmpty()) "Online map · no states downloaded" else "Offline · ${com.trailguidegps.app.data.MapRegion.name} maps", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
                     }
                 }
             }
@@ -722,12 +727,13 @@ fun MapScreen(
         }
         val update by vm.update.collectAsStateWithLifecycle()
         val updateDismissed by vm.updateDismissed.collectAsStateWithLifecycle()
-        LaunchedEffect(Unit) { if (vm.settings.value.value.checkUpdatesOnLaunch) vm.checkForMapUpdate() }
+        // Which states have maps (for the online map and updates); quietly does nothing offline.
+        LaunchedEffect(Unit) { vm.refreshCatalog() }
         val dl = download
         if (dl is DownloadState.Downloading) {
             Surface(shape = RoundedCornerShape(14.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text("Updating maps: ${percent(dl.done, dl.total)}%", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                    Text("Downloading ${dl.region?.let { com.trailguidegps.app.data.MapStore.displayName(it) + " " } ?: ""}maps: ${percent(dl.done, dl.total)}%", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
                     Spacer(Modifier.height(6.dp))
                     androidx.compose.material3.LinearProgressIndicator(
                         progress = { if (dl.total > 0) dl.done.toFloat() / dl.total else 0f },
@@ -736,13 +742,13 @@ fun MapScreen(
                     Text("Keep the app open. The map works as usual meanwhile.", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(top = 4.dp))
                 }
             }
-        } else if (update != null && !updateDismissed) {
+        } else if (update != null && !updateDismissed && vm.settings.value.value.checkUpdatesOnLaunch) {
             val u = update!!
             Surface(shape = RoundedCornerShape(14.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Map update available", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
-                        Text("Built ${u.built} · ${formatBytes(u.bytes)} download · use Wi-Fi", fontSize = 12.sp, color = TG.Muted)
+                        Text("${u.built} · ${formatBytes(u.bytes)} download · use Wi-Fi", fontSize = 12.sp, color = TG.Muted)
                     }
                     TextButton(onClick = { vm.dismissUpdate() }) { Text("Later", color = TG.Muted) }
                     TextButton(onClick = { vm.downloadMaps() }) { Text("Update", color = TG.Accent, fontWeight = FontWeight.SemiBold) }
@@ -1108,12 +1114,14 @@ fun MapScreen(
                     TextButton(onClick = { showLayers = false; onOpenSettings() }) { Text("Open", color = TG.Accent) }
                 }
                 HorizontalDivider(Modifier.padding(vertical = 12.dp), color = TG.Line)
-                Text("Map data", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Muted)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "${vm.store.title()}, built ${vm.store.builtDate() ?: "unknown"}",
-                    fontSize = 14.sp, color = TG.Ink,
-                )
+                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Maps for each state", fontSize = 16.sp, color = TG.Ink)
+                        Text(if (vm.stores.isEmpty()) "None downloaded · showing the online map"
+                            else vm.stores.joinToString(" · ") { "${it.name}, built ${it.builtDate() ?: "?"}" }, fontSize = 12.sp, color = TG.Muted)
+                    }
+                    TextButton(onClick = { showLayers = false; onOpenMaps() }) { Text("Manage", color = TG.Accent) }
+                }
                 Spacer(Modifier.height(10.dp))
                 val status = when (val d = download) {
                     DownloadState.Idle -> null
@@ -1623,8 +1631,8 @@ private fun RoundButton(onClick: () -> Unit, description: String, active: Boolea
 /** Shows one base map: topo, satellite imagery alone, or imagery with roads and names. */
 private fun applyBase(style: Style, base: String) {
     setVisible(style, groupLayers(style, "satellite"), base != MapStyle.BASE_TOPO)
-    setVisible(style, MapStyle.TOPO_FILLS, base == MapStyle.BASE_TOPO)
-    setVisible(style, MapStyle.TOPO_DETAIL, base != MapStyle.BASE_SATELLITE)
+    setVisible(style, MapStyle.all(MapStyle.TOPO_FILLS), base == MapStyle.BASE_TOPO)
+    setVisible(style, MapStyle.all(MapStyle.TOPO_DETAIL), base != MapStyle.BASE_SATELLITE)
 }
 
 private fun isOnline(context: android.content.Context): Boolean {
@@ -1636,7 +1644,7 @@ private fun isOnline(context: android.content.Context): Boolean {
 /** A switch's layers; satellite also covers each saved area's layer. */
 private fun groupLayers(style: Style, group: String): List<String> =
     if (group == "satellite") style.layers.map { it.id }.filter { it.startsWith("satellite") }
-    else MapStyle.GROUPS[group].orEmpty()
+    else MapStyle.all(MapStyle.GROUPS[group].orEmpty())
 
 private fun setVisible(style: Style, ids: List<String>, on: Boolean) {
     ids.forEach { id ->

@@ -34,10 +34,12 @@ class Features private constructor(
         val acres: Double? = null,
         /** Elevation in feet, for peaks (from the map data, or the terrain if mappers left it out). */
         val eleFt: Double? = null,
+        /** Which state's maps it came from ("oregon"). */
+        val region: String? = null,
     ) {
         val label: String get() = name ?: (Features.KIND_LABELS[kind] ?: kind.replace('_', ' ').replaceFirstChar { it.uppercase() })
     }
-    class Trail(val name: String, val coords: List<DoubleArray>)
+    class Trail(val name: String, val coords: List<DoubleArray>, val region: String? = null)
 
     private val pointGrid = HashMap<Long, MutableList<Int>>()
     private val trailGrid = HashMap<Long, MutableList<Int>>()
@@ -158,8 +160,17 @@ class Features private constructor(
         private fun key(row: Long, col: Long) = (row shl 32) xor (col and 0xffffffffL)
         private fun cell(lat: Double, lon: Double) = key(floor(lat / CELL).toLong(), floor(lon / CELL).toLong())
 
-        fun load(store: MapStore): Features {
+        fun load(store: MapStore): Features = load(listOf(store))
+
+        /** Places and trails from every downloaded state, each tagged with its state. */
+        fun load(stores: List<MapStore>): Features {
             val points = mutableListOf<Point>()
+            val trails = mutableListOf<Trail>()
+            for (store in stores) loadInto(store, points, trails)
+            return Features(points, trails)
+        }
+
+        private fun loadInto(store: MapStore, points: MutableList<Point>, trails: MutableList<Trail>) {
             for (name in listOf("water.geojson", "pois.geojson")) {
                 val isWater = name == "water.geojson"
                 readFeatures(store.file(name)) { props, type, coords ->
@@ -172,17 +183,15 @@ class Features private constructor(
                             lastEdit = props["last_edit"], isWater = isWater,
                             place = props["place"], population = props["population"]?.toDoubleOrNull()?.toInt(),
                             website = props["website"], acres = props["acres"]?.toDoubleOrNull(),
-                            eleFt = props["ele_ft"]?.toDoubleOrNull(),
+                            eleFt = props["ele_ft"]?.toDoubleOrNull(), region = store.region,
                         )
                     }
                 }
             }
-            val trails = mutableListOf<Trail>()
             readFeatures(store.file("trails.geojson")) { props, type, coords ->
                 val name = props["name"]
-                if (type == "LineString" && !name.isNullOrBlank() && coords.size >= 2) trails += Trail(name, coords)
+                if (type == "LineString" && !name.isNullOrBlank() && coords.size >= 2) trails += Trail(name, coords, store.region)
             }
-            return Features(points, trails)
         }
 
         /** Streams a GeoJSON FeatureCollection of Points and LineStrings. */

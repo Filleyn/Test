@@ -170,33 +170,55 @@ object MapStyle {
     private const val ITALIC = "NotoSans-Italic"
 
     /** Saved satellite areas to draw: (area id, its PMTiles file). */
-    fun build(store: MapStore, satelliteAreas: List<Pair<String, java.io.File>> = emptyList()): String {
-        fun pm(name: String) = "pmtiles://file://" + store.file(name).absolutePath
-        fun gj(name: String) = "file://" + store.file(name).absolutePath
+    /**
+     * One state's map files for the style: on the phone ([local]), or streamed from the map
+     * release ([remoteBase] plus file names in [remoteFiles]) when it isn't downloaded.
+     */
+    data class MapSource(val region: String, val local: java.io.File?, val remoteBase: String? = null, val remoteFiles: Set<String> = emptySet()) {
+        fun has(name: String) = if (local != null) java.io.File(local, name).exists() else name in remoteFiles
+        fun pm(name: String) = if (local != null) "pmtiles://file://" + java.io.File(local, name).absolutePath else "pmtiles://$remoteBase/$name"
+        fun gj(name: String) = if (local != null) "file://" + java.io.File(local, name).absolutePath else "$remoteBase/$name"
+    }
+
+    /** Id endings for each state's copy of the map layers: "" for the first, "@washington" and so on for the rest. */
+    @Volatile var suffixes: List<String> = listOf("")
+        private set
+
+    /** Every state's copy of a map layer id. */
+    fun all(id: String): Array<String> = suffixes.map { id + it }.toTypedArray()
+    fun all(ids: Collection<String>): List<String> = ids.flatMap { all(it).toList() }
+
+    /** Which map file each per-state source comes from. */
+    private val REGION_FILES = mapOf(
+        "topo" to "topo.pmtiles", "contours" to "contours.pmtiles", "terrain" to "terrain.pmtiles", "water" to "water.geojson",
+        "pois" to "pois.geojson", "slope" to "slope.pmtiles", "extras" to "extras.pmtiles", "publiclands" to "publiclands.pmtiles",
+    )
+
+    fun build(regions: List<MapSource>, satelliteAreas: List<Pair<String, java.io.File>> = emptyList()): String {
+        val maps = regions.ifEmpty { listOf(MapSource("none", null)) }
+        val sfx = maps.mapIndexed { i, r -> if (i == 0) "" else "@" + r.region }
+        suffixes = sfx
+        fun anyHas(file: String) = maps.any { it.has(file) }
 
         val sources = JSONObject()
-            .put("topo", JSONObject().put("type", "vector").put("url", pm("topo.pmtiles"))
+        maps.forEachIndexed { i, r ->
+            val x = sfx[i]
+            if (r.has("topo.pmtiles")) sources.put("topo$x", JSONObject().put("type", "vector").put("url", r.pm("topo.pmtiles"))
                 .put("attribution", "© OpenStreetMap contributors"))
-            .put("contours", JSONObject().put("type", "vector").put("url", pm("contours.pmtiles"))
+            if (r.has("contours.pmtiles")) sources.put("contours$x", JSONObject().put("type", "vector").put("url", r.pm("contours.pmtiles"))
                 .put("attribution", "USGS 3DEP"))
-            .put("terrain", JSONObject().put("type", "raster-dem").put("url", pm("terrain.pmtiles"))
+            if (r.has("terrain.pmtiles")) sources.put("terrain$x", JSONObject().put("type", "raster-dem").put("url", r.pm("terrain.pmtiles"))
                 .put("encoding", "mapbox").put("tileSize", 256))
-            .put("water", JSONObject().put("type", "geojson").put("data", gj("water.geojson")))
-            .put("pois", JSONObject().put("type", "geojson").put("data", gj("pois.geojson")))
-            .apply {
-                if (store.file("slope.pmtiles").exists()) {
-                    put("slope", JSONObject().put("type", "raster").put("url", pm("slope.pmtiles")).put("tileSize", 256)
-                        .put("attribution", "Slope from USGS 3DEP"))
-                }
-                if (store.file("extras.pmtiles").exists()) {
-                    put("extras", JSONObject().put("type", "vector").put("url", pm("extras.pmtiles"))
-                        .put("attribution", "USDA Forest Service MVUM, NIFC fire history"))
-                }
-                if (store.file("publiclands.pmtiles").exists()) {
-                    put("publiclands", JSONObject().put("type", "vector").put("url", pm("publiclands.pmtiles"))
-                        .put("attribution", "Public land: USGS PAD-US"))
-                }
-            }
+            if (r.has("water.geojson")) sources.put("water$x", JSONObject().put("type", "geojson").put("data", r.gj("water.geojson")))
+            if (r.has("pois.geojson")) sources.put("pois$x", JSONObject().put("type", "geojson").put("data", r.gj("pois.geojson")))
+            if (r.has("slope.pmtiles")) sources.put("slope$x", JSONObject().put("type", "raster").put("url", r.pm("slope.pmtiles")).put("tileSize", 256)
+                .put("attribution", "Slope from USGS 3DEP"))
+            if (r.has("extras.pmtiles")) sources.put("extras$x", JSONObject().put("type", "vector").put("url", r.pm("extras.pmtiles"))
+                .put("attribution", "USDA Forest Service MVUM, NIFC fire history"))
+            if (r.has("publiclands.pmtiles")) sources.put("publiclands$x", JSONObject().put("type", "vector").put("url", r.pm("publiclands.pmtiles"))
+                .put("attribution", "Public land: USGS PAD-US"))
+        }
+        sources
             // Your own data, filled in by the app after the style loads.
             .put(SRC_SHOWN_TRACK, emptyGeoJson())
             .put(SRC_SHOWN_ROUTE, emptyGeoJson())
@@ -228,7 +250,12 @@ object MapStyle {
             layout?.let { l.put("layout", it) }
             minzoom?.let { l.put("minzoom", it) }
             maxzoom?.let { l.put("maxzoom", it) }
-            layers.put(l)
+            // A layer drawn from a state's own files is repeated for each state that has that file.
+            val file = source?.let { REGION_FILES[it] }
+            if (file == null) { layers.put(l); return }
+            maps.forEachIndexed { i, r ->
+                if (r.has(file)) layers.put(JSONObject(l.toString()).put("id", id + sfx[i]).put("source", source + sfx[i]))
+            }
         }
         fun inClass(values: JSONArray) = arr("in", arr("get", "class"), arr("literal", values))
         fun inKind(values: List<String>) = arr("in", arr("get", "kind"), arr("literal", JSONArray(values)))
@@ -246,7 +273,7 @@ object MapStyle {
         layer("park", "line", "topo", "park", paint = JSONObject().put("line-color", "#5E8A4A")
             .put("line-width", 1.5).put("line-dasharray", arr(3, 2)).put("line-opacity", 0.7))
         // Public land: who manages it, under the hillshade so the terrain still reads.
-        val hasLand = store.file("publiclands.pmtiles").exists()
+        val hasLand = anyHas("publiclands.pmtiles")
         if (hasLand) {
             val mgrColor = JSONArray().put("match").put(arr("get", "mgr")).apply {
                 MANAGER_COLORS.forEach { (k, v) -> put(k); put(v) }
@@ -262,7 +289,7 @@ object MapStyle {
             layer(LAYER_BOUNDARY_HIT, "fill", "publiclands", "boundary", paint = JSONObject()
                 .put("fill-color", "#000000").put("fill-opacity", HIT_OPACITY))
         }
-        val hasExtras = store.file("extras.pmtiles").exists()
+        val hasExtras = anyHas("extras.pmtiles")
         if (hasExtras) {
             // Past wildfires: browner the more recent.
             layer(LAYER_BURN_FILL, "fill", "extras", "burns", paint = JSONObject().put("fill-color", "#6D4C41")
@@ -273,7 +300,7 @@ object MapStyle {
         layer("hillshade", "hillshade", "terrain", paint = JSONObject()
             .put("hillshade-exaggeration", 0.45).put("hillshade-shadow-color", "#4E4232")
             .put("hillshade-highlight-color", "#FFFFFF").put("hillshade-accent-color", "#6B5A44"))
-        if (store.file("slope.pmtiles").exists()) {
+        if (anyHas("slope.pmtiles")) {
             layer("slope", "raster", "slope", paint = JSONObject().put("raster-opacity", 0.5).put("raster-fade-duration", 0)
                 .put("raster-resampling", "nearest"), minzoom = 10.0)
         }

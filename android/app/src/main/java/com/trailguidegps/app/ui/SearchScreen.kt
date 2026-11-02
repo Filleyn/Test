@@ -78,6 +78,11 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf("All") }
     val kinds = Search.FILTERS.firstOrNull { it.first == filter }?.second
+    // Which state to search: the one you're in by default, when more than one is downloaded.
+    val installed by vm.installed.collectAsStateWithLifecycle()
+    var region by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(vm.searchReference()?.let { (la, lo) -> vm.regionAt(la, lo) }?.takeIf { it in vm.installed.value && vm.installed.value.size > 1 })
+    }
     var filtered by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var nearby by remember { mutableStateOf<List<Pair<String, List<SearchResult>>>>(emptyList()) }
@@ -102,20 +107,20 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
     }
 
     // Search as you type, after a short pause.
-    LaunchedEffect(query, features, filter) {
+    LaunchedEffect(query, features, filter, region) {
         val f = features ?: return@LaunchedEffect
         if (query.isBlank()) { results = emptyList(); return@LaunchedEffect }
         delay(150)
         val (lat, lon) = ref ?: (44.0 to -121.0)
-        results = withContext(Dispatchers.Default) { Search.search(f, query, lat, lon, kinds) }
+        results = withContext(Dispatchers.Default) { Search.search(f, query, lat, lon, kinds, region) }
     }
     // With a filter and no words typed: the nearest of that type.
-    LaunchedEffect(features, filter) {
+    LaunchedEffect(features, filter, region) {
         val f = features ?: return@LaunchedEffect
         val k = kinds ?: run { filtered = emptyList(); return@LaunchedEffect }
         val (lat, lon) = ref ?: return@LaunchedEffect
         filtered = withContext(Dispatchers.Default) {
-            if (k == setOf("trail")) emptyList() else Search.nearest(f, k, lat, lon, n = 25, maxM = 80_000.0)
+            if (k == setOf("trail")) emptyList() else Search.nearest(f, k, lat, lon, n = 25, maxM = 80_000.0, region = region)
         }
     }
 
@@ -142,6 +147,20 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = TG.Accent, cursorColor = TG.Accent),
                 modifier = Modifier.weight(1f).focusRequester(focus),
             )
+        }
+        // Which state, when more than one is downloaded.
+        if (installed.size > 1) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                FilterChip(selected = region == null, onClick = { region = null }, label = { Text("All states") },
+                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Ink, selectedLabelColor = TG.Surface))
+                installed.forEach { r ->
+                    FilterChip(selected = region == r, onClick = { region = r }, label = { Text(com.trailguidegps.app.data.MapStore.displayName(r)) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Ink, selectedLabelColor = TG.Surface))
+                }
+            }
         }
         // Filter by type.
         Row(

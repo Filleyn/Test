@@ -73,6 +73,9 @@ class MainActivity : ComponentActivity() {
                 var showSearch by rememberSaveable { mutableStateOf(false) }
                 var showSettings by rememberSaveable { mutableStateOf(false) }
                 var showSatellite by rememberSaveable { mutableStateOf(false) }
+                var showMaps by rememberSaveable { mutableStateOf(false) }
+                // On phones that stop background apps: ask once to allow unrestricted battery, then do this.
+                var afterBatteryAsk by remember { mutableStateOf<(() -> Unit)?>(null) }
                 // What to do once Android has asked about notifications (recording or following).
                 var afterNotifyAsk by remember { mutableStateOf<(() -> Unit)?>(null) }
                 var editingFromSaved by remember { mutableStateOf<Waypoint?>(null) }
@@ -116,7 +119,10 @@ class MainActivity : ComponentActivity() {
                 val requestPermission = {
                     launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                 }
-                val startRecording = { withNotifications { vm.startRecording() } }
+                fun withBatteryCheck(action: () -> Unit) {
+                    if (com.trailguidegps.app.record.BatteryHelp.shouldAsk(this@MainActivity)) afterBatteryAsk = action else action()
+                }
+                val startRecording = { withBatteryCheck { withNotifications { vm.startRecording() } } }
 
                 // The map stays alive under the other screens so it doesn't reload.
                 Box(Modifier.fillMaxSize()) {
@@ -130,8 +136,9 @@ class MainActivity : ComponentActivity() {
                             onOpenSaved = { showSaved = true },
                             onOpenSearch = { showSearch = true },
                             onOpenSettings = { showSettings = true },
-                            onStartFollowing = { withNotifications { vm.startFollowing() } },
+                            onStartFollowing = { withBatteryCheck { withNotifications { vm.startFollowing() } } },
                             onOpenSatellite = { showSatellite = true },
+                            onOpenMaps = { showMaps = true },
                         )
                     } else {
                         SetupScreen(vm)
@@ -153,9 +160,39 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (showSearch) SearchScreen(vm, onClose = { showSearch = false })
-                    if (showSettings) SettingsScreen(vm, onClose = { showSettings = false })
+                    if (showSettings) SettingsScreen(vm, onClose = { showSettings = false }, onOpenMaps = { showSettings = false; showMaps = true })
+                    if (showMaps) com.trailguidegps.app.ui.MapsScreen(vm, onClose = { showMaps = false }, onShow = { b ->
+                        showMaps = false
+                        vm.focusOn(listOf(b[1] to b[0], b[3] to b[2]))
+                    })
                     if (showSatellite) com.trailguidegps.app.ui.SatelliteScreen(vm, onClose = { showSatellite = false })
                     if (showEmergency) EmergencyScreen(vm, onClose = { showEmergency = false })
+                    afterBatteryAsk?.let { then ->
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = {},
+                            title = { androidx.compose.material3.Text("Keep recording with the screen off") },
+                            text = {
+                                androidx.compose.material3.Text("This phone can stop apps in the background to save battery, which would cut a track " +
+                                    "or route alerts short. To prevent that, set TrailGuide's battery use to Unrestricted. " +
+                                    com.trailguidegps.app.record.BatteryHelp.HOW_TO)
+                            },
+                            confirmButton = {
+                                androidx.compose.material3.TextButton(onClick = {
+                                    com.trailguidegps.app.record.BatteryHelp.markAsked(this@MainActivity)
+                                    afterBatteryAsk = null
+                                    then()
+                                    com.trailguidegps.app.record.BatteryHelp.openSettings(this@MainActivity)
+                                }) { androidx.compose.material3.Text("Open settings") }
+                            },
+                            dismissButton = {
+                                androidx.compose.material3.TextButton(onClick = {
+                                    com.trailguidegps.app.record.BatteryHelp.markAsked(this@MainActivity)
+                                    afterBatteryAsk = null
+                                    then()
+                                }) { androidx.compose.material3.Text("Not now") }
+                            },
+                        )
+                    }
                     // Quick tips the first time the maps are ready.
                     if (mapsReady && !settings.introSeen && !showEmergency) {
                         com.trailguidegps.app.ui.IntroScreen(onDone = { vm.settings.update { it.copy(introSeen = true) } })

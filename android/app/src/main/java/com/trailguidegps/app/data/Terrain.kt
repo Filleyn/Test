@@ -14,8 +14,12 @@ import kotlin.math.tan
  * terrain.pmtiles (USGS 3DEP, about 90 ft per pixel at the zoom used).
  * Elevation in metres = -10000 + (R * 65536 + G * 256 + B) * 0.1.
  */
-class Terrain(file: File) {
-    private val pm = PmTiles(file)
+class Terrain(files: List<File>) {
+    constructor(file: File) : this(listOf(file))
+
+    /** One elevation file per downloaded state; each covers only its own state. */
+    private val pms = files.filter { it.exists() }.map { PmTiles(it) }
+    private val pm = pms.first()
     private val zoom = pm.maxZoom
     val maxZoom: Int get() = pm.maxZoom
     private val missing = IntArray(0)
@@ -24,7 +28,7 @@ class Terrain(file: File) {
     private fun pixels(z: Int, x: Int, y: Int): IntArray? {
         val key = (z.toLong() shl 58) or (x.toLong() shl 29) or (y.toLong() and 0x1fffffffL)
         tiles.get(key)?.let { return if (it === missing) null else it }
-        val bytes = pm.tile(z, x, y)
+        val bytes = pms.firstNotNullOfOrNull { p -> if (z in p.minZoom..p.maxZoom) p.tile(z, x, y) else null }
         val px = bytes?.let { b ->
             BitmapFactory.decodeByteArray(b, 0, b.size)?.let { bmp ->
                 IntArray(bmp.width * bmp.height).also { bmp.getPixels(it, 0, bmp.width, 0, 0, bmp.width, bmp.height); bmp.recycle() }
@@ -61,5 +65,5 @@ class Terrain(file: File) {
         return if (e < -500) null else e
     }
 
-    fun close() = pm.close()
+    fun close() = pms.forEach { it.close() }
 }

@@ -14,6 +14,8 @@ data class SearchResult(
     val near: String? = null,
     /** Extra detail for some filters ("water 300 ft: Lost Creek"). */
     val detail: String? = null,
+    /** The state it's in. */
+    val region: String? = null,
 )
 
 /** Offline search over the named places and trails in the map files. */
@@ -46,9 +48,9 @@ object Search {
             "Water ${if (d < 15) "right there" else Geo.formatDistance(d)}: $what" + if (w.seasonal) " (may be seasonal)" else ""
         }
 
-    fun search(features: Features, query: String, refLat: Double, refLon: Double, kinds: Set<String>? = null): List<SearchResult> {
+    fun search(features: Features, query: String, refLat: Double, refLon: Double, kinds: Set<String>? = null, region: String? = null): List<SearchResult> {
         if (kinds != null && CAMP_WATER in kinds) {
-            return search(features, query, refLat, refLon, CAMP_KINDS).mapNotNull { r ->
+            return search(features, query, refLat, refLon, CAMP_KINDS, region).mapNotNull { r ->
                 r.point?.let { p -> waterDetail(features, p) }?.let { r.copy(detail = it) }
             }
         }
@@ -69,11 +71,14 @@ object Search {
         val hits = ArrayList<Pair<Int, SearchResult>>()
         features.allPoints.forEach { p ->
             if (kinds != null && p.kind !in kinds) return@forEach
+            if (region != null && p.region != region) return@forEach
             val name = p.name ?: return@forEach
             val s = score(name) ?: return@forEach
-            hits += s to SearchResult(name, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p)
+            hits += s to SearchResult(name, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p, region = p.region)
         }
-        if (kinds == null || "trail" in kinds) features.trailsByName.forEach { (name, parts) ->
+        if (kinds == null || "trail" in kinds) features.trailsByName.forEach { (name, all) ->
+            val parts = if (region == null) all else all.filter { it.region == region }
+            if (parts.isEmpty()) return@forEach
             val s = score(name) ?: return@forEach
             var best = Double.MAX_VALUE
             var bestLat = 0.0
@@ -82,16 +87,16 @@ object Search {
                 val d = Geo.distanceM(refLat, refLon, c[1], c[0])
                 if (d < best) { best = d; bestLat = c[1]; bestLon = c[0] }
             }
-            hits += s to SearchResult(name, "trail", bestLat, bestLon, best)
+            hits += s to SearchResult(name, "trail", bestLat, bestLon, best, region = parts.first().region)
         }
         return hits.sortedWith(compareBy({ it.first }, { it.second.distanceM })).take(LIMIT)
             .map { it.second.withNear(features) }
     }
 
     /** Closest points of the given kinds, nearest first, within [maxM]. */
-    fun nearest(features: Features, kinds: Set<String>, refLat: Double, refLon: Double, n: Int = 8, maxM: Double = 32_000.0): List<SearchResult> =
+    fun nearest(features: Features, kinds: Set<String>, refLat: Double, refLon: Double, n: Int = 8, maxM: Double = 32_000.0, region: String? = null): List<SearchResult> =
         if (CAMP_WATER in kinds) features.allPoints.asSequence()
-            .filter { it.kind in CAMP_KINDS }
+            .filter { it.kind in CAMP_KINDS && (region == null || it.region == region) }
             .map { p -> SearchResult(p.label, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p) }
             .filter { it.distanceM <= maxM }
             .sortedBy { it.distanceM }
@@ -100,7 +105,7 @@ object Search {
             .map { it.withNear(features) }
             .toList()
         else features.allPoints.asSequence()
-            .filter { it.kind in kinds }
+            .filter { it.kind in kinds && (region == null || it.region == region) }
             .map { p -> SearchResult(p.label, p.kind, p.lat, p.lon, Geo.distanceM(refLat, refLon, p.lat, p.lon), p) }
             .filter { it.distanceM <= maxM }
             .sortedBy { it.distanceM }

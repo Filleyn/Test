@@ -10,10 +10,15 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Where the offline map files live on the phone, and how they get there. */
-class MapStore(context: Context) {
-    val region: String = BuildConfig.MAPS_REGION
-    val dir: File = File(context.getExternalFilesDir(null) ?: context.filesDir, "maps/$region")
+/** Where one state's offline map files live on the phone, and how they get there. */
+class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
+    val dir: File = File(root(context), region)
+
+    /** Removes this state's map files from the phone. */
+    fun delete() { dir.deleteRecursively() }
+
+    /** Everyday name: "Oregon". */
+    val name: String get() = displayName(region)
 
     fun file(name: String) = File(dir, name)
 
@@ -175,8 +180,6 @@ class MapStore(context: Context) {
             if (missing.isNotEmpty()) error("Release is missing ${missing.joinToString()}")
             dir.deleteRecursively()
             if (!tmp.renameTo(dir)) error("Couldn't move map files into place")
-            // Remove map files for other regions (for example the earlier test area).
-            dir.parentFile?.listFiles()?.filter { it.isDirectory && it != dir }?.forEach { it.deleteRecursively() }
         }
 
     /** Downloads one file, resuming a partial one. Returns the updated running byte count. */
@@ -221,11 +224,72 @@ class MapStore(context: Context) {
         )
         val OPTIONAL = listOf("routing.bin.gz", "publiclands.pmtiles", "slope.pmtiles", "extras.pmtiles")
         private const val TAG_FILE = "release-tag.txt"
+
+        fun root(context: Context) = File(context.getExternalFilesDir(null) ?: context.filesDir, "maps")
+
+        /** States with complete map files on the phone, Oregon first, then by name. */
+        fun installedRegions(context: Context): List<String> =
+            (root(context).listFiles { f -> f.isDirectory && !f.name.endsWith(".download") } ?: emptyArray())
+                .map { it.name }.filter { MapStore(context, it).isReady() }
+                .sortedWith(compareBy({ it != BuildConfig.MAPS_REGION }, { it }))
+
+        /** "north-carolina" → "North Carolina". */
+        fun displayName(region: String) = region.split('-', '_', ' ').joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+
+        private val TAG = Regex("^maps-(.+)-(\\d{4}-\\d{2}-\\d{2})-run\\d+$")
+        /** Test areas that aren't offered in the app. */
+        private val HIDDEN = setOf("cottonwood-canyon")
+
+        /** The newest map release for every state, from GitHub (one request). */
+        suspend fun catalog(): Map<String, Release> = withContext(Dispatchers.IO) {
+            val conn = (URL("https://api.github.com/repos/${BuildConfig.MAPS_REPO}/releases?per_page=100").openConnection() as HttpURLConnection).apply {
+                setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("User-Agent", "TrailGuideGPS")
+                connectTimeout = 15000
+                readTimeout = 30000
+            }
+            try {
+                if (conn.responseCode != 200) error("GitHub answered ${conn.responseCode}")
+                val releases = JSONArray(conn.inputStream.bufferedReader().readText())
+                (0 until releases.length()).map { releases.getJSONObject(it) }
+                    .filter { !it.optBoolean("draft") }
+                    .mapNotNull { r -> TAG.find(r.getString("tag_name"))?.let { m -> m.groupValues[1] to r } }
+                    .filter { it.first !in HIDDEN }
+                    .groupBy({ it.first }, { it.second })
+                    .mapValues { (_, rs) ->
+                        val newest = rs.maxBy { it.optString("published_at").ifBlank { it.optString("created_at") } }
+                        val list = newest.getJSONArray("assets")
+                        Release(newest.getString("tag_name"), (0 until list.length()).map { j ->
+                            val a = list.getJSONObject(j)
+                            Asset(a.getString("name"), a.getString("browser_download_url"), a.getLong("size"))
+                        }.filter { it.name in REQUIRED || it.name in OPTIONAL })
+                    }
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+        /** A release's small manifest (title, area, build date), read straight from GitHub. */
+        suspend fun fetchManifest(release: Release): JSONObject? = withContext(Dispatchers.IO) {
+            val m = release.assets.firstOrNull { it.name == "manifest.json" } ?: return@withContext null
+            runCatching {
+                val c = (URL(m.url).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = true; setRequestProperty("User-Agent", "TrailGuideGPS"); connectTimeout = 15000; readTimeout = 30000
+                }
+                try { JSONObject(c.inputStream.bufferedReader().readText()) } finally { c.disconnect() }
+            }.getOrNull()
+        }
     }
 }
 
 /** The map area's everyday name ("Oregon"), for wording that shouldn't assume one state. */
 object MapRegion {
-    val name: String = com.trailguidegps.app.BuildConfig.MAPS_REGION.split('-', '_', ' ')
-        .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+    /** The downloaded states, set by the app as they change. */
+    @Volatile var names: List<String> = listOf(MapStore.displayName(com.trailguidegps.app.BuildConfig.MAPS_REGION))
+    val name: String get() = when (names.size) {
+        0 -> "your area"
+        1 -> names[0]
+        2 -> names.joinToString(" and ")
+        else -> names.dropLast(1).joinToString(", ") + " and " + names.last()
+    }
 }

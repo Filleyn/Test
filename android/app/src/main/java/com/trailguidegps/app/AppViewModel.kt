@@ -34,17 +34,173 @@ import kotlinx.coroutines.withContext
 sealed interface DownloadState {
     data object Idle : DownloadState
     data object Checking : DownloadState
-    data class Downloading(val file: String, val done: Long, val total: Long) : DownloadState
+    data class Downloading(val file: String, val done: Long, val total: Long, val region: String? = null) : DownloadState
     data class UpToDate(val tag: String) : DownloadState
     data class Error(val message: String) : DownloadState
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
-    val store = MapStore(app)
+    private val ctx: Application = app
     val tracker = LocationTracker(app)
 
-    private val _mapsReady = MutableStateFlow(store.isReady())
+    // ---- Maps for several states ----
+
+    /** States downloaded on the phone, Oregon (or the first) first. */
+    private val _installed = MutableStateFlow(MapStore.installedRegions(app))
+    val installed: StateFlow<List<String>> = _installed.asStateFlow()
+    val stores: List<MapStore> get() = _installed.value.map { MapStore(ctx, it) }
+    /** The first downloaded state (for single-state details like the build date). */
+    val store: MapStore get() = stores.firstOrNull() ?: MapStore(ctx)
+
+    private val mapPrefs = app.getSharedPreferences("maps", android.content.Context.MODE_PRIVATE)
+    /** Using the online map without downloading any state yet. */
+    private val _onlineOnly = MutableStateFlow(mapPrefs.getBoolean("onlineOnly", false))
+
+    private val _mapsReady = MutableStateFlow(_installed.value.isNotEmpty() || _onlineOnly.value)
     val mapsReady: StateFlow<Boolean> = _mapsReady.asStateFlow()
+
+    fun useOnlineMap() {
+        mapPrefs.edit().putBoolean("onlineOnly", true).apply()
+        _onlineOnly.value = true
+        _mapsReady.value = true
+        _mapVersion.value += 1
+    }
+
+    /** A state available to download: its newest release, name and area. */
+    data class RegionInfo(val region: String, val title: String, val release: MapStore.Release, val bbox: DoubleArray?, val built: String?) {
+        val name get() = MapStore.displayName(region)
+    }
+    private val _catalog = MutableStateFlow(loadCachedCatalog())
+    val catalog: StateFlow<List<RegionInfo>> = _catalog.asStateFlow()
+    private val _catalogError = MutableStateFlow<String?>(null)
+    val catalogError: StateFlow<String?> = _catalogError.asStateFlow()
+
+    /** Looks up which states have maps (online), with their sizes and areas; kept for offline use. */
+    fun refreshCatalog() {
+        viewModelScope.launch {
+            runCatching {
+                val releases = MapStore.catalog()
+                val list = releases.map { (region, rel) ->
+                    val m = MapStore.fetchManifest(rel)
+                    RegionInfo(region, m?.optString("title")?.takeIf { it.isNotBlank() } ?: MapStore.displayName(region), rel,
+                        m?.optJSONArray("bbox")?.let { a -> DoubleArray(4) { a.getDouble(it) } },
+                        m?.optString("built_utc")?.take(10))
+                }.sortedBy { it.name }
+                val changed = list.map { it.release.tag } != _catalog.value.map { it.release.tag }
+                _catalog.value = list
+                _catalogError.value = null
+                saveCatalog(list)
+                if (changed) _mapVersion.value += 1
+                computeUpdates()
+            }.onFailure { _catalogError.value = friendly(it as? Exception ?: Exception(it)) }
+        }
+    }
+
+    private fun catalogFile() = java.io.File(ctx.filesDir, "map-catalog.json")
+    private fun saveCatalog(list: List<RegionInfo>) = runCatching {
+        catalogFile().writeText(org.json.JSONArray().apply {
+            list.forEach { r ->
+                put(org.json.JSONObject().put("region", r.region).put("title", r.title).put("tag", r.release.tag).put("built", r.built ?: "")
+                    .put("bbox", r.bbox?.let { org.json.JSONArray(it.toList()) } ?: org.json.JSONObject.NULL)
+                    .put("assets", org.json.JSONArray().apply { r.release.assets.forEach { a -> put(org.json.JSONObject().put("n", a.name).put("u", a.url).put("s", a.size)) } }))
+            }
+        }.toString())
+    }
+    private fun loadCachedCatalog(): List<RegionInfo> = runCatching {
+        val arr = org.json.JSONArray(java.io.File((this as AndroidViewModel).getApplication<Application>().filesDir, "map-catalog.json").readText())
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val assets = o.getJSONArray("assets")
+            RegionInfo(o.getString("region"), o.getString("title"),
+                MapStore.Release(o.getString("tag"), (0 until assets.length()).map { j -> assets.getJSONObject(j).let { MapStore.Asset(it.getString("n"), it.getString("u"), it.getLong("s")) } }),
+                o.optJSONArray("bbox")?.let { a -> DoubleArray(4) { a.getDouble(it) } }, o.optString("built").ifBlank { null })
+        }
+    }.getOrDefault(emptyList())
+
+    /** Map files for the style: downloaded states from the phone, the rest streamed from GitHub. */
+    fun mapSources(): List<com.trailguidegps.app.map.MapStyle.MapSource> {
+        val local = stores.map { com.trailguidegps.app.map.MapStyle.MapSource(it.region, it.dir) }
+        val remote = _catalog.value.filter { it.region !in _installed.value }.map { r ->
+            com.trailguidegps.app.map.MapStyle.MapSource(r.region, null,
+                "https://github.com/${com.trailguidegps.app.BuildConfig.MAPS_REPO}/releases/download/${r.release.tag}",
+                r.release.assets.map { it.name }.toSet())
+        }
+        return local + remote
+    }
+
+    /** The state whose area contains a spot, from the catalog (or the downloaded manifests). */
+    fun regionAt(lat: Double, lon: Double): String? {
+        val boxes = _catalog.value.mapNotNull { r -> r.bbox?.let { r.region to it } } + stores.mapNotNull { s -> s.bbox()?.let { s.region to it } }
+        // Smallest box first, so a point in a small state isn't claimed by a big neighbour's rectangle.
+        return boxes.filter { (_, b) -> lon >= b[0] && lat >= b[1] && lon <= b[2] && lat <= b[3] }
+            .minByOrNull { (_, b) -> (b[2] - b[0]) * (b[3] - b[1]) }?.first
+    }
+
+    /** Downloads (or updates) one state's maps. */
+    fun downloadRegion(region: String) {
+        if (_download.value is DownloadState.Checking || _download.value is DownloadState.Downloading) return
+        viewModelScope.launch {
+            _download.value = DownloadState.Checking
+            try {
+                val st = MapStore(ctx, region)
+                val release = _catalog.value.firstOrNull { it.region == region }?.release ?: st.findLatestRelease()
+                st.download(release) { file, done, total -> _download.value = DownloadState.Downloading(file, done, total, region) }
+                mapsChanged()
+                _download.value = DownloadState.UpToDate(release.tag)
+            } catch (e: Exception) {
+                _download.value = DownloadState.Error(friendly(e))
+            }
+        }
+    }
+
+    /** Removes one state's maps from the phone. */
+    fun deleteRegion(region: String) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { MapStore(ctx, region).delete() }
+            mapsChanged()
+        }
+    }
+
+    private fun mapsChanged() {
+        _installed.value = MapStore.installedRegions(ctx)
+        com.trailguidegps.app.data.MapRegion.names = _installed.value.map { MapStore.displayName(it) }
+        _mapsReady.value = _installed.value.isNotEmpty() || _onlineOnly.value
+        _mapVersion.value += 1
+        loadFeatures()
+        loadRouting()
+        computeUpdates()
+    }
+
+    /** Downloaded states with a newer map release, and how much the updates would download. */
+    private val _updates = MutableStateFlow<List<String>>(emptyList())
+    val updates: StateFlow<List<String>> = _updates.asStateFlow()
+    private fun computeUpdates() {
+        val cat = _catalog.value.associateBy { it.region }
+        val need = stores.filter { s -> cat[s.region]?.let { it.release.tag != s.installedTag() } == true }
+        _updates.value = need.map { it.region }
+        viewModelScope.launch {
+            runCatching {
+                _update.value = if (need.isEmpty()) null else {
+                    val bytes = need.sumOf { s -> s.updateBytes(cat.getValue(s.region).release) }
+                    MapUpdate(need.joinToString(",") { it.region }, bytes, need.joinToString(", ") { it.name })
+                }
+            }
+        }
+    }
+
+    /** Updates every downloaded state that has newer maps, one after another. */
+    fun updateAllMaps() {
+        val regions = _updates.value
+        if (regions.isEmpty()) return
+        viewModelScope.launch {
+            for (r in regions) {
+                downloadRegion(r)
+                // Wait for this one to finish before the next.
+                while (_download.value is DownloadState.Checking || _download.value is DownloadState.Downloading) kotlinx.coroutines.delay(500)
+                if (_download.value is DownloadState.Error) break
+            }
+        }
+    }
 
     /** Bumped whenever new map files are installed so the map reloads its style. */
     private val _mapVersion = MutableStateFlow(0)
@@ -58,6 +214,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val release: StateFlow<MapStore.Release?> = _release.asStateFlow()
 
     fun checkRelease() {
+        refreshCatalog()
         if (_release.value != null) return
         viewModelScope.launch {
             _release.value = runCatching { store.findLatestRelease() }.getOrNull()
@@ -68,18 +225,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val features: StateFlow<Features?> = _features.asStateFlow()
 
     init {
+        com.trailguidegps.app.data.MapRegion.names = _installed.value.map { MapStore.displayName(it) }
         loadFeatures()
     }
 
     private fun loadFeatures() {
-        if (!store.isReady()) return
+        val s = stores
+        if (s.isEmpty()) { _features.value = null; return }
         viewModelScope.launch {
-            _features.value = withContext(Dispatchers.IO) { runCatching { Features.load(store) }.getOrNull() }
+            _features.value = withContext(Dispatchers.IO) { runCatching { Features.load(s) }.getOrNull() }
         }
     }
 
-    /** Download the newest map files, or report that the installed ones are current. */
+    /** Updates the downloaded states (or downloads the first state). */
     fun downloadMaps(force: Boolean = false) {
+        if (_installed.value.size > 1 || (_updates.value.isNotEmpty() && !force)) { updateAllMaps(); return }
+        downloadMapsSingle(force)
+    }
+
+    private fun downloadMapsSingle(force: Boolean) {
         if (_download.value is DownloadState.Checking || _download.value is DownloadState.Downloading) return
         viewModelScope.launch {
             _download.value = DownloadState.Checking
@@ -90,14 +254,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     _download.value = DownloadState.UpToDate(release.tag)
                     return@launch
                 }
-                store.download(release) { file, done, total ->
-                    _download.value = DownloadState.Downloading(file, done, total)
+                val st = store
+                st.download(release) { file, done, total ->
+                    _download.value = DownloadState.Downloading(file, done, total, st.region)
                 }
-                _mapsReady.value = store.isReady()
-                _mapVersion.value += 1
                 _update.value = null
-                loadFeatures()
-                loadRouting()
+                mapsChanged()
                 _download.value = DownloadState.UpToDate(release.tag)
             } catch (e: Exception) {
                 _download.value = DownloadState.Error(friendly(e))
@@ -187,16 +349,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Quietly checks for newer maps when there's a connection; does nothing offline. */
     fun checkForMapUpdate() {
-        if (!store.isReady()) return
-        viewModelScope.launch {
-            runCatching {
-                val r = store.findLatestRelease()
-                _release.value = r
-                _update.value = if (r.tag != store.installedTag()) {
-                    MapUpdate(r.tag, store.updateBytes(r), r.tag.removePrefix("maps-${store.region}-").substringBefore("-run"))
-                } else null
-            }
-        }
+        refreshCatalog()
     }
 
     // ---- Selection, search and water notes (phase 4) ----
@@ -308,7 +461,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!force && !fires.stale()) return
         viewModelScope.launch {
             _firesStatus.value = "Updating…"
-            _firesStatus.value = runCatching { fires.refresh() }.fold(
+            // Wildfires in and around the downloaded states (Oregon's area if none).
+            val boxes = stores.mapNotNull { it.bbox() }
+            val area = if (boxes.isEmpty()) listOf(-125.5, 41.0, -115.5, 47.0)
+                else listOf(boxes.minOf { it[0] } - 0.5, boxes.minOf { it[1] } - 0.5, boxes.maxOf { it[2] } + 0.5, boxes.maxOf { it[3] } + 0.5)
+            _firesStatus.value = runCatching { fires.refresh(area) }.fold(
                 onSuccess = { null },
                 onFailure = { if (force) "Couldn't update: no connection?" else null },
             )
@@ -489,7 +646,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** A map picture of the route (topo, no satellite), with the route drawn on. Null if it can't be drawn. */
     private fun snapshotRoute(route: SavedRoute, done: (android.graphics.Bitmap?) -> Unit) {
         val app = getApplication<Application>()
-        if (route.coords.size < 2 || !store.isReady()) { done(null); return }
+        if (route.coords.size < 2 || stores.isEmpty()) { done(null); return }
         val b = org.maplibre.android.geometry.LatLngBounds.Builder()
         route.coords.forEach { b.include(org.maplibre.android.geometry.LatLng(it[0], it[1])) }
         val raw = runCatching { b.build() }.getOrNull() ?: run { done(null); return }
@@ -500,7 +657,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             raw.latitudeNorth + padLat, raw.longitudeEast + padLon, raw.latitudeSouth - padLat, raw.longitudeWest - padLon,
         )
         // The offline style, without the layers that are off by default or need a connection.
-        val styleJson = org.json.JSONObject(com.trailguidegps.app.map.MapStyle.build(store))
+        val styleJson = org.json.JSONObject(com.trailguidegps.app.map.MapStyle.build(stores.map { com.trailguidegps.app.map.MapStyle.MapSource(it.region, it.dir) }))
         val layers = styleJson.getJSONArray("layers")
         for (i in 0 until layers.length()) {
             val l = layers.getJSONObject(i)
@@ -688,7 +845,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Route planning (phase 5) ----
 
     val routes = RouteStore(app)
-    @Volatile private var graph: RouteGraph? = null
+    /** One trail network per downloaded state. */
+    @Volatile private var graphs: List<RouteGraph> = emptyList()
     @Volatile private var terrain: Terrain? = null
 
     /** null while loading, true when the trail network is ready, false if it isn't downloaded. */
@@ -703,12 +861,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Opens the trail network and elevation tiles (unpacking the network the first time). */
     fun loadRouting() {
-        if (!store.isReady()) { _routingReady.value = false; return }
+        val s = stores
+        if (s.isEmpty()) { _routingReady.value = false; terrain = null; graphs = emptyList(); return }
         viewModelScope.launch(Dispatchers.IO) {
             _routingReady.value = null
-            terrain = runCatching { Terrain(store.file("terrain.pmtiles")) }.getOrNull()
-            graph = if (store.unpackRouting()) RouteGraph.open(store.routingFile()) else null
-            _routingReady.value = graph != null
+            terrain = runCatching { Terrain(s.map { it.file("terrain.pmtiles") }) }.getOrNull()
+            graphs = s.mapNotNull { st -> if (st.unpackRouting()) runCatching { RouteGraph.open(st.routingFile()) }.getOrNull() else null }
+            _routingReady.value = graphs.isNotEmpty()
         }
     }
 
@@ -926,7 +1085,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     private fun buildLeg(prev: RoutePoint?, lat: Double, lon: Double, follow: Boolean, wp: String?): Triple<RoutePoint, RouteLeg?, String?> {
-        val g = graph
+        // The trail network of the state these points are in (routes stop at state lines for now).
+        val gs = graphs
+        val g = gs.firstOrNull { it.snap(lat, lon) != null && (prev == null || it.snap(prev.lat, prev.lon) != null) }
+            ?: gs.firstOrNull { it.snap(lat, lon) != null } ?: gs.firstOrNull()
         val dist = com.trailguidegps.app.geo.Geo::distanceM
         val snapNew = if (follow && g != null) g.snap(lat, lon) else null
         // A tapped point moves onto the trail; a waypoint keeps its exact spot.

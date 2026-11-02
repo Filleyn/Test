@@ -45,24 +45,57 @@ fun SetupScreen(vm: AppViewModel) {
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
-    val size = release?.totalBytes?.let { formatSize(it) }
+    val catalog by vm.catalog.collectAsStateWithLifecycle()
+    val catalogError by vm.catalogError.collectAsStateWithLifecycle()
+    val fix by vm.tracker.fix.collectAsStateWithLifecycle()
+    // The state you're in (from GPS) is offered first; you can pick any other.
+    var picked by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val here = fix?.let { vm.regionAt(it.lat, it.lon) }
+    val choice = picked ?: here ?: catalog.firstOrNull { it.region == com.trailguidegps.app.BuildConfig.MAPS_REGION }?.region ?: catalog.firstOrNull()?.region
+    val info = catalog.firstOrNull { it.region == choice }
+    val size = info?.release?.totalBytes?.let { formatSize(it) } ?: release?.totalBytes?.let { formatSize(it) }
+    var menu by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(
-        Modifier.fillMaxSize().background(Color(0xFFEFEEE2)).safeDrawingPadding().padding(24.dp),
+        Modifier.fillMaxSize().background(TG.Surface).safeDrawingPadding().padding(24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         Text("TrailGuide GPS", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Download the offline maps for ${com.trailguidegps.app.data.MapRegion.name} once. After that the app works with no signal: " +
-                "topo map, trails, water sources and your GPS position, anywhere in the map area.",
+            "Pick a state and download its maps once. After that the app works with no signal: topo map, trails, " +
+                "water sources and your GPS position. You can add more states later.",
             fontSize = 16.sp, color = TG.Muted, lineHeight = 22.sp,
         )
+        Spacer(Modifier.height(20.dp))
+        // The state picker: a drop-down list.
+        Text("State", fontSize = 13.sp, color = TG.Muted)
+        androidx.compose.foundation.layout.Box {
+            androidx.compose.material3.OutlinedButton(onClick = { menu = true }, enabled = catalog.isNotEmpty(),
+                shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Text(info?.name ?: if (catalogError != null) "Can't reach the map list" else "Finding states…", fontSize = 16.sp, color = TG.Ink,
+                    modifier = Modifier.weight(1f))
+                if (choice != null && choice == here) Text("you're here", fontSize = 12.sp, color = TG.Accent)
+                Text("  ▾", fontSize = 16.sp, color = TG.Ink)
+            }
+            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                catalog.forEach { r ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(r.name + "  ·  " + formatSize(r.release.totalBytes) + if (r.region == here) "  · you're here" else "") },
+                        onClick = { picked = r.region; menu = false },
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Text(
             (size?.let { "Download size: $it. " } ?: "") + "Use Wi-Fi and keep the app open; an interrupted download resumes.",
             fontSize = 14.sp, color = TG.Muted, lineHeight = 20.sp,
         )
-        Spacer(Modifier.height(24.dp))
+        catalogError?.let {
+            Text("$it Connect to the internet to see the states.", fontSize = 13.sp, color = TG.Danger, modifier = Modifier.padding(top = 6.dp))
+            androidx.compose.material3.TextButton(onClick = { vm.refreshCatalog() }) { Text("Try again", color = TG.Accent) }
+        }
+        Spacer(Modifier.height(20.dp))
         when (val s = state) {
             is DownloadState.Downloading -> {
                 val frac = if (s.total > 0) s.done.toFloat() / s.total else 0f
@@ -79,18 +112,26 @@ fun SetupScreen(vm: AppViewModel) {
                     Spacer(Modifier.height(12.dp))
                 }
                 Button(
-                    onClick = { vm.downloadMaps(force = true) },
+                    onClick = { choice?.let { vm.downloadRegion(it) } ?: vm.downloadMaps(force = true) },
+                    enabled = choice != null || catalog.isEmpty(),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                 ) {
                     Text(
                         when {
                             s is DownloadState.Error -> "Resume download"
-                            size != null -> "Download ${com.trailguidegps.app.data.MapRegion.name} maps ($size)"
-                            else -> "Download ${com.trailguidegps.app.data.MapRegion.name} maps"
+                            info != null -> "Download ${info.name} maps" + (size?.let { " ($it)" } ?: "")
+                            else -> "Download maps"
                         },
                         fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                     )
+                }
+                if (catalog.isNotEmpty()) {
+                    androidx.compose.material3.TextButton(onClick = { vm.useOnlineMap() }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        Text("Use the online map for now", color = TG.Accent, fontSize = 15.sp)
+                    }
+                    Text("Shows every state's map while you have signal. Search, routes and offline use need a downloaded state.",
+                        fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
                 }
             }
         }

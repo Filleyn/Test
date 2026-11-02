@@ -45,7 +45,7 @@ object PublicLand {
             website?.let { add("Official page" to it) }
             agency?.let { add(it) }
             if (!name.isNullOrBlank() && name != kindLabel) {
-                val q = java.net.URLEncoder.encode("$name $kindLabel ${MapRegion.name}", "UTF-8")
+                val q = java.net.URLEncoder.encode("$name $kindLabel ${MapRegion.names.singleOrNull().orEmpty()}".trim(), "UTF-8")
                 add("Search the web" to "https://www.google.com/search?q=$q")
             }
         }

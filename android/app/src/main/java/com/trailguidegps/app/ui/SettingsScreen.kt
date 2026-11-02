@@ -45,7 +45,7 @@ import com.trailguidegps.app.data.Settings
 
 /** All the app's settings in one place. */
 @Composable
-fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
+fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit, onOpenMaps: () -> Unit = {}) {
     val s by vm.settings.value.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val pace by vm.pace.collectAsStateWithLifecycle()
@@ -105,6 +105,30 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
             }
 
             Section("Battery")
+            run {
+                val restricted = remember { mutableStateOf(com.trailguidegps.app.record.BatteryHelp.restricted(context)) }
+                // Re-check when you come back from the phone's settings.
+                androidx.compose.runtime.DisposableEffect(Unit) {
+                    val owner = (context as? androidx.lifecycle.LifecycleOwner)
+                    val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                        if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) restricted.value = com.trailguidegps.app.record.BatteryHelp.restricted(context)
+                    }
+                    owner?.lifecycle?.addObserver(obs)
+                    onDispose { owner?.lifecycle?.removeObserver(obs) }
+                }
+                Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Background battery use", fontSize = 16.sp, color = TG.Ink)
+                        Text(
+                            if (!restricted.value) "Unrestricted: recording and route alerts keep going with the screen off."
+                            else if (com.trailguidegps.app.record.BatteryHelp.strictPhone) "Optimized: this phone may stop recording with the screen off. " + com.trailguidegps.app.record.BatteryHelp.HOW_TO
+                            else "Optimized. Pixels keep recording anyway; set Unrestricted if a track ever stops early.",
+                            fontSize = 12.sp, color = if (restricted.value && com.trailguidegps.app.record.BatteryHelp.strictPhone) TG.Warn else TG.Muted, lineHeight = 16.sp,
+                        )
+                    }
+                    TextButton(onClick = { com.trailguidegps.app.record.BatteryHelp.openSettings(context) }) { Text(if (restricted.value) "Change" else "Open", color = TG.Accent) }
+                }
+            }
             ToggleRow("Battery saver", "GPS every 15 seconds instead of 5 while recording or following. Tracks are a little less detailed.",
                 s.batterySaver) { on -> vm.settings.update { it.copy(batterySaver = on) } }
             ToggleRow("Low battery warning", "A notification at 20% and 10% while recording or following.", s.lowBatteryWarning) { on ->
@@ -199,9 +223,11 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit) {
                 s.checkUpdatesOnLaunch) { on -> vm.settings.update { it.copy(checkUpdatesOnLaunch = on) } }
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Installed maps", fontSize = 16.sp, color = TG.Ink)
-                    Text("${vm.store.title()} · built ${vm.store.builtDate() ?: "unknown"}", fontSize = 12.sp, color = TG.Muted)
+                    Text("Maps for each state", fontSize = 16.sp, color = TG.Ink)
+                    Text(if (vm.stores.isEmpty()) "None downloaded" else vm.stores.joinToString(" · ") { "${it.name}, built ${it.builtDate() ?: "?"}" },
+                        fontSize = 12.sp, color = TG.Muted)
                 }
+                TextButton(onClick = onOpenMaps) { Text("Manage", color = TG.Accent) }
                 val dl by vm.download.collectAsStateWithLifecycle()
                 TextButton(
                     onClick = { vm.downloadMaps() },
