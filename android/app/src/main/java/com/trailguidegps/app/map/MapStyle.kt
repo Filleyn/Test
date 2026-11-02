@@ -175,7 +175,9 @@ object MapStyle {
      * release ([remoteBase] plus file names in [remoteFiles]) when it isn't downloaded.
      */
     data class MapSource(val region: String, val local: java.io.File?, val remoteBase: String? = null, val remoteFiles: Set<String> = emptySet()) {
-        fun has(name: String) = if (local != null) java.io.File(local, name).exists() else name in remoteFiles
+        // States you haven't downloaded stream only their tiled map files. Their water and places
+        // (whole GeoJSON files, tens of MB each) would have to be downloaded and held in memory.
+        fun has(name: String) = if (local != null) java.io.File(local, name).exists() else name in remoteFiles && !name.endsWith(".geojson")
         fun pm(name: String) = if (local != null) "pmtiles://file://" + java.io.File(local, name).absolutePath else "pmtiles://$remoteBase/$name"
         fun gj(name: String) = if (local != null) "file://" + java.io.File(local, name).absolutePath else "$remoteBase/$name"
     }

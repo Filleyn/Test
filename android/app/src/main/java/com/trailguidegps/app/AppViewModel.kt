@@ -121,12 +121,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Map files for the style: downloaded states from the phone, the rest streamed from GitHub. */
     fun mapSources(): List<com.trailguidegps.app.map.MapStyle.MapSource> {
         val local = stores.map { com.trailguidegps.app.map.MapStyle.MapSource(it.region, it.dir) }
-        val remote = _catalog.value.filter { it.region !in _installed.value }.map { r ->
+        val remote = if (!settings.value.value.onlineStates) emptyList() else _catalog.value.filter { it.region !in _installed.value }.map { r ->
             com.trailguidegps.app.map.MapStyle.MapSource(r.region, null,
                 "https://github.com/${com.trailguidegps.app.BuildConfig.MAPS_REPO}/releases/download/${r.release.tag}",
                 r.release.assets.map { it.name }.toSet())
         }
         return local + remote
+    }
+
+    /** Turns streaming of not-downloaded states on or off, and redraws the map. */
+    fun setOnlineStates(on: Boolean) {
+        settings.update { it.copy(onlineStates = on) }
+        _mapVersion.value += 1
     }
 
     /** The state whose area contains a spot, from the catalog (or the downloaded manifests). */
