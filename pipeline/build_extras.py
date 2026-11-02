@@ -61,6 +61,9 @@ def level(s):
     return int(m.group(1)) if m else None
 
 
+KEEP = lambda geom: True  # replaced in main() when an outline is given
+
+
 def mvum(bbox, path):
     feats = fetch_all(MVUM, "1=1", ",".join([
         "id", "name", "mvum_symbol_name", "operationalmaintlevel", "surfacetype", "seasonal",
@@ -70,7 +73,7 @@ def mvum(bbox, path):
     with open(path, "w") as f:
         for ft in feats:
             p = ft.get("properties") or {}
-            if not ft.get("geometry"):
+            if not ft.get("geometry") or not KEEP(ft["geometry"]):
                 continue
             pc = (p.get("passengervehicle") or "").lower() == "open"
             hc = (p.get("highclearancevehicle") or "").lower() == "open"
@@ -94,7 +97,7 @@ def burns(bbox, path, since):
     best = {}
     for ft in feats:
         p = ft.get("properties") or {}
-        if not ft.get("geometry"):
+        if not ft.get("geometry") or not KEEP(ft["geometry"]):
             continue
         name = (p.get("INCIDENT") or "").strip().title() or "Unnamed fire"
         year = p.get("FIRE_YEAR_INT")
@@ -139,6 +142,8 @@ def rough(pbf, bbox, path):
             pts = [[round(nd.lon, 6), round(nd.lat, 6)] for nd in w.nodes if nd.location.valid()]
             if len(pts) < 2 or not any(bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3] for x, y in pts):
                 continue
+            if not KEEP({"type": "LineString", "coordinates": pts}):
+                continue
             f.write(json.dumps({"type": "Feature", "properties": {"why": why, "name": t.get("name") or t.get("ref"),
                                                                   "surface": t.get("surface")},
                                 "geometry": {"type": "LineString", "coordinates": pts}}) + "\n")
@@ -154,7 +159,11 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--stats", required=True)
     ap.add_argument("--burns-since", type=int, default=2000)
+    ap.add_argument("--clip", help="GeoJSON outline; features outside it are left out")
     a = ap.parse_args()
+    global KEEP
+    import region_clip
+    KEEP = region_clip.point_keeper(a.clip)
     bbox = [float(v) for v in a.bbox.split(",")]
     os.makedirs(a.work, exist_ok=True)
     stats, layers = {}, []

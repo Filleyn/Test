@@ -35,6 +35,79 @@
       "Twin Lakes",
       "Deschutes River"
     ],
-    "state": "OR"
+    "state": "OR",
+    "java_heap": "6g"
+  },
+  "washington": {
+    "title": "All of Washington",
+    "bbox": [
+      -124.85,
+      45.54,
+      -116.9,
+      49.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/washington-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Pacific Crest",
+    "state": "WA",
+    "java_heap": "6g"
+  },
+  "idaho": {
+    "title": "All of Idaho",
+    "bbox": [
+      -117.25,
+      41.99,
+      -111.04,
+      49.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/idaho-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Idaho Centennial",
+    "state": "ID",
+    "java_heap": "6g"
+  },
+  "california": {
+    "title": "All of California",
+    "bbox": [
+      -124.48,
+      32.53,
+      -114.13,
+      42.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/california-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Pacific Crest",
+    "state": "CA",
+    "java_heap": "10g"
+  },
+  "nevada": {
+    "title": "All of Nevada",
+    "bbox": [
+      -120.01,
+      35.0,
+      -114.03,
+      42.0
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/nevada-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Tahoe Rim",
+    "state": "NV",
+    "java_heap": "6g"
   }
 }

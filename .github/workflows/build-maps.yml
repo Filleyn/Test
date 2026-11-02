@@ -1,9 +1,8 @@
 name: Build map files
 
 on:
-  # Monthly refresh of the statewide maps (2nd of the month, early morning Pacific).
-  schedule:
-    - cron: "17 11 2 * *"
+  # Built when asked (Actions → Build map files → Run workflow). Each state builds separately,
+  # and several can run at once.
   workflow_dispatch:
     inputs:
       region:
@@ -12,7 +11,11 @@ on:
         options:
           - cottonwood-canyon
           - oregon
-        default: cottonwood-canyon
+          - washington
+          - idaho
+          - california
+          - nevada
+        default: oregon
       expect_trail:
         description: "Trail name the check report should look for (blank uses the region's default)"
         default: ""
@@ -52,6 +55,7 @@ jobs:
           print("terrain_max_zoom=" + str(r["terrain_max_zoom"]))
           print("contour_max_zoom=" + str(r.get("contour_max_zoom", 14)))
           print("roads=" + r.get("roads", "all"))
+          print("java_heap=" + r.get("java_heap", "6g"))
           print("expect_trail=" + (os.environ.get("EXPECT") or r.get("expect_trail", "")))
           EOF
           sudo mkdir -p "$WORK" "$OUT"
@@ -104,6 +108,11 @@ jobs:
             -o "$WORK/filtered.osm.pbf" --overwrite
           osmium fileinfo -e "$WORK/region.osm.pbf" | grep -E "Number of (nodes|ways|relations)" || true
 
+      - name: Get the state outline (for trimming the edges so neighbouring states don't overlap)
+        run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
+          python3 pipeline/region_poly.py --osm-url "${{ steps.region.outputs.osm }}" --out "$WORK/outline.geojson"
+
       - name: Download elevation (USGS 3DEP)
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
@@ -124,7 +133,7 @@ jobs:
       - name: Build topo basemap (Planetiler)
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
-          java -Xmx6g -jar "$WORK/planetiler.jar" \
+          java -Xmx${{ steps.region.outputs.java_heap }} -jar "$WORK/planetiler.jar" \
             --osm-path="$WORK/region.osm.pbf" \
             --output="$OUT/topo.pmtiles" \
             --bounds="${{ steps.region.outputs.bbox }}" \
@@ -137,7 +146,7 @@ jobs:
           exec > >(tee -a "$WORK/build.log") 2>&1
           # 40 ft is exactly 12.192 m, so contour the metre DEM and convert labels to feet.
           gdal_contour -q -a ele_m -i 12.192 "$WORK/dem-region.tif" "$WORK/contours.gpkg"
-          ogr2ogr -f GeoJSONSeq "$WORK/contours.geojsonl" "$WORK/contours.gpkg" -t_srs EPSG:4326 \
+          ogr2ogr -f GeoJSONSeq "$WORK/contours.geojsonl" "$WORK/contours.gpkg" -t_srs EPSG:4326 -clipdst "$WORK/outline.geojson" \
             -dialect SQLITE \
             -sql "SELECT geom, CAST(ROUND(ele_m * 3.28084) AS INTEGER) AS ele_ft, CASE WHEN CAST(ROUND(ele_m * 3.28084) AS INTEGER) % 200 = 0 THEN 1 ELSE 0 END AS major FROM contour"
           tippecanoe -o "$OUT/contours.pmtiles" -l contours -Z10 -z"${{ steps.region.outputs.contour_max_zoom }}" \
@@ -152,7 +161,7 @@ jobs:
           python3 pipeline/terrain_rgb.py --dem "$WORK/dem-region.tif" \
             --bbox="${{ steps.region.outputs.bbox }}" \
             --minzoom 6 --maxzoom "${{ steps.region.outputs.terrain_max_zoom }}" \
-            --out "$OUT/terrain.pmtiles"
+            --clip "$WORK/outline.geojson" --out "$OUT/terrain.pmtiles"
 
       - name: Build water, trails, places and routing graph
         run: |
@@ -160,20 +169,23 @@ jobs:
           python3 pipeline/build_osm_layers.py --pbf "$WORK/filtered.osm.pbf" \
             --bbox="${{ steps.region.outputs.bbox }}" --dem "$WORK/dem-region.tif" --out "$OUT" \
             --roads "${{ steps.region.outputs.roads }}"
+          # Springs and places just over the border belong to the neighbouring state's maps.
+          (cd pipeline && python3 clip_points.py --clip "$WORK/outline.geojson" "$OUT/water.geojson" "$OUT/pois.geojson")
 
       - name: Build slope shading
         continue-on-error: true
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/slope_tiles.py --dem "$WORK/dem-region.tif" --bbox="${{ steps.region.outputs.bbox }}" \
-            --minzoom 10 --maxzoom 12 --out "$OUT/slope.pmtiles"
+            --minzoom 10 --maxzoom 12 --clip "$WORK/outline.geojson" --out "$OUT/slope.pmtiles"
 
       - name: Build road access, rough roads and past burns
         continue-on-error: true
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
           python3 pipeline/build_extras.py --bbox="${{ steps.region.outputs.bbox }}" --pbf "$WORK/filtered.osm.pbf" \
-            --work "$WORK/extras" --out "$OUT/extras.pmtiles" --stats "$WORK/extras-stats.json"
+            --work "$WORK/extras" --out "$OUT/extras.pmtiles" --stats "$WORK/extras-stats.json" \
+            --clip "$WORK/outline.geojson"
 
       - name: Build public land layer (PAD-US)
         # If the source is down the rest of the maps still publish; the app treats this file as optional.

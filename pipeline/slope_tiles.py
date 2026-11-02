@@ -86,9 +86,11 @@ def _render(t):
     return (zxy_to_tileid(t[2], t[0], t[1]), data) if data is not None else None
 
 
-def build(dem, bbox, minzoom, maxzoom, out, workers=None):
+def build(dem, bbox, minzoom, maxzoom, out, workers=None, clip=None):
     import multiprocessing as mp
-    todo = [(t.x, t.y, t.z) for z in range(minzoom, maxzoom + 1) for t in mercantile.tiles(*bbox, zooms=z)]
+    import region_clip
+    keep = region_clip.tile_keeper(clip)
+    todo = [(t.x, t.y, t.z) for z in range(minzoom, maxzoom + 1) for t in mercantile.tiles(*bbox, zooms=z) if keep(t.z, t.x, t.y)]
     print(f"rendering {len(todo)} slope tiles")
     tiles = []
     with mp.Pool(workers or mp.cpu_count(), initializer=_init_worker, initargs=(dem,)) as pool:
@@ -123,8 +125,9 @@ def main():
     ap.add_argument("--minzoom", type=int, default=10)
     ap.add_argument("--maxzoom", type=int, default=12)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--clip", help="GeoJSON outline; tiles outside it are left out")
     a = ap.parse_args()
-    n = build(a.dem, [float(v) for v in a.bbox.split(",")], a.minzoom, a.maxzoom, a.out)
+    n = build(a.dem, [float(v) for v in a.bbox.split(",")], a.minzoom, a.maxzoom, a.out, clip=a.clip)
     print(f"wrote {n} slope tiles to {a.out}")
 
 
