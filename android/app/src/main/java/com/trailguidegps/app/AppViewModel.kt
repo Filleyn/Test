@@ -121,7 +121,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Map files for the style: downloaded states from the phone, the rest streamed from GitHub. */
     fun mapSources(): List<com.trailguidegps.app.map.MapStyle.MapSource> {
         val local = stores.map { com.trailguidegps.app.map.MapStyle.MapSource(it.region, it.dir) }
-        val remote = if (!settings.value.value.onlineStates) emptyList() else _catalog.value.filter { it.region !in _installed.value }.map { r ->
+        // Streaming other states is experimental; with nothing downloaded it's the only map there is.
+        val remote = if (!settings.value.value.onlineStates && _installed.value.isNotEmpty()) emptyList() else _catalog.value.filter { it.region !in _installed.value }.map { r ->
             com.trailguidegps.app.map.MapStyle.MapSource(r.region, null,
                 "https://github.com/${com.trailguidegps.app.BuildConfig.MAPS_REPO}/releases/download/${r.release.tag}",
                 r.release.assets.map { it.name }.toSet())

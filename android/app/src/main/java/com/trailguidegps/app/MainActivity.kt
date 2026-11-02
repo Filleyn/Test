@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
         com.trailguidegps.app.data.CrashLog.install(this)
         com.trailguidegps.app.data.CrashLog.checkLastExit(this)
         MapLibre.getInstance(this)
+        runCatching { com.trailguidegps.app.map.MapHttp.install() }
         // Dark clock and status icons over the light map (the emergency screen switches them to light).
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),

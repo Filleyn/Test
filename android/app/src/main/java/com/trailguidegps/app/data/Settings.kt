@@ -28,7 +28,7 @@ data class Settings(
     /** The first-run tips have been shown. */
     val introSeen: Boolean = false,
     /** Show states you haven't downloaded on the map while online. */
-    val onlineStates: Boolean = true,
+    val onlineStates: Boolean = false,
 ) {
     companion object {
         val OFF_ROUTE_CHOICES = listOf(100, 250, 500, 1000)
@@ -51,7 +51,7 @@ class SettingsStore(context: Context) {
         look = prefs.getString("look", "light") ?: "light",
         sunlight = prefs.getBoolean("sunlight", false),
         introSeen = prefs.getBoolean("introSeen", false),
-        onlineStates = prefs.getBoolean("onlineStates", true),
+        onlineStates = prefs.getBoolean("onlineStates", false),
     )
 
     fun update(change: (Settings) -> Settings) {
