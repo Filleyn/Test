@@ -1068,12 +1068,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     private fun buildLeg(prev: RoutePoint?, lat: Double, lon: Double, follow: Boolean, wp: String?): Triple<RoutePoint, RouteLeg?, String?> {
-        // The trail network of the state these points are in (routes stop at state lines for now).
+        // The trail networks (one per downloaded state) that reach each point.
         val gs = graphs
-        val g = gs.firstOrNull { it.snap(lat, lon) != null && (prev == null || it.snap(prev.lat, prev.lon) != null) }
-            ?: gs.firstOrNull { it.snap(lat, lon) != null } ?: gs.firstOrNull()
+        val newIn = gs.filter { it.snap(lat, lon) != null }
+        val prevIn = if (prev == null) emptyList() else gs.filter { it.snap(prev.lat, prev.lon) != null }
+        val g = newIn.firstOrNull { it in prevIn } ?: newIn.firstOrNull() ?: gs.firstOrNull()
         val dist = com.trailguidegps.app.geo.Geo::distanceM
-        val snapNew = if (follow && g != null) g.snap(lat, lon) else null
+        var snapNew = if (follow && g != null) g.snap(lat, lon) else null
         // A tapped point moves onto the trail; a waypoint keeps its exact spot.
         val point = if (snapNew != null && wp == null) RoutePoint(snapNew.lat, snapNew.lon, follow, wp) else RoutePoint(lat, lon, follow, wp)
         if (prev == null) {
@@ -1088,8 +1089,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (g == null) {
             return Triple(point, straightLeg(prev, point), "The trail network isn't downloaded yet, so this part is a straight line.")
         }
-        val snapPrev = g.snap(prev.lat, prev.lon)
-        val routed = if (snapPrev != null && snapNew != null) g.route(snapPrev, snapNew) else null
+        var snapPrev = g.snap(prev.lat, prev.lon)
+        var routed = if (snapPrev != null && snapNew != null && g in prevIn) g.route(snapPrev, snapNew) else null
+        if (routed == null) {
+            // Across a state line: along one state's trails to the border, then the next state's.
+            search@ for (ga in prevIn) for (gb in newIn) {
+                if (ga === gb) continue
+                val sa = ga.snap(prev.lat, prev.lon) ?: continue
+                val sb = gb.snap(lat, lon) ?: continue
+                val r = runCatching { com.trailguidegps.app.route.CrossState.route(ga, sa, gb, sb) }.getOrNull() ?: continue
+                routed = r; snapPrev = sa; snapNew = sb
+                break@search
+            }
+        }
         if (routed == null || snapPrev == null || snapNew == null) {
             val why = if (snapNew == null || snapPrev == null) "No trail within a quarter mile, so this part is a straight line."
             else "Couldn't find a trail connection, so this part is a straight line."

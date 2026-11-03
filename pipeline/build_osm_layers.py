@@ -39,6 +39,8 @@ TRAIL_KINDS = {"trail", "track"}
 # Statewide builds leave out town streets and paved through-roads to keep the
 # routing graph small; forest roads (tracks, unclassified, service) stay in.
 TOWN_ROADS = {"living_street", "residential", "tertiary", "secondary"}
+# Bigger roads kept only where a hiking route follows them.
+ROUTE_ROADS = {"primary", "primary_link", "secondary_link", "tertiary_link", "trunk", "trunk_link", "road"}
 
 WATER_TAGS = [
     ("natural", "spring", "spring"),
@@ -514,9 +516,14 @@ def build(pbf, bbox, dem_path, out_dir, roads="all"):
                 continue
             hw = tags.get("highway")
             kind = ROUTABLE.get(hw)
+            # Roads and bridges that a hiking route uses (the PCT over the Bridge of the Gods,
+            # through Cascade Locks) stay in even when they're a class normally left out.
+            on_route = obj.id in way_routes
+            if not kind and on_route and hw in ROUTE_ROADS:
+                kind = "road"
             if not kind or not is_foot_allowed(tags):
                 continue
-            if roads == "minor" and hw in TOWN_ROADS:
+            if roads == "minor" and hw in TOWN_ROADS and not on_route:
                 continue
             refs, coords = [], []
             for n in obj.nodes:

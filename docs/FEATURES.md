@@ -48,6 +48,7 @@ Current as of app 1.5 and the October 30, 2026 maps. Ideas not yet built are in 
 
 ## Search
 
+- **Routes across state lines:** with neighbouring states downloaded, a trail-following route carries on over the border (it finds where one state's trails meet the next and picks the shortest way through).
 - **Search by state:** with more than one state downloaded, chips pick which state to search (the one you're in by default) or all of them.
 - **Offline search:** trails, water, peaks, lakes, campsites, trailheads and towns, nearest first, each with its nearest town.
 - **Filters:** All, Trails, Trailheads, Campsites, Water, Peaks, Waterfalls and Towns; with nothing typed, a filter lists the nearest of that type.

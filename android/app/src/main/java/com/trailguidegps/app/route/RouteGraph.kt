@@ -115,6 +115,77 @@ class RouteGraph private constructor(private val buf: ByteBuffer) {
     /** SAC hiking scale 1–6, or 0 if the trail isn't rated (or the map is too old to say). */
     fun sacOf(edge: Int): Int = eSac?.get(edge)?.toInt()?.and(0xff) ?: 0
 
+    fun vertexLat(v: Int): Double = vlat.get(v) / 1e6
+    fun vertexLon(v: Int): Double = vlon.get(v) / 1e6
+    /** How many trail or road stretches meet at a vertex (1 = a dead end). */
+    fun degree(v: Int): Int = adjStart.get(v + 1) - adjStart.get(v)
+
+    /** [south, west, north, east] of the area this network was built for. */
+    val bounds: DoubleArray get() = doubleArrayOf(minLat, minLon, minLat + rows * cellDeg, minLon + cols * cellDeg)
+
+    /** A snap sitting exactly on a vertex. */
+    fun snapAtVertex(v: Int): Snap? {
+        if (degree(v) == 0) return null
+        val e = adjEdges.get(adjStart.get(v))
+        return Snap(e, if (eFrom.get(e) == v) 0.0 else 1.0, vertexLat(v), vertexLon(v), 0.0)
+    }
+
+    /**
+     * Walking distance in metres from [a] to each of [targets] (infinity where unreachable
+     * within the search limit). One search for all of them: A* aimed at the nearest target,
+     * which still gives exact distances because the estimate never overshoots.
+     */
+    fun distances(a: Snap, targets: List<Snap>, maxSettled: Int = 2_500_000): DoubleArray {
+        val best = DoubleArray(targets.size) { Double.POSITIVE_INFINITY }
+        if (targets.isEmpty()) return best
+        val n = vertexCount
+        val g = FloatArray(n) { Float.POSITIVE_INFINITY }
+        val closed = BooleanArray(n)
+        val heap = MinHeap()
+        val tLat = DoubleArray(targets.size) { targets[it].lat }
+        val tLon = DoubleArray(targets.size) { targets[it].lon }
+        val kx = cos(Math.toRadians(a.lat)) * 111_320.0 * 0.99
+        val ky = 110_540.0 * 0.99
+        fun h(v: Int): Double {
+            val la = vlat.get(v) / 1e6
+            val lo = vlon.get(v) / 1e6
+            var m = Double.POSITIVE_INFINITY
+            for (i in tLat.indices) { val d = hypot((lo - tLon[i]) * kx, (la - tLat[i]) * ky); if (d < m) m = d }
+            return m
+        }
+        // Where each target can be reached from: the two ends of its stretch.
+        val atVertex = HashMap<Int, MutableList<Pair<Int, Double>>>()
+        targets.forEachIndexed { i, t ->
+            val len = eLen.get(t.edge).toDouble()
+            atVertex.getOrPut(eFrom.get(t.edge)) { ArrayList() } += i to t.frac * len
+            atVertex.getOrPut(eTo.get(t.edge)) { ArrayList() } += i to (1 - t.frac) * len
+            if (t.edge == a.edge) best[i] = abs(a.frac - t.frac) * len
+        }
+        val la = eLen.get(a.edge).toDouble()
+        for ((v, cost) in listOf(eFrom.get(a.edge) to a.frac * la, eTo.get(a.edge) to (1 - a.frac) * la)) {
+            if (cost < g[v]) { g[v] = cost.toFloat(); heap.push(cost + h(v), v) }
+        }
+        var settled = 0
+        while (heap.size > 0) {
+            val f = heap.peekKey()
+            val v = heap.pop()
+            if (f >= best.max()) break
+            if (closed[v]) continue
+            closed[v] = true
+            if (++settled > maxSettled) break
+            val cost = g[v].toDouble()
+            atVertex[v]?.forEach { (i, off) -> if (cost + off < best[i]) best[i] = cost + off }
+            for (i in adjStart.get(v) until adjStart.get(v + 1)) {
+                val e = adjEdges.get(i)
+                val u = other(e, v)
+                if (closed[u]) continue
+                val nc = cost + eLen.get(e)
+                if (nc < g[u]) { g[u] = nc.toFloat(); heap.push(nc + h(u), u) }
+            }
+        }
+        return best
+    }
+
     /** Adds up terrain for a leg made of these (edge, metres used) pieces. */
     private fun terrain(pieces: List<Pair<Int, Double>>): Triple<DoubleArray, Int, Double> {
         val kindM = DoubleArray(3)
