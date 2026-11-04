@@ -130,6 +130,35 @@ jobs:
           gdalwarp -q -overwrite -multi -wo NUM_THREADS=ALL_CPUS -te_srs EPSG:4326 -te "$W" "$S" "$E" "$N" \
             -co COMPRESS=DEFLATE -co TILED=YES "$WORK/dem.vrt" "$WORK/dem-region.tif"
 
+      - name: Get coastline, lake and Natural Earth data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # These come from community servers that are sometimes down. Each copy that
+          # downloads is also kept in the "planetiler-sources" release as a fallback.
+          D="$WORK/planetiler-sources"; mkdir -p "$D"; cd "$D"
+          R="${{ github.repository }}"
+          gh release view planetiler-sources -R "$R" >/dev/null 2>&1 || \
+            gh release create planetiler-sources -R "$R" --prerelease --title "Map build source data" \
+              --notes "Fallback copies of the coastline, lake and Natural Earth files the topo build needs." || true
+          get() {
+            name="$1"; url="$2"
+            if curl -fsSL --retry 3 --retry-delay 20 --connect-timeout 30 -o "$name.part" "$url"; then
+              mv "$name.part" "$name"; echo "Downloaded $name"
+              if ! gh release view planetiler-sources -R "$R" --json assets -q '.assets[].name' | grep -qx "$name"; then
+                gh release upload planetiler-sources "$name" -R "$R" || true
+              fi
+              return 0
+            fi
+            rm -f "$name.part"
+            echo "::warning::$url didn't download; using the saved copy."
+            gh release download planetiler-sources -R "$R" -p "$name" -D . --clobber
+          }
+          get water-polygons-split-3857.zip https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
+          get natural_earth_vector.sqlite.zip https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip
+          get lake_centerline.shp.zip https://github.com/acalcutt/osm-lakelines/releases/download/v12/lake_centerline.shp.zip
+          ls -la
+
       - name: Build topo basemap (Planetiler)
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
