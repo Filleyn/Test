@@ -146,10 +146,12 @@ jobs:
         run: |
           url="${{ steps.deploy.outputs.url }}"
           sleep 10
-          for t in oregon/topo oregon/terrain; do
+          for t in oregon/topo oregon/terrain oregon/places; do
             code=$(curl -s -o tj.json -w "%{http_code}" "$url/$t.json")
             echo "$t.json -> HTTP $code: $(head -c 300 tj.json)"
           done
           code=$(curl -s -o tile.bin -w "%{http_code}" "$url/oregon/topo/8/40/91.mvt")
           echo "oregon/topo/8/40/91.mvt -> HTTP $code, $(stat -c %s tile.bin) bytes"
           [ "$code" = "200" ] || echo "::warning::A test map piece didn't load (HTTP $code). The Oregon files may not be copied yet."
+          code=$(curl -s -o p.bin -w "%{http_code}" "$url/oregon/places/10/164/365.mvt")
+          echo "oregon/places/10/164/365.mvt -> HTTP $code, $(stat -c %s p.bin) bytes"
