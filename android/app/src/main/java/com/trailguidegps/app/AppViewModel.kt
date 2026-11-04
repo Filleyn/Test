@@ -123,9 +123,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val local = stores.map { com.trailguidegps.app.map.MapStyle.MapSource(it.region, it.dir) }
         // Streaming other states is experimental; with nothing downloaded it's the only map there is.
         val remote = if (!settings.value.value.onlineStates && _installed.value.isNotEmpty()) emptyList() else _catalog.value.filter { it.region !in _installed.value }.map { r ->
-            com.trailguidegps.app.map.MapStyle.MapSource(r.region, null,
-                "https://github.com/${com.trailguidegps.app.BuildConfig.MAPS_REPO}/releases/download/${r.release.tag}",
-                r.release.assets.map { it.name }.toSet())
+            val server = com.trailguidegps.app.BuildConfig.TILES_URL
+            if (server.isNotBlank()) {
+                com.trailguidegps.app.map.MapStyle.MapSource(r.region, null, "$server/${r.region}", r.release.assets.map { it.name }.toSet(), tileServer = true)
+            } else {
+                com.trailguidegps.app.map.MapStyle.MapSource(r.region, null,
+                    "https://github.com/${com.trailguidegps.app.BuildConfig.MAPS_REPO}/releases/download/${r.release.tag}",
+                    r.release.assets.map { it.name }.toSet())
+            }
         }
         return local + remote
     }

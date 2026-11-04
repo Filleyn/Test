@@ -19,7 +19,7 @@ Current as of app 1.5 and the October 30, 2026 maps. Ideas not yet built are in 
 ## Map
 
 - **Several states:** Oregon, Washington, Idaho, California and Nevada so far. Pick your state at first run (GPS suggests the one you're in), download more any time, and update or delete each one in **Maps for each state** (Settings or the layers screen). Each state's files are trimmed to its outline so neighbours don't overlap.
-- **Online map:** states you haven't downloaded still show on the map while you have signal, streamed from the same map files; you can also start with the online map and download later.
+- **Online map:** states you haven't downloaded still show on the map while you have signal (topo, contours and shading, from the Cloudflare map server; water and places come with a download); you can also start with the online map and download later.
 
 - **Topo map:** OpenStreetMap roads, trails, water, land cover, peaks and place names, drawn offline.
 - **Contour lines:** every 40 ft, with 200 ft index lines labeled in feet.

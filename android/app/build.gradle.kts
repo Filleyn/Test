@@ -23,6 +23,8 @@ android {
         versionName = rootProject.file("version.txt").readText().trim() + "." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
         buildConfigField("String", "MAPS_REPO", "\"Filleyn/Test\"")
         buildConfigField("String", "MAPS_REGION", "\"oregon\"")
+        // The online map server (Cloudflare) for states you haven't downloaded; "" streams from GitHub.
+        buildConfigField("String", "TILES_URL", "\"https://trailguide-tiles.filleyn.workers.dev\"")
         // Pixel phones are 64-bit ARM; leaving out other processor types keeps the APK small.
         ndk { abiFilters += "arm64-v8a" }
     }
