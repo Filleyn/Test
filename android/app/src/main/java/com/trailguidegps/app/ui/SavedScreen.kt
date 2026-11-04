@@ -548,7 +548,7 @@ private fun RouteRow(
             if (onMap) "Hide from map" to onHide else null,
             "Edit route" to onEdit,
             "Water along route" to onWater,
-            "Reverse for the hike out" to onReverse,
+            "Reverse direction" to onReverse,
             "Trip plan (PDF)" to onTripPlan,
             "Move to folder" to onMove,
             "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete,

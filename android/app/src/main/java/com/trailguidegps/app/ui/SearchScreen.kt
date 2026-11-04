@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -70,19 +71,49 @@ private val kindColors = mapOf(
     "stream" to 0xFF3F88C5, "lookout" to 0xFFBF360C, "historic" to 0xFF6D4C41,
 )
 
-/** Offline search: trails, water sources and places from the downloaded maps. */
+/**
+ * Search: trails, water sources and places from the downloaded maps, or from a state's
+ * search list (fetched once, then kept) for states that aren't downloaded.
+ */
 @Composable
 fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
-    val features by vm.features.collectAsStateWithLifecycle()
+    val downloaded by vm.features.collectAsStateWithLifecycle()
     val notes by vm.waterNotes.notes.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf("All") }
     val kinds = Search.FILTERS.firstOrNull { it.first == filter }?.second
-    // Which state to search: the one you're in by default, when more than one is downloaded.
     val installed by vm.installed.collectAsStateWithLifecycle()
+    val catalog by vm.catalog.collectAsStateWithLifecycle()
+    val online = remember(installed, catalog) { vm.onlineSearchRegions() }
+    // Which state to search: the one you're in by default (null searches every downloaded state).
     var region by androidx.compose.runtime.saveable.rememberSaveable {
-        mutableStateOf(vm.searchReference()?.let { (la, lo) -> vm.regionAt(la, lo) }?.takeIf { it in vm.installed.value && vm.installed.value.size > 1 })
+        mutableStateOf(vm.searchReference()?.let { (la, lo) -> vm.regionAt(la, lo) }?.takeIf {
+            (it in vm.installed.value && vm.installed.value.size > 1) || it in vm.onlineSearchRegions()
+        } ?: if (vm.installed.value.isEmpty()) vm.onlineSearchRegions().firstOrNull() else null)
     }
+    val isOnline = region != null && region !in installed
+    // A state that isn't downloaded: its search list, fetched (once) when picked.
+    var onlineFeatures by remember { mutableStateOf<Features?>(null) }
+    var onlineError by remember { mutableStateOf<String?>(null) }
+    var retry by remember { mutableStateOf(0) }
+    LaunchedEffect(region, isOnline, retry) {
+        onlineFeatures = null
+        onlineError = null
+        val r = region ?: return@LaunchedEffect
+        if (!isOnline) return@LaunchedEffect
+        try {
+            onlineFeatures = vm.onlineSearch(r)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            onlineError = when (e) {
+                is java.net.UnknownHostException -> "No signal, and ${com.trailguidegps.app.data.MapStore.displayName(r)}'s search list isn't on the phone yet. Connect once to get it."
+                is OutOfMemoryError -> "The phone ran low on memory reading the search list. Try again."
+                else -> e.message ?: "Couldn't get the search list. Try again."
+            }
+        }
+    }
+    val features = if (isOnline) onlineFeatures else downloaded
     var filtered by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var nearby by remember { mutableStateOf<List<Pair<String, List<SearchResult>>>>(emptyList()) }
@@ -148,17 +179,27 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
                 modifier = Modifier.weight(1f).focusRequester(focus),
             )
         }
-        // Which state, when more than one is downloaded.
-        if (installed.size > 1) {
+        // Which state: downloaded ones, then ones searched online (marked with a cloud).
+        if (installed.size > 1 || online.isNotEmpty()) {
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                FilterChip(selected = region == null, onClick = { region = null }, label = { Text("All states") },
-                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Ink, selectedLabelColor = TG.Surface))
-                installed.forEach { r ->
+                val chipColors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Ink, selectedLabelColor = TG.Surface,
+                    selectedLeadingIconColor = TG.Surface)
+                if (installed.isNotEmpty()) {
+                    FilterChip(selected = region == null, onClick = { region = null },
+                        label = { Text(if (installed.size > 1) "All downloaded" else com.trailguidegps.app.data.MapStore.displayName(installed.first())) },
+                        colors = chipColors)
+                }
+                if (installed.size > 1) installed.forEach { r ->
                     FilterChip(selected = region == r, onClick = { region = r }, label = { Text(com.trailguidegps.app.data.MapStore.displayName(r)) },
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Ink, selectedLabelColor = TG.Surface))
+                        colors = chipColors)
+                }
+                online.forEach { r ->
+                    FilterChip(selected = region == r, onClick = { region = r }, label = { Text(com.trailguidegps.app.data.MapStore.displayName(r)) },
+                        leadingIcon = { Icon(Icons.Filled.Cloud, contentDescription = "Online", modifier = Modifier.size(16.dp)) },
+                        colors = chipColors)
                 }
             }
         }
@@ -176,7 +217,18 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
         }
 
         when {
-            features == null -> Message("Loading the offline index…")
+            isOnline && onlineError != null -> Column(Modifier.padding(24.dp)) {
+                Text(onlineError!!, fontSize = 15.sp, color = TG.Muted, lineHeight = 21.sp)
+                Spacer(Modifier.size(12.dp))
+                androidx.compose.material3.OutlinedButton(onClick = { retry++ }) { Text("Try again") }
+            }
+            isOnline && features == null -> Message(
+                if (vm.hasOnlineSearch(region!!)) "Loading ${com.trailguidegps.app.data.MapStore.displayName(region!!)}'s place names…"
+                else "Getting ${com.trailguidegps.app.data.MapStore.displayName(region!!)}'s place names" +
+                    (vm.onlineSearchBytes(region!!)?.let { " (%.1f MB, one time)".format(it / 1e6) } ?: "") +
+                    ". After this it searches without signal too."
+            )
+            features == null -> Message(if (installed.isEmpty()) "Pick a state above to search it." else "Loading the offline index…")
             query.isBlank() && kinds != null -> {
                 if (filtered.isEmpty()) {
                     Message(if (kinds == setOf("trail")) "Type part of a trail's name." else if (ref == null) "Waiting for GPS to list the nearest ones." else "None within 50 miles.")
@@ -207,7 +259,7 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
             }
             results.isEmpty() -> Message(
                 if (kinds != null) "No ${filter.lowercase()} match \"$query\". Try the All filter."
-                else "No matches for \"$query\" in your maps. Try part of the name, like \"pacific\" or \"spring\"."
+                else "No matches for \"$query\" in ${if (isOnline) com.trailguidegps.app.data.MapStore.displayName(region!!) else "your maps"}. Try part of the name, like \"pacific\" or \"spring\"."
             )
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(results, key = { "${it.kind}-${it.name}-${it.lat}-${it.lon}" }) { r ->

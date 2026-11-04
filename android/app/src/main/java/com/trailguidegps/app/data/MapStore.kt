@@ -41,7 +41,9 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
 
     data class Asset(val name: String, val url: String, val size: Long)
     data class Release(val tag: String, val assets: List<Asset>) {
-        val totalBytes get() = assets.sumOf { it.size }
+        /** Files a download installs (the online-only search file isn't one of them). */
+        val downloadAssets get() = assets.filter { it.name !in ONLINE }
+        val totalBytes get() = downloadAssets.sumOf { it.size }
     }
 
     /** Newest GitHub release whose tag starts with maps-<region>-. */
@@ -83,7 +85,7 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
             fetch(m, tmp.apply { delete() }, 0L) { }
             val newSums = checksums(tmp)
             val oldSums = checksums(file("manifest.json"))
-            release.assets.filter { a ->
+            release.downloadAssets.filter { a ->
                 a.name == "manifest.json" || newSums[a.name] == null || newSums[a.name] != oldSums[a.name] || !file(a.name).exists()
             }.sumOf { it.size }
         } finally {
@@ -156,7 +158,7 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
             }
             val newSums = checksums(File(tmp, "manifest.json"))
             val oldSums = checksums(file("manifest.json"))
-            for (asset in release.assets) {
+            for (asset in release.downloadAssets) {
                 if (asset.name == "manifest.json") continue
                 val target = File(tmp, asset.name)
                 val installed = file(asset.name)
@@ -168,7 +170,7 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
                 }
             }
 
-            val toFetch = release.assets.filter { File(tmp, it.name).length() != it.size }
+            val toFetch = release.downloadAssets.filter { File(tmp, it.name).length() != it.size }
             val total = toFetch.sumOf { it.size }
             var done = toFetch.sumOf { a -> File(tmp, a.name).length().coerceAtMost(a.size) }
             for (asset in toFetch) {
@@ -222,7 +224,10 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
             "topo.pmtiles", "contours.pmtiles", "terrain.pmtiles",
             "water.geojson", "trails.geojson", "pois.geojson", "manifest.json",
         )
-        val OPTIONAL = listOf("routing.bin.gz", "publiclands.pmtiles", "slope.pmtiles", "extras.pmtiles")
+        val OPTIONAL = listOf("routing.bin.gz", "publiclands.pmtiles", "slope.pmtiles", "extras.pmtiles", "places.pmtiles")
+        /** Listed for states you haven't downloaded, never downloaded with the maps. */
+        val ONLINE = listOf("search.json.gz")
+        const val SEARCH_FILE = "search.json.gz"
         private const val TAG_FILE = "release-tag.txt"
 
         fun root(context: Context) = File(context.getExternalFilesDir(null) ?: context.filesDir, "maps")
@@ -262,7 +267,7 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
                         Release(newest.getString("tag_name"), (0 until list.length()).map { j ->
                             val a = list.getJSONObject(j)
                             Asset(a.getString("name"), a.getString("browser_download_url"), a.getLong("size"))
-                        }.filter { it.name in REQUIRED || it.name in OPTIONAL })
+                        }.filter { it.name in REQUIRED || it.name in OPTIONAL || it.name in ONLINE })
                     }
             } finally {
                 conn.disconnect()

@@ -36,14 +36,14 @@ object MapStyle {
     )
 
     /** Layers you can tap for details. */
-    val TAP_LAYERS: Array<String> = (listOf("water-points", "water-crossings", "peaks", "trail-hit", "trail-hit-unnamed") +
+    val TAP_LAYERS: Array<String> = (listOf("water-points", "water-crossings", "peaks", "trail-hit", "trail-hit-unnamed", "trail-overview-hit") +
         PLACE_GROUPS.flatMap { g -> g.layers.filter { it.startsWith("places-") } }).toTypedArray()
 
     /** Layer groups the layers sheet can switch on and off. */
     val GROUPS: Map<String, List<String>> = linkedMapOf(
         "hillshade" to listOf("hillshade"),
         "contours" to listOf("contours-minor", "contours-major", "contour-labels"),
-        "trails" to listOf("trail", "track", "trail-names", "trail-hit", "trail-hit-unnamed"),
+        "trails" to listOf("trail", "track", "trail-names", "trail-hit", "trail-hit-unnamed", "trail-overview", "trail-overview-hit", "trail-overview-names"),
         "notes" to listOf(LAYER_NOTES, "user-notes-photo", "user-notes-labels"),
         "water" to listOf("water-crossings", "water-points", "water-labels"),
         "peaks" to listOf("peaks", "peak-labels"),
@@ -133,7 +133,7 @@ object MapStyle {
      * layers screen: topo with contours and trails, imagery alone, or imagery with roads and names.
      */
     fun thumbnailStyle(styleJson: String, base: String): String {
-        val keepTopo = setOf("ground", "hillshade", "contours-minor", "contours-major", "track", "trail", "trail-names",
+        val keepTopo = setOf("ground", "hillshade", "contours-minor", "contours-major", "track", "trail", "trail-names", "trail-overview",
             "peak-labels", "peaks") + TOPO_FILLS + TOPO_DETAIL
         val keepHybrid = setOf("ground", "track", "trail", "trail-names", "peak-labels") + TOPO_DETAIL
         val o = JSONObject(styleJson)
@@ -180,7 +180,8 @@ object MapStyle {
         val tileServer: Boolean = false,
     ) {
         // States you haven't downloaded stream only their tiled map files. Their water and places
-        // (whole GeoJSON files, tens of MB each) would have to be downloaded and held in memory.
+        // (whole GeoJSON files, tens of MB each) would have to be downloaded and held in memory,
+        // so they come from places.pmtiles instead, a map piece at a time.
         fun has(name: String) = if (local != null) java.io.File(local, name).exists() else name in remoteFiles && !name.endsWith(".geojson")
         fun pm(name: String) = when {
             local != null -> "pmtiles://file://" + java.io.File(local, name).absolutePath
@@ -202,7 +203,10 @@ object MapStyle {
     private val REGION_FILES = mapOf(
         "topo" to "topo.pmtiles", "contours" to "contours.pmtiles", "terrain" to "terrain.pmtiles", "water" to "water.geojson",
         "pois" to "pois.geojson", "slope" to "slope.pmtiles", "extras" to "extras.pmtiles", "publiclands" to "publiclands.pmtiles",
+        "places" to "places.pmtiles",
     )
+    /** Water and place layers read the matching layer of places.pmtiles when the state isn't downloaded. */
+    private val TILED_FALLBACK = setOf("water", "pois")
 
     fun build(regions: List<MapSource>, satelliteAreas: List<Pair<String, java.io.File>> = emptyList()): String {
         val maps = regions.ifEmpty { listOf(MapSource("none", null)) }
@@ -227,6 +231,7 @@ object MapStyle {
                 .put("attribution", "USDA Forest Service MVUM, NIFC fire history"))
             if (r.has("publiclands.pmtiles")) sources.put("publiclands$x", JSONObject().put("type", "vector").put("url", r.pm("publiclands.pmtiles"))
                 .put("attribution", "Public land: USGS PAD-US"))
+            if (r.has("places.pmtiles")) sources.put("places$x", JSONObject().put("type", "vector").put("url", r.pm("places.pmtiles")))
         }
         sources
             // Your own data, filled in by the app after the style loads.
@@ -265,6 +270,8 @@ object MapStyle {
             if (file == null) { layers.put(l); return }
             maps.forEachIndexed { i, r ->
                 if (r.has(file)) layers.put(JSONObject(l.toString()).put("id", id + sfx[i]).put("source", source + sfx[i]))
+                else if (source in TILED_FALLBACK && r.has("places.pmtiles")) layers.put(JSONObject(l.toString())
+                    .put("id", id + sfx[i]).put("source", "places" + sfx[i]).put("source-layer", source))
             }
         }
         fun inClass(values: JSONArray) = arr("in", arr("get", "class"), arr("literal", values))
@@ -362,6 +369,10 @@ object MapStyle {
         layer("trail", "line", "topo", "transportation", inClass(arr("path")),
             JSONObject().put("line-color", "#B5462A").put("line-width", byZoom(10, 1.2, 15, 2.8))
                 .put("line-dasharray", arr(3, 1.5)))
+        // Named trails when zoomed out, before the topo map draws footpaths (zoom 13).
+        val overviewPaint = JSONObject().put("line-color", "#B5462A").put("line-width", byZoom(9, 0.9, 12.9, 1.6))
+            .put("line-dasharray", arr(3, 1.5))
+        layer("trail-overview", "line", "places", "trails", paint = overviewPaint, maxzoom = 13.0)
         if (hasExtras) {
             // Forest Service road access: green passenger car, orange high clearance, red OHV only; dashed if seasonal.
             val accessColor = arr("match", arr("get", "access"), "car", "#2E7D32", "high", "#E65100", "#C62828")
@@ -381,6 +392,8 @@ object MapStyle {
             JSONObject().put("line-color", "#000000").put("line-opacity", HIT_OPACITY).put("line-width", 18))
         layer("trail-hit-unnamed", "line", "topo", "transportation", inClass(trails),
             JSONObject().put("line-color", "#000000").put("line-opacity", HIT_OPACITY).put("line-width", 18))
+        layer("trail-overview-hit", "line", "places", "trails",
+            paint = JSONObject().put("line-color", "#000000").put("line-opacity", HIT_OPACITY).put("line-width", 18), maxzoom = 13.0)
         layer("contour-labels", "symbol", "contours", "contours", arr("==", arr("get", "major"), 1),
             halo(GROUND, "#8A6440", 1.4),
             JSONObject().put("symbol-placement", "line").put("text-font", arr(REGULAR))
@@ -396,6 +409,9 @@ object MapStyle {
             halo("#FFFFFF", "#8E3218").put("text-color", arr("match", arr("get", "class"), "track", "#6B4F2E", "#8E3218")),
             JSONObject().put("symbol-placement", "line").put("text-font", arr(MEDIUM))
                 .put("text-size", 12).put("text-field", arr("get", "name")), minzoom = 11.0)
+        layer("trail-overview-names", "symbol", "places", "trails", paint = halo("#FFFFFF", "#8E3218"),
+            layout = JSONObject().put("symbol-placement", "line").put("text-font", arr(MEDIUM))
+                .put("text-size", 11).put("text-field", arr("get", "name")), minzoom = 11.0, maxzoom = 13.0)
         if (hasLand) {
             val upper = arr("upcase", arr("get", "name"))
             // Names along the boundary when zoomed in, one name in the middle when zoomed out.

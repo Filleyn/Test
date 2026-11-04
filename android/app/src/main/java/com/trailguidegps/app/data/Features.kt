@@ -194,6 +194,77 @@ class Features private constructor(
             }
         }
 
+        /**
+         * A state's search file (search.json.gz, for states that aren't downloaded): every named
+         * place, and a few points along each named trail. Read with a streaming parser.
+         */
+        fun loadSearchIndex(file: File, region: String): Features {
+            val points = ArrayList<Point>()
+            val trails = ArrayList<Trail>()
+            JsonReader(java.util.zip.GZIPInputStream(file.inputStream().buffered()).bufferedReader()).use { r ->
+                r.beginObject()
+                while (r.hasNext()) {
+                    when (r.nextName()) {
+                        "points" -> {
+                            r.beginArray()
+                            while (r.hasNext()) {
+                                r.beginArray()
+                                val name = r.nextString()
+                                val kind = r.nextString()
+                                val lat = r.nextDouble()
+                                val lon = r.nextDouble()
+                                val x = HashMap<String, String?>()
+                                if (r.hasNext() && r.peek() == JsonToken.BEGIN_OBJECT) {
+                                    r.beginObject()
+                                    while (r.hasNext()) {
+                                        val k = r.nextName()
+                                        x[k] = when (r.peek()) {
+                                            JsonToken.NULL -> { r.nextNull(); null }
+                                            JsonToken.BOOLEAN -> r.nextBoolean().toString()
+                                            JsonToken.STRING, JsonToken.NUMBER -> r.nextString()
+                                            else -> { r.skipValue(); null }
+                                        }
+                                    }
+                                    r.endObject()
+                                }
+                                while (r.hasNext()) r.skipValue()
+                                r.endArray()
+                                points += Point(
+                                    name, kind, lat, lon, osmId = x["osm_id"], seasonal = x["seasonal"] == "true",
+                                    lastEdit = x["last_edit"], isWater = x["water"] == "true", place = x["place"],
+                                    population = x["population"]?.toDoubleOrNull()?.toInt(), website = x["website"],
+                                    acres = x["acres"]?.toDoubleOrNull(), eleFt = x["ele_ft"]?.toDoubleOrNull(), region = region,
+                                )
+                            }
+                            r.endArray()
+                        }
+                        "trails" -> {
+                            r.beginArray()
+                            while (r.hasNext()) {
+                                r.beginArray()
+                                val name = r.nextString()
+                                val coords = ArrayList<DoubleArray>()
+                                r.beginArray()
+                                while (r.hasNext()) {
+                                    val la = r.nextDouble()
+                                    val lo = r.nextDouble()
+                                    coords += doubleArrayOf(lo, la)
+                                }
+                                r.endArray()
+                                while (r.hasNext()) r.skipValue()
+                                r.endArray()
+                                if (coords.isNotEmpty()) trails += Trail(name, coords, region)
+                            }
+                            r.endArray()
+                        }
+                        else -> r.skipValue()
+                    }
+                }
+                r.endObject()
+            }
+            return Features(points, trails)
+        }
+
         /** Streams a GeoJSON FeatureCollection of Points and LineStrings. */
         private fun readFeatures(file: File, onFeature: (Map<String, String?>, String, List<DoubleArray>) -> Unit) {
             if (!file.exists()) return

@@ -217,6 +217,14 @@ jobs:
           # Springs and places just over the border belong to the neighbouring state's maps.
           (cd pipeline && python3 clip_points.py --clip "$WORK/outline.geojson" "$OUT/water.geojson" "$OUT/pois.geojson")
 
+      - name: Build online places layer and search file
+        # For states you haven't downloaded: trailheads, campsites, water and a trail overview
+        # streamed from the map server, and a small file to search the state by name.
+        run: |
+          exec > >(tee -a "$WORK/build.log") 2>&1
+          python3 pipeline/build_online.py --dir "$OUT" --work "$WORK/online" | tee "$WORK/online-stats.json"
+          echo "Online places layer and search file: $(cat "$WORK/online-stats.json")" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build slope shading
         if: ${{ !startsWith(inputs.rebuild, 'trails') }}
         continue-on-error: true
@@ -283,12 +291,15 @@ jobs:
           echo "Release: $TAG" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Copy map files to Cloudflare (online map)
-        if: ${{ !startsWith(inputs.rebuild, 'trails') }}
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        run: bash pipeline/r2_upload.sh "$REGION" "$OUT"
+          TRAILS_ONLY: ${{ startsWith(inputs.rebuild, 'trails') }}
+        run: |
+          # A trails-only build reused the other map files, which are already on Cloudflare.
+          if [ "$TRAILS_ONLY" = "true" ]; then bash pipeline/r2_upload.sh "$REGION" "$OUT" places.pmtiles
+          else bash pipeline/r2_upload.sh "$REGION" "$OUT"; fi
 
       - name: Remove old map releases (keep the newest 3)
         continue-on-error: true

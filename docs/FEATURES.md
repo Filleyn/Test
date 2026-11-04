@@ -19,7 +19,8 @@ Current as of app 1.5 and the October 30, 2026 maps. Ideas not yet built are in 
 ## Map
 
 - **Several states:** Oregon, Washington, Idaho, California and Nevada so far. Pick your state at first run (GPS suggests the one you're in), download more any time, and update or delete each one in **Maps for each state** (Settings or the layers screen). Each state's files are trimmed to its outline so neighbours don't overlap.
-- **Online map:** states you haven't downloaded still show on the map while you have signal (topo, contours and shading, from the Cloudflare map server; water and places come with a download); you can also start with the online map and download later.
+- **Online map:** states you haven't downloaded still show on the map while you have signal (topo, contours, shading, trailheads, campsites, water and other places, from the Cloudflare map server); you can also start with the online map and download later.
+- **Trail overview:** named trails show from zoom 9–12, before the topo map draws every footpath (zoom 13), in downloaded and online states.
 
 - **Topo map:** OpenStreetMap roads, trails, water, land cover, peaks and place names, drawn offline.
 - **Contour lines:** every 40 ft, with 200 ft index lines labeled in feet.
@@ -49,7 +50,8 @@ Current as of app 1.5 and the October 30, 2026 maps. Ideas not yet built are in 
 ## Search
 
 - **Routes across state lines:** with neighbouring states downloaded, a trail-following route carries on over the border (it finds where one state's trails meet the next and picks the shortest way through).
-- **Search by state:** with more than one state downloaded, chips pick which state to search (the one you're in by default) or all of them.
+- **Search by state:** chips pick which state to search (the one you're in by default), all downloaded states, or a state that isn't downloaded (cloud chip).
+- **Online search:** a state that isn't downloaded is searched from its small search list (1–4 MB), fetched once and kept, so it then works without signal too.
 - **Offline search:** trails, water, peaks, lakes, campsites, trailheads and towns, nearest first, each with its nearest town.
 - **Filters:** All, Trails, Trailheads, Campsites, Water, Peaks, Waterfalls and Towns; with nothing typed, a filter lists the nearest of that type.
 - **Nearest lists:** with an empty search box, the nearest water, campsites and trailheads.
@@ -80,7 +82,7 @@ Current as of app 1.5 and the October 30, 2026 maps. Ideas not yet built are in 
 
 ## Tools
 
-- **Reverse a route:** saves a copy running the other way for the hike out, with climb, time and difficulty recalculated.
+- **Reverse a route:** flips the saved route to run the other way for the hike out (no copies pile up; reverse again to put it back), with climb, time, difficulty and camps recalculated.
 - **Measuring tool:** ruler button; tap points for total and leg distance, bearing, and area.
 - **Go to:** compass arrow, distance, true bearing and climb to any place or waypoint.
 - **Water along a route:** water by mile with distance off route, seasonal flags and your notes; longest dry stretch, and how it changes if seasonal sources are dry. Includes about 30,000 trail and road creek crossings.

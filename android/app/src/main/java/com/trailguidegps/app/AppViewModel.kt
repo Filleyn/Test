@@ -135,6 +135,64 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return local + remote
     }
 
+    // ---- Searching states that aren't downloaded ----
+
+    /** The last couple of online search lists read into memory. */
+    private val onlineIndex = object : LinkedHashMap<String, Features>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Features>?) = size > 2
+    }
+
+    /** States that can be searched without downloading them (their map build has a search list). */
+    fun onlineSearchRegions(): List<String> =
+        _catalog.value.filter { it.region !in _installed.value && it.release.assets.any { a -> a.name == MapStore.SEARCH_FILE } }.map { it.region }
+
+    /** Size of a state's search list, for "about 2 MB, once". */
+    fun onlineSearchBytes(region: String): Long? =
+        _catalog.value.firstOrNull { it.region == region }?.release?.assets?.firstOrNull { it.name == MapStore.SEARCH_FILE }?.size
+
+    /** True when the state's search list is already on the phone. */
+    fun hasOnlineSearch(region: String): Boolean = java.io.File(java.io.File(ctx.filesDir, "search"), "$region.json.gz").exists()
+
+    /**
+     * Search data for a state that isn't downloaded: its search list is fetched once from the
+     * map release (a few MB) and kept, so it works without signal afterwards. A newer list is
+     * fetched when the state's maps are rebuilt; if that fails, the kept one is used.
+     */
+    suspend fun onlineSearch(region: String): Features = withContext(Dispatchers.IO) {
+        synchronized(onlineIndex) { onlineIndex[region] }?.let { return@withContext it }
+        val dir = java.io.File(ctx.filesDir, "search").apply { mkdirs() }
+        val file = java.io.File(dir, "$region.json.gz")
+        val tagFile = java.io.File(dir, "$region.tag")
+        val info = _catalog.value.firstOrNull { it.region == region }
+        val asset = info?.release?.assets?.firstOrNull { it.name == MapStore.SEARCH_FILE }
+        val have = file.exists() && tagFile.exists() && tagFile.readText().trim() == info?.release?.tag
+        if (!have) {
+            try {
+                if (info == null || asset == null) error("${MapStore.displayName(region)} can't be searched online yet. Download its maps to search it.")
+                val tmp = java.io.File(dir, "$region.json.gz.tmp")
+                val conn = (java.net.URL(asset.url).openConnection() as java.net.HttpURLConnection).apply {
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "TrailGuideGPS")
+                    connectTimeout = 15000
+                    readTimeout = 60000
+                }
+                try {
+                    if (conn.responseCode != 200) error("Couldn't get the search list (HTTP ${conn.responseCode})")
+                    conn.inputStream.use { input -> tmp.outputStream().use { input.copyTo(it, 64 * 1024) } }
+                } finally {
+                    conn.disconnect()
+                }
+                if (tmp.length() != asset.size) { tmp.delete(); error("The search list didn't finish downloading. Try again.") }
+                file.delete()
+                tmp.renameTo(file)
+                tagFile.writeText(info.release.tag)
+            } catch (e: Exception) {
+                if (!file.exists()) throw e
+            }
+        }
+        Features.loadSearchIndex(file, region).also { f -> synchronized(onlineIndex) { onlineIndex[region] = f } }
+    }
+
     /** Turns streaming of not-downloaded states on or off, and redraws the map. */
     fun setOnlineStates(on: Boolean) {
         settings.update { it.copy(onlineStates = on) }
@@ -526,7 +584,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun stopGoTo() { _goTo.value = null }
 
-    /** Saves a copy of a route running the other way (for the hike out), and shows it. */
+    /**
+     * Flips a saved route to run the other way (for the hike out) and saves it in place,
+     * so reversing never piles up copies. Reversing again puts it back.
+     */
     fun reverseRoute(id: String) {
         viewModelScope.launch {
             val r = withContext(Dispatchers.IO) { routes.load(id) } ?: return@launch
@@ -535,19 +596,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // Each point's flag says how the leg *into* it was drawn; reversed, that leg leads into the previous point.
             val flipped = pts.mapIndexed { i, p -> p.copy(followTrails = if (i == 0) true else pts[i - 1].followTrails) }
             val stats = withContext(Dispatchers.Default) { RouteStats.compute(coords, r.stats.distanceM, terrain) }
-            val baseName = r.name.removeSuffix(" (reversed)")
-            val copy = r.copy(
-                id = RouteStore.newId(), name = if (r.name.endsWith(" (reversed)")) baseName else "$baseName (reversed)",
-                createdAt = System.currentTimeMillis(), points = flipped, coords = coords, stats = stats, via = r.via.reversed(),
+            val turned = r.copy(
+                // Older versions saved a separate "(reversed)" copy; drop that tag when flipping.
+                name = r.name.removeSuffix(" (reversed)"),
+                points = flipped, coords = coords, stats = stats, via = r.via.reversed(),
                 camps = r.camps.map { it.copy(alongM = (r.stats.distanceM - it.alongM).coerceAtLeast(0.0)) }.sortedBy { it.alongM },
             )
-            withContext(Dispatchers.IO) { routes.save(copy) }
-            folders.folderOf(com.trailguidegps.app.data.FolderStore.routeKey(r.id))?.let {
-                folders.put(com.trailguidegps.app.data.FolderStore.routeKey(copy.id), it.id)
-            }
-            setShown(_shownRoutes.value.filter { it.id != r.id } + copy, copy)
-            _message.value = "Saved \"${copy.name}\": +%,d ft climb, −%,d ft descent.".format(
-                (stats.gainM * com.trailguidegps.app.geo.Geo.FT_PER_M).toInt(), (stats.lossM * com.trailguidegps.app.geo.Geo.FT_PER_M).toInt())
+            withContext(Dispatchers.IO) { routes.save(turned) }
+            setShown(_shownRoutes.value.filter { it.id != r.id } + turned, turned)
+            val start = turned.via.firstOrNull()?.takeIf { it.isNotBlank() }
+            _message.value = "Reversed \"${turned.name}\"" + (start?.let { ", now starting on $it" } ?: "") +
+                ": +%,d ft climb, −%,d ft descent.".format(
+                    (stats.gainM * com.trailguidegps.app.geo.Geo.FT_PER_M).toInt(), (stats.lossM * com.trailguidegps.app.geo.Geo.FT_PER_M).toInt())
         }
     }
 
