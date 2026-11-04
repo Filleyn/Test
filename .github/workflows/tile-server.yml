@@ -110,6 +110,37 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "::notice title=Map server::$url"
 
+      - name: Set up the source-data helper
+        # The topo build needs coastline, lake and Natural Earth files from community servers.
+        # Some of them refuse GitHub's build machines at times; this tiny helper fetches only
+        # those three files through Cloudflare instead (it can't be used for anything else).
+        if: inputs.deploy
+        working-directory: pmtiles/serverless/cloudflare
+        run: |
+          mkdir -p ../fetch-helper && cd ../fetch-helper
+          cat > index.js <<'EOF'
+          const SOURCES = {
+            "water-polygons-split-3857.zip": "https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip",
+            "natural_earth_vector.sqlite.zip": "https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip",
+            "lake_centerline.shp.zip": "https://github.com/acalcutt/osm-lakelines/releases/download/v12/lake_centerline.shp.zip",
+          };
+          export default {
+            async fetch(request) {
+              const src = SOURCES[new URL(request.url).pathname.slice(1)];
+              if (!src || request.method !== "GET") return new Response("Not found", { status: 404 });
+              return fetch(src, { headers: { "User-Agent": "TrailGuide map build" } });
+            },
+          };
+          EOF
+          cat > wrangler.toml <<'EOF'
+          name = "trailguide-fetch"
+          main = "index.js"
+          compatibility_date = "2024-09-02"
+          workers_dev = true
+          EOF
+          ../cloudflare/node_modules/.bin/wrangler deploy 2>&1 | tee deploy.log
+          grep -oE 'https://trailguide-fetch\.[a-z0-9-]+\.workers\.dev' deploy.log | head -1 | sed 's/^/::notice title=Source-data helper::/'
+
       - name: Check the map server
         if: inputs.deploy
         run: |

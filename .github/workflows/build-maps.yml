@@ -152,7 +152,12 @@ jobs:
             fi
             rm -f "$name.part"
             echo "::warning::$url didn't download; using the saved copy."
-            gh release download planetiler-sources -R "$R" -p "$name" -D . --clobber
+            if gh release download planetiler-sources -R "$R" -p "$name" -D . --clobber; then return 0; fi
+            # No saved copy yet: fetch it through the Cloudflare helper ("Online map server" workflow).
+            echo "No saved copy; trying the Cloudflare helper."
+            curl -fsSL --retry 3 --retry-delay 20 -o "$name.part" "https://trailguide-fetch.filleyn.workers.dev/$name"
+            mv "$name.part" "$name"
+            gh release upload planetiler-sources "$name" -R "$R" || true
           }
           get water-polygons-split-3857.zip https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
           get natural_earth_vector.sqlite.zip https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip
