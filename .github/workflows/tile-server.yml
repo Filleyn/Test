@@ -1,0 +1,124 @@
+name: Online map server
+
+# Sets up (or updates) the small Cloudflare map server that hands the app one map
+# piece at a time, and copies the newest state map files into Cloudflare R2 storage.
+# Map builds copy their own files afterwards; run this to set up the server or to
+# copy maps that were built before Cloudflare was set up.
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Set up or update the map server
+        type: boolean
+        default: true
+      copy:
+        description: "Copy map files: all, none, or one state (e.g. oregon)"
+        default: all
+
+permissions:
+  contents: read
+
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  GH_TOKEN: ${{ github.token }}
+  # Pinned version of the Protomaps PMTiles map server.
+  PMTILES_REF: aec8fa1341222fdddb3318e9ffa8e18e19b312f7
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the Cloudflare keys
+        run: |
+          missing=""
+          for v in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Missing GitHub secret::Not set:$missing (R2 keys are the R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY secrets)"
+            exit 1
+          fi
+          echo "All four keys are set."
+
+      - name: Copy map files to Cloudflare
+        if: inputs.copy != 'none'
+        run: |
+          want="${{ inputs.copy }}"
+          # Newest map release for each state.
+          gh api "repos/${{ github.repository }}/releases?per_page=100" --paginate \
+            -q '.[] | select(.tag_name | test("^maps-.+-[0-9]{4}-[0-9]{2}-[0-9]{2}-run[0-9]+$")) | [.tag_name, .created_at] | @tsv' \
+            | sort -k2 -r > releases.tsv
+          declare -A seen
+          while IFS=$'\t' read -r tag created; do
+            region=$(echo "$tag" | sed -E 's/^maps-(.+)-[0-9]{4}-[0-9]{2}-[0-9]{2}-run[0-9]+$/\1/')
+            [ "$region" = "cottonwood-canyon" ] && continue
+            [ -n "${seen[$region]:-}" ] && continue
+            seen[$region]=1
+            if [ "$want" != "all" ] && [ "$want" != "$region" ]; then continue; fi
+            echo "== $region ($tag)"
+            rm -rf dl && mkdir dl
+            gh release download "$tag" -R "${{ github.repository }}" -p "*.pmtiles" -D dl
+            bash pipeline/r2_upload.sh "$region" dl
+          done < releases.tsv
+          rm -rf dl
+
+      - uses: actions/checkout@v4
+        if: inputs.deploy
+        with:
+          repository: protomaps/PMTiles
+          ref: ${{ env.PMTILES_REF }}
+          path: pmtiles
+
+      - uses: actions/setup-node@v4
+        if: inputs.deploy
+        with:
+          node-version: 20
+
+      - name: Set up the map server
+        id: deploy
+        if: inputs.deploy
+        working-directory: pmtiles/serverless/cloudflare
+        run: |
+          cat > wrangler.toml <<'EOF'
+          name = "trailguide-tiles"
+          main = "src/index.ts"
+          compatibility_date = "2024-09-02"
+          workers_dev = true
+
+          [[r2_buckets]]
+          binding = "BUCKET"
+          bucket_name = "trailguide-maps"
+
+          [vars]
+          ALLOWED_ORIGINS = "*"
+          CACHE_CONTROL = "public, max-age=86400"
+          EOF
+          npm ci --no-audit --no-fund
+          npx wrangler deploy 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://trailguide-tiles\.[a-z0-9-]+\.workers\.dev' deploy.log | head -1)
+          if [ -z "$url" ]; then
+            echo "::error title=No map server address::If the log mentions a workers.dev subdomain, open Workers & Pages in Cloudflare once to pick one, then run this again."
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Map server::$url"
+
+      - name: Check the map server
+        if: inputs.deploy
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          sleep 10
+          for t in oregon/topo oregon/terrain; do
+            code=$(curl -s -o tj.json -w "%{http_code}" "$url/$t.json")
+            echo "$t.json -> HTTP $code: $(head -c 300 tj.json)"
+          done
+          code=$(curl -s -o tile.bin -w "%{http_code}" "$url/oregon/topo/8/40/91.mvt")
+          echo "oregon/topo/8/40/91.mvt -> HTTP $code, $(stat -c %s tile.bin) bytes"
+          [ "$code" = "200" ] || echo "::warning::A test map piece didn't load (HTTP $code). The Oregon files may not be copied yet."

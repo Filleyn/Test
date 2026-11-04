@@ -218,6 +218,13 @@ jobs:
             --notes-file "$WORK/summary.md"
           echo "Release: $TAG" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Copy map files to Cloudflare (online map)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: bash pipeline/r2_upload.sh "$REGION" "$OUT"
+
       - name: Remove old map releases (keep the newest 3)
         continue-on-error: true
         run: |
