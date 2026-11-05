@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -76,6 +77,7 @@ fun MapsContent(
     onClose: () -> Unit, onShow: (DoubleArray) -> Unit,
 ) {
     var deleting by remember { mutableStateOf<String?>(null) }
+    var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize().background(TG.Surface).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to map", tint = TG.Ink) }
@@ -100,10 +102,47 @@ fun MapsContent(
                 fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(16.dp))
             if (error != null) TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Try again", color = TG.Accent) }
         }
+        // A search box once the list gets long.
+        if (catalog.size > 8) {
+            androidx.compose.material3.OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                placeholder = { Text("Find a state") },
+                shape = RoundedCornerShape(24.dp),
+                trailingIcon = {
+                    if (query.isNotEmpty()) IconButton(onClick = { query = "" }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear")
+                    }
+                },
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = TG.Accent, cursorColor = TG.Accent),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp),
+            )
+        }
         val busy = dl is DownloadState.Downloading || dl is DownloadState.Checking
+        // Downloaded states first, then the rest grouped by area (or just the matches while searching).
+        val q = query.trim().lowercase()
+        val shown = catalog.filter { q.isEmpty() || it.name.lowercase().contains(q) || com.trailguidegps.app.data.MapAreas.of(it.region).lowercase().contains(q) }
+        val sections: List<Pair<String?, List<AppViewModel.RegionInfo>>> = run {
+            val mine = shown.filter { it.region in installed }.sortedBy { it.name }
+            val rest = shown.filter { it.region !in installed }
+            val grouped = if (catalog.size > 8) {
+                rest.groupBy { com.trailguidegps.app.data.MapAreas.of(it.region) }.toList()
+                    .sortedBy { com.trailguidegps.app.data.MapAreas.ORDER.indexOf(it.first) }
+                    .map { (area, list) -> area to list.sortedBy { it.name } }
+            } else listOf((if (mine.isNotEmpty()) "Not downloaded" else null) to rest.sortedBy { it.name })
+            listOfNotNull(if (mine.isNotEmpty()) "Downloaded" to mine else null) + grouped.filter { it.second.isNotEmpty() }
+        }
+        if (q.isNotEmpty() && shown.isEmpty()) {
+            Text("No state matches \"$query\".", fontSize = 14.sp, color = TG.Muted, modifier = Modifier.padding(16.dp))
+        }
         LazyColumn(Modifier.weight(1f).padding(top = 8.dp)) {
-            // Downloaded first, then the rest by name.
-            items(catalog.sortedWith(compareBy({ it.region !in installed }, { it.name })), key = { it.region }) { r ->
+          sections.forEach { (title, list) ->
+            if (title != null) item(key = "h-$title") {
+                Text(
+                    title.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TG.Muted, letterSpacing = 0.8.sp,
+                    modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp),
+                )
+            }
+            items(list, key = { it.region }) { r ->
                 val have = r.region in installed
                 val update = r.region in updates
                 HorizontalDivider(color = TG.Line)
@@ -138,6 +177,7 @@ fun MapsContent(
                     }
                 }
             }
+          }
             item { Spacer(Modifier.height(24.dp)) }
         }
     }

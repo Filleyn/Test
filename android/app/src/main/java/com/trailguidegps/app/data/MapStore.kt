@@ -287,6 +287,25 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
     }
 }
 
+/** Which part of the country a state's maps belong to, for grouping the Maps list. */
+object MapAreas {
+    val ORDER = listOf("West Coast", "Mountain West", "Southwest", "Midwest", "South", "Northeast", "Alaska and Hawaii", "Other")
+    private val AREA = buildMap {
+        listOf("california", "oregon", "washington").forEach { put(it, "West Coast") }
+        listOf("idaho", "montana", "wyoming", "nevada", "utah", "colorado").forEach { put(it, "Mountain West") }
+        listOf("arizona", "new-mexico", "texas", "oklahoma").forEach { put(it, "Southwest") }
+        listOf("north-dakota", "south-dakota", "nebraska", "kansas", "minnesota", "iowa", "missouri", "wisconsin",
+            "illinois", "michigan", "indiana", "ohio").forEach { put(it, "Midwest") }
+        listOf("arkansas", "louisiana", "mississippi", "alabama", "tennessee", "kentucky", "georgia", "florida",
+            "south-carolina", "north-carolina", "virginia", "west-virginia").forEach { put(it, "South") }
+        listOf("maryland", "delaware", "district-of-columbia", "new-jersey", "pennsylvania", "new-york", "connecticut",
+            "rhode-island", "massachusetts", "vermont", "new-hampshire", "maine").forEach { put(it, "Northeast") }
+        put("hawaii", "Alaska and Hawaii")
+    }
+    /** "Mountain West" for "montana"; Alaska's regional maps ("alaska-southcentral") go with Alaska. */
+    fun of(region: String): String = AREA[region] ?: if (region.startsWith("alaska")) "Alaska and Hawaii" else "Other"
+}
+
 /** The map area's everyday name ("Oregon"), for wording that shouldn't assume one state. */
 object MapRegion {
     /** The downloaded states, set by the app as they change. */

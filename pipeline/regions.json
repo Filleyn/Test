@@ -36,7 +36,8 @@
       "Deschutes River"
     ],
     "state": "OR",
-    "java_heap": "6g"
+    "java_heap": "6g",
+    "coast": true
   },
   "washington": {
     "title": "All of Washington",
@@ -54,7 +55,8 @@
     "roads": "minor",
     "expect_trail": "Pacific Crest",
     "state": "WA",
-    "java_heap": "6g"
+    "java_heap": "6g",
+    "coast": true
   },
   "idaho": {
     "title": "All of Idaho",
@@ -90,7 +92,8 @@
     "roads": "minor",
     "expect_trail": "Pacific Crest",
     "state": "CA",
-    "java_heap": "10g"
+    "java_heap": "10g",
+    "coast": true
   },
   "nevada": {
     "title": "All of Nevada",
@@ -108,6 +111,114 @@
     "roads": "minor",
     "expect_trail": "Tahoe Rim",
     "state": "NV",
+    "java_heap": "6g"
+  },
+  "montana": {
+    "title": "All of Montana",
+    "bbox": [
+      -116.06,
+      44.35,
+      -104.03,
+      49.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/montana-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Continental Divide",
+    "state": "MT",
+    "java_heap": "6g"
+  },
+  "wyoming": {
+    "title": "All of Wyoming",
+    "bbox": [
+      -111.06,
+      40.99,
+      -104.05,
+      45.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/wyoming-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Continental Divide",
+    "state": "WY",
+    "java_heap": "6g"
+  },
+  "utah": {
+    "title": "All of Utah",
+    "bbox": [
+      -114.06,
+      36.99,
+      -109.04,
+      42.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/utah-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Bonneville Shoreline",
+    "state": "UT",
+    "java_heap": "6g"
+  },
+  "colorado": {
+    "title": "All of Colorado",
+    "bbox": [
+      -109.07,
+      36.99,
+      -102.04,
+      41.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/colorado-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Colorado Trail",
+    "state": "CO",
+    "java_heap": "8g"
+  },
+  "arizona": {
+    "title": "All of Arizona",
+    "bbox": [
+      -114.82,
+      31.33,
+      -109.04,
+      37.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/arizona-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Arizona",
+    "state": "AZ",
+    "java_heap": "6g"
+  },
+  "new-mexico": {
+    "title": "All of New Mexico",
+    "bbox": [
+      -109.06,
+      31.33,
+      -103.0,
+      37.0
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/new-mexico-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Continental Divide",
+    "state": "NM",
     "java_heap": "6g"
   }
 }

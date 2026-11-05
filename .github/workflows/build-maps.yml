@@ -15,6 +15,12 @@ on:
           - idaho
           - california
           - nevada
+          - montana
+          - wyoming
+          - utah
+          - colorado
+          - arizona
+          - new-mexico
         default: oregon
       expect_trail:
         description: "Trail name the check report should look for (blank uses the region's default)"
@@ -63,6 +69,7 @@ jobs:
           print("contour_max_zoom=" + str(r.get("contour_max_zoom", 14)))
           print("roads=" + r.get("roads", "all"))
           print("java_heap=" + r.get("java_heap", "6g"))
+          print("coast=" + ("true" if r.get("coast") else "false"))
           print("expect_trail=" + (os.environ.get("EXPECT") or r.get("expect_trail", "")))
           EOF
           sudo mkdir -p "$WORK" "$OUT"
@@ -141,6 +148,7 @@ jobs:
         if: ${{ !startsWith(inputs.rebuild, 'trails') }}
         env:
           GH_TOKEN: ${{ github.token }}
+          COAST: ${{ steps.region.outputs.coast }}
         run: |
           # These come from community servers that are sometimes down. Each copy that
           # downloads is also kept in the "planetiler-sources" release as a fallback.
@@ -163,13 +171,30 @@ jobs:
             if gh release download planetiler-sources -R "$R" -p "$name" -D . --clobber; then return 0; fi
             # No saved copy yet: fetch it through the Cloudflare helper ("Online map server" workflow).
             echo "No saved copy; trying the Cloudflare helper."
-            curl -fsSL --retry 3 --retry-delay 20 -o "$name.part" "https://trailguide-fetch.filleyn.workers.dev/$name"
-            mv "$name.part" "$name"
-            gh release upload planetiler-sources "$name" -R "$R" || true
+            if curl -fsSL --retry 3 --retry-delay 20 -o "$name.part" "https://trailguide-fetch.filleyn.workers.dev/$name"; then
+              mv "$name.part" "$name"
+              gh release upload planetiler-sources "$name" -R "$R" || true
+              return 0
+            fi
+            rm -f "$name.part"
+            return 1
           }
-          get water-polygons-split-3857.zip https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip
           get natural_earth_vector.sqlite.zip https://naciscdn.org/naturalearth/packages/natural_earth_vector.sqlite.zip
           get lake_centerline.shp.zip https://github.com/acalcutt/osm-lakelines/releases/download/v12/lake_centerline.shp.zip
+          if ! get water-polygons-split-3857.zip https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip; then
+            if [ "$COAST" = "true" ]; then
+              echo "::error title=Coastline data unavailable::The ocean outline server isn't reachable and no saved copy exists. Try again later."
+              exit 1
+            fi
+            # An inland state has no ocean in it, so a stand-in file with one tiny square of
+            # ocean far out in the South Pacific gives the same map.
+            echo "::notice::Ocean outline server unreachable; using an empty stand-in (no ocean in this state)."
+            mkdir -p stub/water-polygons-split-3857
+            echo '{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"x":-150.0,"y":-50.0},"geometry":{"type":"Polygon","coordinates":[[[-150.0,-50.0],[-149.99,-50.0],[-149.99,-49.99],[-150.0,-49.99],[-150.0,-50.0]]]}}]}' > stub/ocean.geojson
+            ogr2ogr -f "ESRI Shapefile" -t_srs EPSG:3857 stub/water-polygons-split-3857/water_polygons.shp stub/ocean.geojson
+            (cd stub && zip -qr ../water-polygons-split-3857.zip water-polygons-split-3857)
+            rm -rf stub
+          fi
           ls -la
 
       - name: Build topo basemap (Planetiler)
