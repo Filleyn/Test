@@ -64,3 +64,7 @@ The build also writes a short check report to the workflow run's summary page: t
 ## Seasonal closure note
 
 Parts of the Pinnacles Trail close each year to protect nesting golden eagles, roughly February through August. Closures are not yet in the map data; they are planned as a hand-maintained overlay in phase 4. Check Oregon State Parks for current dates before hiking.
+
+## License
+
+All rights reserved; the code is public to view, not to reuse. See [LICENSE](LICENSE). Map data keeps its own licenses (OpenStreetMap: ODbL).
