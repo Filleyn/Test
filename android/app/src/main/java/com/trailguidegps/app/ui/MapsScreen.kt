@@ -84,7 +84,8 @@ fun MapsContent(
             Text("Maps for each state", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
         }
         Text(
-            "Downloaded states work with no signal, including search, routes and water. Other states still show on the map while you're online. " +
+            "Downloaded states work with no signal, including search, routes and water. " +
+                (if (com.trailguidegps.app.BuildConfig.ONLINE_MAP) "Other states still show on the map while you're online. " else "Other states show on the map once downloaded. ") +
                 "${gb(free)} free on this phone.",
             fontSize = 13.sp, color = TG.Muted, lineHeight = 18.sp, modifier = Modifier.padding(horizontal = 16.dp),
         )
@@ -152,7 +153,7 @@ fun MapsContent(
                             Text(r.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
                             Text(
                                 listOfNotNull(
-                                    when { update -> "Downloaded · update available"; have -> "Downloaded"; else -> "Online only" },
+                                    when { update -> "Downloaded · update available"; have -> "Downloaded"; else -> if (com.trailguidegps.app.BuildConfig.ONLINE_MAP) "Online only" else "Not downloaded" },
                                     gb(r.release.totalBytes), r.built?.let { "built $it" },
                                 ).joinToString(" · "),
                                 fontSize = 13.sp, color = if (have) TG.Ok else TG.Muted,
@@ -186,7 +187,8 @@ fun MapsContent(
         AlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Delete the ${MapStore.displayName(region)} maps?") },
-            text = { Text("They'll still show while you're online, and you can download them again. Your routes, tracks and waypoints aren't touched.") },
+            text = { Text((if (com.trailguidegps.app.BuildConfig.ONLINE_MAP) "They'll still show while you're online, and you can download them again. "
+                else "You can download them again any time. ") + "Your routes, tracks and waypoints aren't touched.") },
             confirmButton = { TextButton(onClick = { onDelete(region); deleting = null }) { Text("Delete", color = TG.Danger) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
         )

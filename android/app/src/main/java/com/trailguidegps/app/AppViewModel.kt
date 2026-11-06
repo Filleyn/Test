@@ -121,8 +121,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Map files for the style: downloaded states from the phone, the rest streamed from GitHub. */
     fun mapSources(): List<com.trailguidegps.app.map.MapStyle.MapSource> {
         val local = stores.map { com.trailguidegps.app.map.MapStyle.MapSource(it.region, it.dir) }
-        // Streaming other states is experimental; with nothing downloaded it's the only map there is.
-        val remote = if (!settings.value.value.onlineStates && _installed.value.isNotEmpty()) emptyList() else _catalog.value.filter { it.region !in _installed.value }.map { r ->
+        // The online map of other states is off for now (offline only); see BuildConfig.ONLINE_MAP.
+        val online = com.trailguidegps.app.BuildConfig.ONLINE_MAP
+        val remote = if (!online || (!settings.value.value.onlineStates && _installed.value.isNotEmpty())) emptyList() else _catalog.value.filter { it.region !in _installed.value }.map { r ->
             val server = com.trailguidegps.app.BuildConfig.TILES_URL
             if (server.isNotBlank()) {
                 com.trailguidegps.app.map.MapStyle.MapSource(r.region, null, "$server/${r.region}", r.release.assets.map { it.name }.toSet(), tileServer = true)
@@ -438,6 +439,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _selected.value = SelectedPlace(r.name, parts.joinToString(" · "), r.lat, r.lon, p?.osmId, p?.isWater == true,
             links = com.trailguidegps.app.data.PublicLand.placeLinks(r.name, kindLabel, p?.website, null))
         focusOn(listOf(r.lat to r.lon))
+        // Found in a state that isn't downloaded: the map is blank there until it is.
+        val region = p?.region ?: regionAt(r.lat, r.lon)
+        if (!com.trailguidegps.app.BuildConfig.ONLINE_MAP && region != null && region !in _installed.value) {
+            _message.value = "${com.trailguidegps.app.data.MapStore.displayName(region)} isn't downloaded yet. Download it in Maps for each state to see the map here."
+        }
     }
 
     fun showTrack(id: String) {

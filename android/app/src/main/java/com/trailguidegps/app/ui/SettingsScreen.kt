@@ -219,8 +219,10 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit, onOpenMaps: () -> Unit
                 "or save the file to the phone from the OneDrive app first.", fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
 
             Section("Maps")
-            ToggleRow("Show other states online", "States you haven't downloaded show on the map (topo, contours, shading) while you have signal. Water and places need a download.",
-                s.onlineStates) { on -> vm.setOnlineStates(on) }
+            if (com.trailguidegps.app.BuildConfig.ONLINE_MAP) {
+                ToggleRow("Show other states online", "States you haven't downloaded show on the map (topo, contours, shading, trailheads and water) while you have signal.",
+                    s.onlineStates) { on -> vm.setOnlineStates(on) }
+            }
             ToggleRow("Check for map updates when the app opens", "Only when you have a connection. You choose when to download.",
                 s.checkUpdatesOnLaunch) { on -> vm.settings.update { it.copy(checkUpdatesOnLaunch = on) } }
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {

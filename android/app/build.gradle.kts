@@ -25,6 +25,9 @@ android {
         buildConfigField("String", "MAPS_REGION", "\"oregon\"")
         // The online map server (Cloudflare) for states you haven't downloaded; "" streams from GitHub.
         buildConfigField("String", "TILES_URL", "\"https://trailguide-tiles.filleyn.workers.dev\"")
+        // Offline-only for now: states show on the map once downloaded. Set true to bring back
+        // the online map of other states (served from TILES_URL).
+        buildConfigField("boolean", "ONLINE_MAP", "false")
         // Pixel phones are 64-bit ARM; leaving out other processor types keeps the APK small.
         ndk { abiFilters += "arm64-v8a" }
     }

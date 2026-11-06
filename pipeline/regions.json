@@ -220,5 +220,329 @@
     "expect_trail": "Continental Divide",
     "state": "NM",
     "java_heap": "6g"
+  },
+  "tennessee": {
+    "title": "All of Tennessee",
+    "bbox": [
+      -90.32,
+      34.98,
+      -81.64,
+      36.68
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/tennessee-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "TN",
+    "java_heap": "6g"
+  },
+  "west-virginia": {
+    "title": "All of West Virginia",
+    "bbox": [
+      -82.65,
+      37.2,
+      -77.71,
+      40.64
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Allegheny",
+    "state": "WV",
+    "java_heap": "6g"
+  },
+  "vermont": {
+    "title": "All of Vermont",
+    "bbox": [
+      -73.44,
+      42.72,
+      -71.46,
+      45.02
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/vermont-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Long Trail",
+    "state": "VT",
+    "java_heap": "6g"
+  },
+  "kentucky": {
+    "title": "All of Kentucky",
+    "bbox": [
+      -89.58,
+      36.49,
+      -81.96,
+      39.15
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/kentucky-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Sheltowee",
+    "state": "KY",
+    "java_heap": "6g"
+  },
+  "arkansas": {
+    "title": "All of Arkansas",
+    "bbox": [
+      -94.62,
+      33.0,
+      -89.64,
+      36.5
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/arkansas-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Ozark Highlands",
+    "state": "AR",
+    "java_heap": "6g"
+  },
+  "minnesota": {
+    "title": "All of Minnesota",
+    "bbox": [
+      -97.24,
+      43.49,
+      -89.49,
+      49.39
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/minnesota-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Superior Hiking",
+    "state": "MN",
+    "java_heap": "8g"
+  },
+  "wisconsin": {
+    "title": "All of Wisconsin",
+    "bbox": [
+      -92.89,
+      42.49,
+      -86.25,
+      47.31
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/wisconsin-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Ice Age",
+    "state": "WI",
+    "java_heap": "8g"
+  },
+  "south-dakota": {
+    "title": "All of South Dakota",
+    "bbox": [
+      -104.06,
+      42.48,
+      -96.43,
+      45.95
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/south-dakota-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Centennial",
+    "state": "SD",
+    "java_heap": "6g"
+  },
+  "missouri": {
+    "title": "All of Missouri",
+    "bbox": [
+      -95.77,
+      35.99,
+      -89.1,
+      40.62
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/missouri-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Ozark Trail",
+    "state": "MO",
+    "java_heap": "6g"
+  },
+  "iowa": {
+    "title": "All of Iowa",
+    "bbox": [
+      -96.64,
+      40.37,
+      -90.14,
+      43.51
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/iowa-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Wabash Trace",
+    "state": "IA",
+    "java_heap": "6g"
+  },
+  "kansas": {
+    "title": "All of Kansas",
+    "bbox": [
+      -102.06,
+      36.99,
+      -94.59,
+      40.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/kansas-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Prairie Spirit",
+    "state": "KS",
+    "java_heap": "6g"
+  },
+  "nebraska": {
+    "title": "All of Nebraska",
+    "bbox": [
+      -104.06,
+      39.99,
+      -95.3,
+      43.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/nebraska-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Cowboy",
+    "state": "NE",
+    "java_heap": "6g"
+  },
+  "north-dakota": {
+    "title": "All of North Dakota",
+    "bbox": [
+      -104.05,
+      45.93,
+      -96.55,
+      49.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/north-dakota-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Maah Daah Hey",
+    "state": "ND",
+    "java_heap": "6g"
+  },
+  "oklahoma": {
+    "title": "All of Oklahoma",
+    "bbox": [
+      -103.01,
+      33.61,
+      -94.43,
+      37.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/oklahoma-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Ouachita",
+    "state": "OK",
+    "java_heap": "6g"
+  },
+  "indiana": {
+    "title": "All of Indiana",
+    "bbox": [
+      -88.1,
+      37.77,
+      -84.78,
+      41.77
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/indiana-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Knobstone",
+    "state": "IN",
+    "java_heap": "6g"
+  },
+  "illinois": {
+    "title": "All of Illinois",
+    "bbox": [
+      -91.52,
+      36.97,
+      -87.49,
+      42.51
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/illinois-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "River to River",
+    "state": "IL",
+    "java_heap": "8g"
+  },
+  "ohio": {
+    "title": "All of Ohio",
+    "bbox": [
+      -84.83,
+      38.4,
+      -80.51,
+      42.33
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/ohio-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Buckeye",
+    "state": "OH",
+    "java_heap": "8g"
+  },
+  "michigan": {
+    "title": "All of Michigan",
+    "bbox": [
+      -90.42,
+      41.69,
+      -82.12,
+      48.31
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/michigan-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "North Country",
+    "state": "MI",
+    "java_heap": "8g"
   }
 }

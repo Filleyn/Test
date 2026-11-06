@@ -127,7 +127,7 @@ fun SetupScreen(vm: AppViewModel) {
                         fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                     )
                 }
-                if (catalog.isNotEmpty()) {
+                if (catalog.isNotEmpty() && com.trailguidegps.app.BuildConfig.ONLINE_MAP) {
                     androidx.compose.material3.TextButton(onClick = { vm.useOnlineMap() }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
                         Text("Use the online map for now", color = TG.Accent, fontSize = 15.sp)
                     }
