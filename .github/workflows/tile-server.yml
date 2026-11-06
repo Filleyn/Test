@@ -15,6 +15,9 @@ on:
       copy:
         description: "Copy map files: all, none, or one state (e.g. oregon)"
         default: all
+      files:
+        description: "Only these files (e.g. terrain.pmtiles); blank copies every map file"
+        default: ""
 
 permissions:
   contents: read
@@ -49,7 +52,10 @@ jobs:
 
       - name: Copy map files to Cloudflare
         if: inputs.copy != 'none'
+        env:
+          FILES: ${{ inputs.files }}
         run: |
+          pip install --quiet "pmtiles>=3.4"
           want="${{ inputs.copy }}"
           # Newest map release for each state.
           gh api "repos/${{ github.repository }}/releases?per_page=100" --paginate \
@@ -64,10 +70,23 @@ jobs:
             if [ "$want" != "all" ] && [ "$want" != "$region" ]; then continue; fi
             echo "== $region ($tag)"
             rm -rf dl && mkdir dl
-            gh release download "$tag" -R "${{ github.repository }}" -p "*.pmtiles" -D dl
-            bash pipeline/r2_upload.sh "$region" dl
+            if [ -n "$FILES" ]; then
+              for n in $FILES; do gh release download "$tag" -R "${{ github.repository }}" -p "$n" -D dl || true; done
+              # shellcheck disable=SC2086
+              bash pipeline/r2_upload.sh "$region" dl $FILES
+            else
+              gh release download "$tag" -R "${{ github.repository }}" -p "*.pmtiles" -D dl
+              bash pipeline/r2_upload.sh "$region" dl
+            fi
           done < releases.tsv
           rm -rf dl
+
+      - name: Cloudflare storage used
+        if: always()
+        run: |
+          export AWS_DEFAULT_REGION=auto AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+          total=$(aws s3 ls s3://trailguide-maps --recursive --endpoint-url "https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com" | awk '{s+=$3} END {printf "%.2f", s/1e9}')
+          echo "::notice title=Cloudflare storage::$total GB of 10 GB free"
 
       - uses: actions/checkout@v4
         if: inputs.deploy
