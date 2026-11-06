@@ -193,11 +193,7 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit, onOpenMaps: () -> Unit
                 androidx.compose.material3.Button(
                     onClick = {
                         vm.shareBackup { uri ->
-                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("application/zip")
-                                .putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                .putExtra(android.content.Intent.EXTRA_SUBJECT, vm.backupFileName().removeSuffix(".zip"))
-                                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            context.startActivity(android.content.Intent.createChooser(send, "Back up to"))
+                            ShareFile.send(context, uri, "application/zip", "Back up to", vm.backupFileName().removeSuffix(".zip"))
                         }
                     },
                     shape = RoundedCornerShape(12.dp),

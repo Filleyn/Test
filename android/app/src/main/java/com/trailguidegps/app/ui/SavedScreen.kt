@@ -1,6 +1,5 @@
 package com.trailguidegps.app.ui
 
-import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -103,11 +102,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
 
     fun share(fileName: String, wps: List<Waypoint>, trackIds: List<String>, routeIds: List<String> = emptyList(), noteIds: List<String> = emptyList()) {
         val uri = vm.exportGpx(fileName, wps, trackIds, routeIds, noteIds) ?: return
-        val send = Intent(Intent.ACTION_SEND)
-            .setType("application/gpx+xml")
-            .putExtra(Intent.EXTRA_STREAM, uri)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        context.startActivity(Intent.createChooser(send, "Export GPX"))
+        ShareFile.send(context, uri, "application/gpx+xml", "Export GPX")
     }
 
     Column(Modifier.fillMaxSize().background(TG.Surface).safeDrawingPadding()) {

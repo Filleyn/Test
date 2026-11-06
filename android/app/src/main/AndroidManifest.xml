@@ -61,6 +61,11 @@
     </application>
 
     <queries>
+        <!-- Apps that can take a shared file, so they can be given permission to read it. -->
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.DIAL" />
         </intent>

@@ -2,7 +2,6 @@ package com.trailguidegps.app.ui
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
-import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -108,10 +107,7 @@ fun TripPlanDialog(vm: AppViewModel, route: SavedRoute, onDismiss: () -> Unit) {
                 busy = true
                 val form = TripForm(party.trim(), phones.trim(), startAt, backBy, alarmAt, vehicle.trim(), parkedAt.trim(), notes.trim())
                 vm.makeTripPlan(route, form) { uri, subject, body ->
-                    val send = Intent(Intent.ACTION_SEND).setType("application/pdf")
-                        .putExtra(Intent.EXTRA_STREAM, uri).putExtra(Intent.EXTRA_SUBJECT, subject).putExtra(Intent.EXTRA_TEXT, body)
-                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    context.startActivity(Intent.createChooser(send, "Send trip plan"))
+                    ShareFile.send(context, uri, "application/pdf", "Send trip plan", subject, body)
                     busy = false
                     onDismiss()
                 }
