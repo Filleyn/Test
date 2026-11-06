@@ -50,9 +50,15 @@ def route_check(graph_path, trails_path, trail_name):
                  if trail_name.lower() in (f["properties"].get("name") or "").lower()]
         if not feats:
             return f"⚠️ Route check skipped: no trail named like \"{trail_name}\""
-        coords = max(feats, key=lambda f: len(f["geometry"]["coordinates"]))["geometry"]["coordinates"]
-        a = rc.snap(g, coords[0][1], coords[0][0])
-        b = rc.snap(g, coords[-1][1], coords[-1][0])
+        # The longest piece can run past the state line (outside the routing graph),
+        # so take the longest one whose two ends both land on the network.
+        a = b = None
+        for f in sorted(feats, key=lambda f: -len(f["geometry"]["coordinates"]))[:20]:
+            coords = f["geometry"]["coordinates"]
+            a = rc.snap(g, coords[0][1], coords[0][0])
+            b = rc.snap(g, coords[-1][1], coords[-1][0])
+            if a and b:
+                break
         if not a or not b:
             return "❌ Route check: couldn't snap the test trail's ends to the network"
         r = rc.route(g, a, b)
