@@ -230,6 +230,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         loadFeatures()
         loadRouting()
         computeUpdates()
+        cleanOldMaps(delayMs = 20_000)
+    }
+
+    /** Frees the space of replaced map versions once the map has reloaded with the new ones. */
+    private fun cleanOldMaps(delayMs: Long) {
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(delayMs)
+            if (MapDownloads.busy) return@launch
+            withContext(Dispatchers.IO) { stores.forEach { runCatching { it.cleanOld() } } }
+        }
     }
 
     /** Downloaded states with a newer map release, and how much the updates would download. */
@@ -286,6 +296,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         com.trailguidegps.app.data.MapRegion.names = _installed.value.map { MapStore.displayName(it) }
         loadFeatures()
+        cleanOldMaps(delayMs = 5_000)
     }
 
     private fun loadFeatures() {

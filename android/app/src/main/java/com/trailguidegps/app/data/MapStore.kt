@@ -12,10 +12,33 @@ import java.net.URL
 
 /** Where one state's offline map files live on the phone, and how they get there. */
 class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
-    val dir: File = File(root(context), region)
+    private val rootDir: File = root(context)
+    /** The state's folder. Each installed version lives in its own subfolder inside it. */
+    val stateDir: File = File(rootDir, region)
+
+    /**
+     * Folder holding the installed files. Every update goes into a new subfolder (named
+     * after its release) instead of replacing files in place: the map engine caches each
+     * file's layout by path, and reading a swapped file at old offsets crashes it.
+     * Older installs kept their files directly in [stateDir].
+     */
+    val dir: File get() {
+        val cur = File(stateDir, CURRENT_FILE).takeIf { it.exists() }?.readText()?.trim()
+        if (!cur.isNullOrEmpty()) File(stateDir, cur).takeIf { it.isDirectory }?.let { return it }
+        return stateDir
+    }
 
     /** Removes this state's map files from the phone. */
-    fun delete() { dir.deleteRecursively() }
+    fun delete() { stateDir.deleteRecursively() }
+
+    /** Deletes earlier versions' files, once the map has moved on to the current ones. */
+    fun cleanOld() {
+        val keep = dir
+        if (keep == stateDir) return
+        stateDir.listFiles()?.forEach { f ->
+            if (f != keep && f.name != CURRENT_FILE) f.deleteRecursively()
+        }
+    }
 
     /** Everyday name: "Oregon". */
     val name: String get() = displayName(region)
@@ -48,18 +71,10 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
 
     /** Newest GitHub release whose tag starts with maps-<region>-. */
     suspend fun findLatestRelease(): Release = withContext(Dispatchers.IO) {
-        val url = URL("https://api.github.com/repos/${BuildConfig.MAPS_REPO}/releases?per_page=100")
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("User-Agent", "TrailGuideGPS")
-            connectTimeout = 15000
-            readTimeout = 30000
-        }
-        try {
-            if (conn.responseCode != 200) error("GitHub answered ${conn.responseCode}")
-            val releases = JSONArray(conn.inputStream.bufferedReader().readText())
+        run {
+            val releases = allReleases()
             // GitHub doesn't always list releases newest first, so pick the most recently published.
-            val newest = (0 until releases.length()).map { releases.getJSONObject(it) }
+            val newest = releases
                 .filter { it.getString("tag_name").startsWith("maps-$region-") && !it.optBoolean("draft") }
                 .maxByOrNull { it.optString("published_at").ifBlank { it.optString("created_at") } }
                 ?: error("No map files found for $region")
@@ -69,8 +84,6 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
                 Asset(a.getString("name"), a.getString("browser_download_url"), a.getLong("size"))
             }.filter { it.name in REQUIRED || it.name in OPTIONAL }
             return@withContext Release(newest.getString("tag_name"), assets)
-        } finally {
-            conn.disconnect()
         }
     }
 
@@ -80,7 +93,7 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
      */
     suspend fun updateBytes(release: Release): Long = withContext(Dispatchers.IO) {
         val m = release.assets.firstOrNull { it.name == "manifest.json" } ?: return@withContext release.totalBytes
-        val tmp = File(dir.parentFile, "$region.manifest-check.json")
+        val tmp = File(rootDir, "$region.manifest-check.json")
         try {
             fetch(m, tmp.apply { delete() }, 0L) { }
             val newSums = checksums(tmp)
@@ -143,7 +156,7 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
      */
     suspend fun download(release: Release, onProgress: (file: String, done: Long, total: Long) -> Unit) =
         withContext(Dispatchers.IO) {
-            val tmp = File(dir.parentFile, "$region.download")
+            val tmp = File(rootDir, "$region.download")
             val tagFile = File(tmp, TAG_FILE)
             if (!(tagFile.exists() && tagFile.readText().trim() == release.tag)) {
                 tmp.deleteRecursively()
@@ -180,8 +193,16 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
             }
             val missing = REQUIRED.filter { !File(tmp, it).exists() }
             if (missing.isNotEmpty()) error("Release is missing ${missing.joinToString()}")
-            dir.deleteRecursively()
-            if (!tmp.renameTo(dir)) error("Couldn't move map files into place")
+            // Move the new files into their own folder and point at it. The old files stay
+            // until the map has reloaded (cleanOld), so nothing it has open changes under it.
+            stateDir.mkdirs()
+            val name = release.tag.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val target = File(stateDir, name).takeIf { it != dir } ?: File(stateDir, "$name-${System.currentTimeMillis()}")
+            target.deleteRecursively()
+            if (!tmp.renameTo(target)) error("Couldn't move map files into place")
+            val pointer = File(stateDir, "$CURRENT_FILE.tmp")
+            pointer.writeText(target.name)
+            if (!pointer.renameTo(File(stateDir, CURRENT_FILE))) error("Couldn't switch to the new map files")
         }
 
     /** Downloads one file, resuming a partial one. Returns the updated running byte count. */
@@ -229,6 +250,7 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
         val ONLINE = listOf("search.json.gz")
         const val SEARCH_FILE = "search.json.gz"
         private const val TAG_FILE = "release-tag.txt"
+        private const val CURRENT_FILE = "current.txt"
 
         fun root(context: Context) = File(context.getExternalFilesDir(null) ?: context.filesDir, "maps")
 
@@ -245,18 +267,11 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
         /** Test areas that aren't offered in the app. */
         private val HIDDEN = setOf("cottonwood-canyon")
 
-        /** The newest map release for every state, from GitHub (one request). */
+        /** The newest map release for every state, from GitHub. */
         suspend fun catalog(): Map<String, Release> = withContext(Dispatchers.IO) {
-            val conn = (URL("https://api.github.com/repos/${BuildConfig.MAPS_REPO}/releases?per_page=100").openConnection() as HttpURLConnection).apply {
-                setRequestProperty("Accept", "application/vnd.github+json")
-                setRequestProperty("User-Agent", "TrailGuideGPS")
-                connectTimeout = 15000
-                readTimeout = 30000
-            }
-            try {
-                if (conn.responseCode != 200) error("GitHub answered ${conn.responseCode}")
-                val releases = JSONArray(conn.inputStream.bufferedReader().readText())
-                (0 until releases.length()).map { releases.getJSONObject(it) }
+            run {
+                val releases = allReleases()
+                releases
                     .filter { !it.optBoolean("draft") }
                     .mapNotNull { r -> TAG.find(r.getString("tag_name"))?.let { m -> m.groupValues[1] to r } }
                     .filter { it.first !in HIDDEN }
@@ -269,9 +284,32 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
                             Asset(a.getString("name"), a.getString("browser_download_url"), a.getLong("size"))
                         }.filter { it.name in REQUIRED || it.name in OPTIONAL || it.name in ONLINE })
                     }
-            } finally {
-                conn.disconnect()
             }
+        }
+
+        /** GitHub lists 100 releases a page; read a few pages so older states don't drop off. */
+        fun allReleases(maxPages: Int = 4): List<JSONObject> {
+            val out = mutableListOf<JSONObject>()
+            for (page in 1..maxPages) {
+                val conn = (URL("https://api.github.com/repos/${BuildConfig.MAPS_REPO}/releases?per_page=100&page=$page").openConnection() as HttpURLConnection).apply {
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "TrailGuideGPS")
+                    connectTimeout = 15000
+                    readTimeout = 30000
+                }
+                val list = try {
+                    if (conn.responseCode != 200) {
+                        if (out.isNotEmpty()) break
+                        error("GitHub answered ${conn.responseCode}")
+                    }
+                    JSONArray(conn.inputStream.bufferedReader().readText())
+                } finally {
+                    conn.disconnect()
+                }
+                for (i in 0 until list.length()) out += list.getJSONObject(i)
+                if (list.length() < 100) break
+            }
+            return out
         }
 
         /** A release's small manifest (title, area, build date), read straight from GitHub. */
