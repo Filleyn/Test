@@ -544,5 +544,366 @@
     "expect_trail": "North Country",
     "state": "MI",
     "java_heap": "8g"
+  },
+  "georgia": {
+    "title": "All of Georgia",
+    "bbox": [
+      -85.61,
+      30.36,
+      -80.84,
+      35.0
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/georgia-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "GA",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "north-carolina": {
+    "title": "All of North Carolina",
+    "bbox": [
+      -84.32,
+      33.84,
+      -75.46,
+      36.59
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/north-carolina-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "NC",
+    "java_heap": "8g",
+    "coast": true
+  },
+  "south-carolina": {
+    "title": "All of South Carolina",
+    "bbox": [
+      -83.35,
+      32.03,
+      -78.54,
+      35.22
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/south-carolina-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Palmetto",
+    "state": "SC",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "virginia": {
+    "title": "All of Virginia",
+    "bbox": [
+      -83.68,
+      36.54,
+      -75.24,
+      39.47
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "VA",
+    "java_heap": "8g",
+    "coast": true
+  },
+  "maryland": {
+    "title": "All of Maryland",
+    "bbox": [
+      -79.49,
+      37.91,
+      -75.05,
+      39.72
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "MD",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "delaware": {
+    "title": "All of Delaware",
+    "bbox": [
+      -75.79,
+      38.45,
+      -75.05,
+      39.84
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/delaware-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Trail",
+    "state": "DE",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "pennsylvania": {
+    "title": "All of Pennsylvania",
+    "bbox": [
+      -80.52,
+      39.72,
+      -74.69,
+      42.27
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/pennsylvania-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "PA",
+    "java_heap": "8g",
+    "coast": true
+  },
+  "new-jersey": {
+    "title": "All of New Jersey",
+    "bbox": [
+      -75.56,
+      38.93,
+      -73.89,
+      41.36
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/new-jersey-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "NJ",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "new-york": {
+    "title": "All of New York",
+    "bbox": [
+      -79.76,
+      40.5,
+      -71.86,
+      45.02
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "NY",
+    "java_heap": "8g",
+    "coast": true
+  },
+  "connecticut": {
+    "title": "All of Connecticut",
+    "bbox": [
+      -73.73,
+      40.98,
+      -71.79,
+      42.05
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/connecticut-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "CT",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "rhode-island": {
+    "title": "All of Rhode Island",
+    "bbox": [
+      -71.91,
+      41.15,
+      -71.12,
+      42.02
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/rhode-island-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "North South",
+    "state": "RI",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "massachusetts": {
+    "title": "All of Massachusetts",
+    "bbox": [
+      -73.51,
+      41.24,
+      -69.93,
+      42.89
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/massachusetts-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "MA",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "new-hampshire": {
+    "title": "All of New Hampshire",
+    "bbox": [
+      -72.56,
+      42.7,
+      -70.61,
+      45.31
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/new-hampshire-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "NH",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "maine": {
+    "title": "All of Maine",
+    "bbox": [
+      -71.08,
+      43.06,
+      -66.95,
+      47.46
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/maine-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Appalachian",
+    "state": "ME",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "florida": {
+    "title": "All of Florida",
+    "bbox": [
+      -87.63,
+      24.52,
+      -80.03,
+      31.0
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/florida-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Florida",
+    "state": "FL",
+    "java_heap": "8g",
+    "coast": true
+  },
+  "alabama": {
+    "title": "All of Alabama",
+    "bbox": [
+      -88.47,
+      30.22,
+      -84.89,
+      35.01
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/alabama-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Pinhoti",
+    "state": "AL",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "mississippi": {
+    "title": "All of Mississippi",
+    "bbox": [
+      -91.66,
+      30.17,
+      -88.1,
+      35.0
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/mississippi-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Natchez Trace",
+    "state": "MS",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "louisiana": {
+    "title": "All of Louisiana",
+    "bbox": [
+      -94.04,
+      28.93,
+      -88.82,
+      33.02
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/louisiana-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Wild Azalea",
+    "state": "LA",
+    "java_heap": "6g",
+    "coast": true
+  },
+  "texas": {
+    "title": "All of Texas",
+    "bbox": [
+      -106.65,
+      25.84,
+      -93.51,
+      36.5
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/texas-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Lone Star",
+    "state": "TX",
+    "java_heap": "10g",
+    "coast": true
   }
 }
