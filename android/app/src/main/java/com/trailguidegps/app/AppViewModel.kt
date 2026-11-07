@@ -457,6 +457,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** A spot typed into search as coordinates: show it with the usual place card (Go to, Pin, Weather…). */
+    fun openCoordinates(lat: Double, lon: Double, near: String?) {
+        val u = com.trailguidegps.app.geo.Geo.utm(lat, lon)
+        val parts = mutableListOf("Coordinates")
+        elevationAt(lat, lon)?.let { parts += com.trailguidegps.app.geo.Geo.formatFeet(it) }
+        near?.let { parts += it }
+        parts += com.trailguidegps.app.geo.Geo.dms(lat, lon)
+        parts += "UTM ${u.line1} ${u.line2}"
+        _selected.value = SelectedPlace("%.5f, %.5f".format(java.util.Locale.US, lat, lon), parts.joinToString(" · "), lat, lon)
+        focusOn(listOf(lat to lon))
+        val region = regionAt(lat, lon)
+        if (!com.trailguidegps.app.BuildConfig.ONLINE_MAP && region != null && region !in _installed.value) {
+            _message.value = "${com.trailguidegps.app.data.MapStore.displayName(region)} isn't downloaded yet. Download it in Maps for each state to see the map here."
+        } else if (region == null && _catalog.value.isNotEmpty()) {
+            _message.value = "That spot is outside the maps (they cover the U.S.). Check the numbers, or whether it should be West or South."
+        }
+    }
+
     fun showTrack(id: String) {
         val (_, pts) = tracks.load(id) ?: return
         _shownTrack.value = id to pts

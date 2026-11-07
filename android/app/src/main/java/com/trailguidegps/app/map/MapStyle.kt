@@ -245,6 +245,7 @@ object MapStyle {
             .put(SRC_MEASURE, emptyGeoJson())
             .put(SRC_MEASURE_POINTS, emptyGeoJson())
             .put(SRC_GOTO, emptyGeoJson())
+            .put(SRC_SELECTED, emptyGeoJson())
             .put(SRC_FIRE_PERIMS, emptyGeoJson())
             .put(SRC_FIRE_POINTS, emptyGeoJson())
             .put(SRC_RECORDING, emptyGeoJson())
@@ -559,6 +560,11 @@ object MapStyle {
             .put("line-dasharray", arr(1, 1.5)), layout = JSONObject().put("line-cap", "round"))
         layer("off-route", "line", SRC_OFF_ROUTE, paint = JSONObject().put("line-color", "#C62828").put("line-width", 3)
             .put("line-dasharray", arr(1.5, 1.5)), layout = JSONObject().put("line-cap", "round"))
+        // The spot whose card is open (a search result, typed coordinates, a tapped place).
+        layer("selected-halo", "circle", SRC_SELECTED, paint = JSONObject().put("circle-radius", 14)
+            .put("circle-color", "#E0661F").put("circle-opacity", 0.25))
+        layer("selected-mark", "circle", SRC_SELECTED, paint = JSONObject().put("circle-radius", 6)
+            .put("circle-color", "#E0661F").put("circle-stroke-color", "#FFFFFF").put("circle-stroke-width", 2.5))
         // Where you're pressing on the elevation graph.
         layer("profile-mark", "circle", SRC_PROFILE_MARK, paint = JSONObject().put("circle-radius", 9)
             .put("circle-color", "#FFFFFF").put("circle-stroke-color", "#23271F").put("circle-stroke-width", 4))
@@ -604,6 +610,7 @@ object MapStyle {
     const val SRC_MEASURE = "user-measure"
     const val SRC_MEASURE_POINTS = "user-measure-points"
     const val SRC_GOTO = "user-goto"
+    const val SRC_SELECTED = "user-selected"
     const val SRC_FIRE_PERIMS = "fires-perimeters"
     const val SRC_FIRE_POINTS = "fires-points"
     const val LAYER_FIRE_FILL = "fire-fill"

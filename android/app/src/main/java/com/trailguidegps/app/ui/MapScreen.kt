@@ -566,6 +566,10 @@ fun MapScreen(
             listOf(doubleArrayOf(me.lat, me.lon), f.nearest) else emptyList()
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_OFF_ROUTE)?.setGeoJson(RouteStore.lineGeoJson(line))
     }
+    LaunchedEffect(style, selected) {
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SELECTED)?.setGeoJson(
+            RouteStore.pointGeoJson(selected?.let { doubleArrayOf(it.lat, it.lon) }))
+    }
     LaunchedEffect(style, profileMark) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_PROFILE_MARK)?.setGeoJson(RouteStore.pointGeoJson(profileMark))
         // Bring the marked spot into view if it's off screen.

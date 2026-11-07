@@ -57,6 +57,7 @@ import com.trailguidegps.app.AppViewModel
 import com.trailguidegps.app.data.Features
 import com.trailguidegps.app.data.Search
 import com.trailguidegps.app.data.SearchResult
+import com.trailguidegps.app.geo.Coords
 import com.trailguidegps.app.geo.Geo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -120,6 +121,8 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val ref = remember { vm.searchReference() }
+    // Typed coordinates (decimal, degrees-minutes-seconds or UTM) go straight to that spot.
+    val coord = remember(query) { Coords.parse(query) }
     BackHandler(onBack = onClose)
 
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -167,7 +170,7 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Trail, spring, lake, peak, town") },
+                placeholder = { Text("Trail, place, or coordinates") },
                 singleLine = true,
                 shape = RoundedCornerShape(24.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -217,6 +220,18 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
         }
 
         when {
+            coord != null -> LazyColumn(Modifier.fillMaxSize()) {
+                item(key = "h-coord") { Header("Coordinates") }
+                item(key = "coord") {
+                    val near = features?.nearTown(coord.lat, coord.lon)
+                    CoordRow(coord, near) {
+                        keyboard?.hide()
+                        vm.openCoordinates(coord.lat, coord.lon, near)
+                        onClose()
+                    }
+                    HorizontalDivider(color = TG.Line)
+                }
+            }
             isOnline && onlineError != null -> Column(Modifier.padding(24.dp)) {
                 Text(onlineError!!, fontSize = 15.sp, color = TG.Muted, lineHeight = 21.sp)
                 Spacer(Modifier.size(12.dp))
@@ -244,7 +259,7 @@ fun SearchScreen(vm: AppViewModel, onClose: () -> Unit) {
             }
             query.isBlank() -> {
                 if (nearby.isEmpty()) {
-                    Message(if (ref == null) "Search by name. Once GPS has a fix, the nearest water and campsites show here." else "Search by name: trails, springs, lakes, peaks, campsites, trailheads and towns.")
+                    Message(if (ref == null) "Search by name. Once GPS has a fix, the nearest water and campsites show here." else "Search by name: trails, springs, lakes, peaks, campsites, trailheads and towns. Or type coordinates, like 44.0582, -121.3153 or a UTM grid reference.")
                 } else {
                     LazyColumn(Modifier.fillMaxSize()) {
                         nearby.forEach { (title, list) ->
@@ -282,6 +297,23 @@ private fun Header(text: String) {
 @Composable
 private fun Message(text: String) {
     Text(text, fontSize = 15.sp, color = TG.Muted, lineHeight = 21.sp, modifier = Modifier.padding(24.dp))
+}
+
+@Composable
+private fun CoordRow(c: Coords.Parsed, near: String?, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(12.dp).background(TG.Accent, CircleShape))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("%.5f, %.5f".format(java.util.Locale.US, c.lat, c.lon), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
+            val parts = mutableListOf(Geo.dms(c.lat, c.lon))
+            if (c.fromUtm) parts += "from UTM"
+            if (c.assumedWest) parts += "West assumed"
+            Text(parts.joinToString(" · "), fontSize = 13.sp, color = TG.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            near?.let { Text(it, fontSize = 13.sp, color = TG.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Text("Tap to show it on the map", fontSize = 13.sp, color = TG.Accent)
+        }
+    }
 }
 
 @Composable
