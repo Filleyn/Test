@@ -65,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.animation.animateContentSize
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -85,6 +86,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -645,14 +647,19 @@ fun MapScreen(
             )
         }
 
-        // Top: offline badge and layers button, plus a notice when you're off the map
+        // Top: search and layers buttons, plus a notice when you're off the map
+        // The map buttons above the bottom panel rise with it; when they'd run into the top ones, they step aside.
+        var topControlsBottom by remember { mutableFloatStateOf(0f) }
+        var sideControlsTop by remember { mutableFloatStateOf(Float.MAX_VALUE) }
+        val crowded = sideControlsTop < topControlsBottom + with(LocalDensity.current) { 8.dp.toPx() }
         val bbox = remember(mapVersion) { vm.store.bbox() }
         // Off the downloaded maps: outside every downloaded state's area.
         val installedBoxes = remember(mapVersion) { vm.stores.mapNotNull { it.bbox() } }
         val outside = fix != null && installedBoxes.isNotEmpty() && installedBoxes.none { b ->
             fix!!.lon >= b[0] && fix!!.lat >= b[1] && fix!!.lon <= b[2] && fix!!.lat <= b[3]
         }
-        Column(Modifier.statusBarsPadding().padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.statusBarsPadding().padding(16.dp).fillMaxWidth().onGloballyPositioned { topControlsBottom = it.boundsInRoot().bottom },
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -702,18 +709,13 @@ fun MapScreen(
                     }
                 }
             } else {
-            Surface(onClick = onOpenSearch, shape = RoundedCornerShape(24.dp), color = TG.Surface, shadowElevation = 4.dp, modifier = Modifier.weight(1f)) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Search, contentDescription = null, tint = TG.Muted)
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("Search trails, water, places", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
-                        Text(if (vm.stores.isEmpty()) "Online map · no states downloaded" else "Offline · ${com.trailguidegps.app.data.MapRegion.name} maps", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
-                    }
+                // Just a button, so the map gets the top of the screen.
+                RoundButton(onClick = onOpenSearch, description = "Search trails, water, places or coordinates") {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = TG.Ink)
                 }
+                Spacer(Modifier.weight(1f))
             }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            val topButtons: @Composable () -> Unit = {
                 RoundButton(onClick = { showLayers = true }, description = "Map layers") {
                     Icon(Icons.Filled.Layers, contentDescription = null, tint = TG.Ink)
                 }
@@ -722,6 +724,9 @@ fun MapScreen(
                 }
                 SosButton(onClick = onEmergency)
             }
+            // Across the top beside the search button; stacked beside a measuring or planning bar.
+            if (measure == null && satSelect == null && !plan.active) topButtons()
+            else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { topButtons() }
         }
         if (plan.active) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -784,7 +789,13 @@ fun MapScreen(
 
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             Column(
-                Modifier.align(Alignment.End).padding(end = 16.dp, bottom = 12.dp),
+                Modifier.align(Alignment.End).padding(end = 16.dp, bottom = 12.dp)
+                    .onGloballyPositioned { sideControlsTop = it.boundsInRoot().top }
+                    .alpha(if (crowded) 0f else 1f)
+                    .then(if (crowded) Modifier.pointerInput(Unit) {
+                        // Hidden: swallow taps so the invisible buttons can't be pressed.
+                        awaitPointerEventScope { while (true) awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.forEach { it.consume() } }
+                    } else Modifier),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (measure == null && !plan.active && satSelect == null) {
