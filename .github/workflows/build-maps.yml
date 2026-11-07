@@ -17,6 +17,7 @@ on:
           - alaska-western
           - alaska-brooks-east
           - alaska-brooks-west
+          - hawaii
           - oregon
           - washington
           - idaho

@@ -1035,5 +1035,24 @@
     "state": "AK",
     "java_heap": "8g",
     "coast": true
+  },
+  "hawaii": {
+    "title": "All of Hawaii: Kauai, Oahu, Maui, Molokai, Lanai, Big Island",
+    "bbox": [
+      -160.3,
+      18.85,
+      -154.75,
+      22.3
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/hawaii-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "expect_trail": "Kalalau",
+    "state": "HI",
+    "java_heap": "6g",
+    "coast": true
   }
 }
