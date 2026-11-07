@@ -41,6 +41,7 @@ Ideas, roughly most useful first. All are public data; each would follow the sat
 - 1.5.60: **fixed a crash when updating a state's maps** (the update replaced files under the open map; the map engine caches each PMTiles file's layout by path and aborted on "incorrect header check"). Each update now goes into its own folder (maps/<state>/<release>/, pointed to by current.txt) and the old one is deleted after the map reloads. The state list now reads up to 4 pages of GitHub releases so older states don't drop off. All 48 lower states built (coastal states with the real ocean outline from a mirror).
 - 1.5.61: **sharing to email fixed** for the trip plan PDF, GPX export and backup (ShareFile.send): the file's read permission now goes with the attachment as ClipData and is granted directly to every app that can take it, since email apps often open the attachment after the share sheet closes.
 - 1.5.63: readable names for the Alaska regions (Southcentral Alaska, Brooks Range East…). Alaska added as 7 regions (pipeline/regions.json alaska-*), using the 2 arc-second elevation set where 1 arc-second is missing; the outline script handles the 180th meridian and trims to the region.
+- Hawaii added as one region (all main islands); Kalalau test route 7.09 mi. All 50 states now have offline maps.
 - 1.5.62: email still showed the trip plan as "failed to download" (email apps upload attachments in the background). The trip plan PDF and GPX exports are now saved to Downloads/TrailGuide (MediaStore, Exports.publish) and that copy is shared, falling back to the app's private file.
 - 1.5.58: **six more Western states** (Montana, Wyoming, Utah, Colorado, Arizona, New Mexico); Maps screen gets a "Find a state" box and groups states by area (West Coast, Mountain West, Southwest, …). Map builds for inland states use a stand-in ocean file when the coastline server refuses GitHub.
 - 1.5.57: **Reverse flips the route in place** instead of saving copies; **search states you haven't downloaded** (each map build makes search.json.gz, fetched once and kept); **online trailheads, campsites, water and a trail overview** from a new places.pmtiles per state (streamed from Cloudflare for online states, downloaded with the maps; the overview also fills zoom 9–12 in downloaded states).
@@ -76,7 +77,7 @@ Only if the app is published on Google Play; for personal use, Oregon is enough.
 **Pipeline (small):**
 - Add each state to `regions.json` with its bbox, Geofabrik extract, DEM product and PAD-US state code.
 - Each state build runs about an hour on GitHub Actions (free for public repos), and its files go in its own release.
-- Watch the 2 GB per-file release limit for big states: Oregon's terrain file is 581 MB, so California fits but Texas is near the limit and Alaska needs splitting.
+- Watch the 2 GB per-file release limit for big states: Oregon's terrain file is 581 MB, so California fits but Texas is near the limit; Alaska is split into 7 regions.
 
 **App (a phase of its own):**
 - A state catalog from the release list (size, date), with multiple states installed side by side, a delete button for each, and only changed files on update. Today `MapStore` assumes one region and deletes others.
