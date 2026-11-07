@@ -19,11 +19,11 @@ object ShareFile {
         val send = Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri)
         subject?.let { send.putExtra(Intent.EXTRA_SUBJECT, it) }
         text?.let { send.putExtra(Intent.EXTRA_TEXT, it) }
-        send.clipData = ClipData.newRawUri(uri.lastPathSegment ?: "file", uri)
+        send.clipData = ClipData.newUri(context.contentResolver, "file", uri)
         send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         runCatching {
             context.packageManager.queryIntentActivities(send, PackageManager.MATCH_DEFAULT_ONLY).forEach {
-                context.grantUriPermission(it.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                runCatching { context.grantUriPermission(it.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             }
         }
         context.startActivity(Intent.createChooser(send, title).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
