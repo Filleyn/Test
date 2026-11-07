@@ -10,6 +10,13 @@ on:
         type: choice
         options:
           - cottonwood-canyon
+          - alaska-southeast
+          - alaska-southcentral
+          - alaska-interior
+          - alaska-southwest
+          - alaska-western
+          - alaska-brooks-east
+          - alaska-brooks-west
           - oregon
           - washington
           - idaho
@@ -166,7 +173,7 @@ jobs:
       - name: Get the state outline (for trimming the edges so neighbouring states don't overlap)
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
-          python3 pipeline/region_poly.py --osm-url "${{ steps.region.outputs.osm }}" --out "$WORK/outline.geojson"
+          python3 pipeline/region_poly.py --osm-url "${{ steps.region.outputs.osm }}" --bbox "${{ steps.region.outputs.bbox }}" --out "$WORK/outline.geojson"
 
       - name: Download elevation (USGS 3DEP)
         run: |
@@ -177,10 +184,18 @@ jobs:
           cat "$WORK/dem-urls.txt"
           while read -r url; do
             # Tiles fully over the ocean don't exist; skip them.
-            curl -fsSL --retry 3 -o "$WORK/dem/$(basename "$url")" "$url" || echo "skipped $url"
+            # Alaska is only partly covered at 1 arc-second; it has its own 2 arc-second set.
+            curl -fsSL --retry 3 -o "$WORK/dem/$(basename "$url")" "$url" || {
+              alt=$(echo "$url" | sed 's#/Elevation/1/#/Elevation/2/#; s#/USGS_1_#/USGS_2_#')
+              if [ "$alt" != "$url" ] && curl -fsSL --retry 3 -o "$WORK/dem/$(basename "$alt")" "$alt"; then
+                echo "used 2 arc-second $alt"
+              else
+                echo "skipped $url"
+              fi
+            }
           done < "$WORK/dem-urls.txt"
           ls -la "$WORK/dem"
-          gdalbuildvrt "$WORK/dem.vrt" "$WORK"/dem/*.tif
+          gdalbuildvrt -resolution highest "$WORK/dem.vrt" "$WORK"/dem/*.tif
           IFS=, read -r W S E N <<< "${{ steps.region.outputs.bbox }}"
           gdalwarp -q -overwrite -multi -wo NUM_THREADS=ALL_CPUS -te_srs EPSG:4326 -te "$W" "$S" "$E" "$N" \
             -co COMPRESS=DEFLATE -co TILED=YES "$WORK/dem.vrt" "$WORK/dem-region.tif"

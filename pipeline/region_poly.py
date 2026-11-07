@@ -9,7 +9,7 @@ import argparse
 import json
 import urllib.request
 
-from shapely.geometry import Polygon, MultiPolygon, mapping
+from shapely.geometry import Polygon, MultiPolygon, box, mapping
 from shapely.ops import unary_union
 
 
@@ -33,6 +33,11 @@ def parse_poly(text):
         i += 1
         if len(ring) >= 3:
             (holes if name.startswith("!") else outers).append(ring)
+    # Alaska's outline crosses the 180th meridian (western Aleutians): put everything in
+    # the western hemisphere so no ring wraps around the globe.
+    if any(x < -90 for r in outers for x, _ in r):
+        outers = [[(x - 360 if x > 0 else x, y) for x, y in r] for r in outers]
+        holes = [[(x - 360 if x > 0 else x, y) for x, y in r] for r in holes]
     shape = unary_union([Polygon(r) for r in outers])
     for h in holes:
         shape = shape.difference(Polygon(h))
@@ -44,10 +49,14 @@ def main():
     ap.add_argument("--osm-url", required=True, help="Geofabrik .osm.pbf URL; the .poly next to it is used")
     ap.add_argument("--out", required=True)
     ap.add_argument("--buffer-km", type=float, default=1.5)
+    ap.add_argument("--bbox", default="", help="west,south,east,north: keep only the outline near this box")
     a = ap.parse_args()
     url = a.osm_url.replace("-latest.osm.pbf", ".poly")
     with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "TrailGuideGPS map build"}), timeout=60) as r:
         shape = parse_poly(r.read().decode())
+    if a.bbox:
+        w, s_, e, n = (float(v) for v in a.bbox.split(","))
+        shape = shape.buffer(0).intersection(box(w - 0.5, s_ - 0.5, e + 0.5, n + 0.5))
     # About 1 km is 0.009 degrees of latitude; good enough for a margin.
     grown = shape.buffer(a.buffer_km * 0.009).simplify(0.002)
     if isinstance(grown, Polygon):

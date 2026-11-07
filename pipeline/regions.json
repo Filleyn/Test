@@ -905,5 +905,135 @@
     "state": "TX",
     "java_heap": "10g",
     "coast": true
+  },
+  "alaska-southeast": {
+    "title": "Southeast Alaska: Juneau, Sitka, Ketchikan, Glacier Bay",
+    "bbox": [
+      -141.0,
+      54.6,
+      -129.9,
+      60.4
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/alaska-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "state": "AK",
+    "java_heap": "8g",
+    "expect_trail": "Chilkoot",
+    "coast": true
+  },
+  "alaska-southcentral": {
+    "title": "Southcentral Alaska: Anchorage, Kenai, Chugach, Wrangell-St. Elias",
+    "bbox": [
+      -154.0,
+      59.0,
+      -141.0,
+      62.5
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/alaska-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "state": "AK",
+    "java_heap": "8g",
+    "expect_trail": "Resurrection",
+    "coast": true
+  },
+  "alaska-interior": {
+    "title": "Interior Alaska: Denali, Fairbanks",
+    "bbox": [
+      -154.0,
+      62.5,
+      -141.0,
+      66.0
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/alaska-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "state": "AK",
+    "java_heap": "8g",
+    "expect_trail": "Granite Tors"
+  },
+  "alaska-southwest": {
+    "title": "Southwest Alaska: Kodiak, Katmai, Alaska Peninsula",
+    "bbox": [
+      -165.0,
+      54.5,
+      -151.0,
+      59.0
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/alaska-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "state": "AK",
+    "java_heap": "8g",
+    "expect_trail": "Dumpling Mountain",
+    "coast": true
+  },
+  "alaska-western": {
+    "title": "Western Alaska: Lake Clark, Bristol Bay, Nome",
+    "bbox": [
+      -168.2,
+      59.0,
+      -154.0,
+      66.0
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/alaska-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "state": "AK",
+    "java_heap": "8g",
+    "expect_trail": "Tanalian",
+    "coast": true
+  },
+  "alaska-brooks-east": {
+    "title": "Brooks Range East: Gates of the Arctic, Dalton Highway, Arctic Refuge",
+    "bbox": [
+      -152.0,
+      66.0,
+      -141.0,
+      71.5
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/alaska-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "state": "AK",
+    "java_heap": "8g",
+    "coast": true
+  },
+  "alaska-brooks-west": {
+    "title": "Brooks Range West: Noatak, Kobuk Valley, western Gates of the Arctic",
+    "bbox": [
+      -167.0,
+      66.0,
+      -152.0,
+      71.5
+    ],
+    "osm_extract": "https://download.geofabrik.de/north-america/us/alaska-latest.osm.pbf",
+    "dem_product": "1",
+    "max_zoom": 14,
+    "terrain_max_zoom": 12,
+    "contour_max_zoom": 13,
+    "roads": "minor",
+    "state": "AK",
+    "java_heap": "8g",
+    "coast": true
   }
 }

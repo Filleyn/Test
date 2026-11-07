@@ -261,7 +261,19 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
                 .sortedWith(compareBy({ it != BuildConfig.MAPS_REGION }, { it }))
 
         /** "north-carolina" → "North Carolina". */
-        fun displayName(region: String) = region.split('-', '_', ' ').joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+        fun displayName(region: String) = NAMES[region]
+            ?: region.split('-', '_', ' ').joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+
+        /** Alaska is split into regions; these read better than "Alaska Brooks East". */
+        private val NAMES = mapOf(
+            "alaska-southeast" to "Southeast Alaska",
+            "alaska-southcentral" to "Southcentral Alaska",
+            "alaska-interior" to "Interior Alaska",
+            "alaska-southwest" to "Southwest Alaska",
+            "alaska-western" to "Western Alaska",
+            "alaska-brooks-east" to "Brooks Range East (Alaska)",
+            "alaska-brooks-west" to "Brooks Range West (Alaska)",
+        )
 
         private val TAG = Regex("^maps-(.+)-(\\d{4}-\\d{2}-\\d{2})-run\\d+$")
         /** Test areas that aren't offered in the app. */
