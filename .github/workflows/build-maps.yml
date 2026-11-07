@@ -173,7 +173,7 @@ jobs:
       - name: Get the state outline (for trimming the edges so neighbouring states don't overlap)
         run: |
           exec > >(tee -a "$WORK/build.log") 2>&1
-          python3 pipeline/region_poly.py --osm-url "${{ steps.region.outputs.osm }}" --bbox "${{ steps.region.outputs.bbox }}" --out "$WORK/outline.geojson"
+          python3 pipeline/region_poly.py --osm-url "${{ steps.region.outputs.osm }}" --bbox="${{ steps.region.outputs.bbox }}" --out "$WORK/outline.geojson"
 
       - name: Download elevation (USGS 3DEP)
         run: |
