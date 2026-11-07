@@ -1209,13 +1209,19 @@ private fun BottomPanel(
     val hasPlace = selected != null || selectedWaypoint != null
     var placeExpanded by remember(selected, selectedWaypoint?.id) { mutableStateOf(startExpanded) }
     val onPlaceExpanded: (Boolean) -> Unit = { placeExpanded = it }
+    // With a route shown, a compact card (name, Follow, elevation graph) leaves more map to see. Remembered.
+    val panelPrefs = LocalContext.current.let { c -> remember { c.getSharedPreferences("panel", android.content.Context.MODE_PRIVATE) } }
+    var routeCompact by remember { mutableStateOf(panelPrefs.getBoolean("route_compact", true)) }
+    val setRouteCompact: (Boolean) -> Unit = { routeCompact = it; panelPrefs.edit().putBoolean("route_compact", it).apply() }
+    val routeOnly = shownRoute != null && following == null && goTo == null && !hasPlace && recording == null
+    val compactRoute = routeOnly && routeCompact
     Surface(
         color = TG.Surface,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         shadowElevation = 12.dp,
         // Swipe down to hide the panel, up to bring it back.
         // With a place card open, swipe up for its details and down to shrink it again.
-        modifier = Modifier.fillMaxWidth().animateContentSize().pointerInput(hidden, hasPlace, placeExpanded) {
+        modifier = Modifier.fillMaxWidth().animateContentSize().pointerInput(hidden, hasPlace, placeExpanded, routeOnly, routeCompact) {
             detectVerticalDragGestures(
                 onDragStart = { drag = 0f },
                 onDragEnd = {
@@ -1223,6 +1229,8 @@ private fun BottomPanel(
                         drag < -60f && hidden -> onHide(false)
                         drag < -60f && hasPlace && !placeExpanded -> placeExpanded = true
                         drag > 60f && hasPlace && placeExpanded -> placeExpanded = false
+                        drag < -60f && routeOnly && routeCompact -> setRouteCompact(false)
+                        drag > 60f && routeOnly && !routeCompact -> setRouteCompact(true)
                         drag > 60f && !hidden -> onHide(true)
                     }
                 },
@@ -1382,7 +1390,7 @@ private fun BottomPanel(
                 return@Column
             }
 
-            when {
+            if (!compactRoute) when {
                 !hasLocationPermission -> {
                     Text("Allow location to see where you are on the map.", fontSize = 14.sp, color = TG.Ink)
                     Spacer(Modifier.height(10.dp))
@@ -1442,10 +1450,17 @@ private fun BottomPanel(
                 var showDifficulty by remember(r.id) { mutableStateOf(false) }
                 var showTripPlan by remember(r.id) { mutableStateOf(false) }
                 val difficulty = remember(r) { com.trailguidegps.app.data.Difficulty.of(r.stats, r.terrain) }
-                DifficultyLine(difficulty, onClick = { showDifficulty = true }, showLink = false)
+                if (!compactRoute) DifficultyLine(difficulty, onClick = { showDifficulty = true }, showLink = false)
                 if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
                 if (r.stats.profile.size >= 2) {
                     ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub)
+                }
+                if (compactRoute) {
+                    Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show route tools") { setRouteCompact(false) }.padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.Center) {
+                        Text("More ▲", fontSize = 13.sp, color = TG.Accent)
+                    }
+                    return@Column
                 }
                 r.coords.firstOrNull()?.let { s ->
                     afterDarkWarning(s[0], s[1], System.currentTimeMillis(), pace.minutes(r.stats.distanceM, r.stats.gainM))?.let {
@@ -1475,6 +1490,10 @@ private fun BottomPanel(
                     Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
                     Action(Icons.Filled.StickyNote2, "Notes") { editingNotes = true },
                 ), Modifier.padding(top = 4.dp), columns = 4)
+                if (routeOnly) Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show less") { setRouteCompact(true) }.padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.Center) {
+                    Text("Less ▼ (more map)", fontSize = 12.sp, color = TG.Accent)
+                }
                 if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
             }
             shownTrackName?.let { name ->
