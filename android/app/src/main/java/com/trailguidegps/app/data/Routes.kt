@@ -222,6 +222,8 @@ data class SavedRoute(
     val terrain: RouteTerrain? = null,
     /** Nights out, for a multi-day trip; empty for a day hike. */
     val camps: List<Camp> = emptyList(),
+    /** Your notes on the whole route: road to the trailhead, bugs, permits. */
+    val notes: String = "",
 )
 
 data class RouteSummary(
@@ -252,7 +254,7 @@ class RouteStore(context: Context) {
     fun save(r: SavedRoute) {
         val o = JSONObject().put("id", r.id).put("name", r.name).put("created", r.createdAt)
             .put("distance", r.stats.distanceM).put("gain", r.stats.gainM).put("loss", r.stats.lossM)
-            .put("via", JSONArray(r.via)).put("color", r.color)
+            .put("via", JSONArray(r.via)).put("color", r.color).put("notes", r.notes)
             .put("terrain", r.terrain?.let { t ->
                 JSONObject().put("trail", t.trailM).put("track", t.trackM).put("road", t.roadM).put("off", t.offTrailM)
                     .put("sac", t.sacMax).put("sacRated", t.sacRatedM)
@@ -299,6 +301,7 @@ class RouteStore(context: Context) {
                     a.getJSONObject(i).let { c -> Camp(c.getDouble("along"), c.optString("name").takeIf { !c.isNull("name") && it.isNotBlank() }) }
                 }
             },
+            notes = o.optString("notes", ""),
         )
     }.getOrNull()
 
@@ -308,6 +311,10 @@ class RouteStore(context: Context) {
 
     fun setColor(id: String, color: String) {
         load(id)?.let { save(it.copy(color = color)) }
+    }
+
+    fun setNotes(id: String, notes: String) {
+        load(id)?.let { save(it.copy(notes = notes)) }
     }
 
     fun delete(id: String) {

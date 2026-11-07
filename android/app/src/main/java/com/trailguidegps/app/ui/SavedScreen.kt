@@ -83,6 +83,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     var renamingRoute by remember { mutableStateOf<RouteSummary?>(null) }
     var recoloring by remember { mutableStateOf<RouteSummary?>(null) }
     var tripPlanFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
+    var notesFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var waterFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     val waterNotes by vm.waterNotes.notes.collectAsStateWithLifecycle()
     val fix by vm.tracker.fix.collectAsStateWithLifecycle()
@@ -139,6 +140,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 onToggleMap = { on -> if (on) vm.addRouteToMap(r.id) else vm.hideRoute(r.id) },
                 onRename = { renamingRoute = r },
                 onColor = { recoloring = r },
+                onNotes = { notesFor = vm.routes.load(r.id) },
                 onTripPlan = { tripPlanFor = vm.routes.load(r.id) },
                 onWater = { waterFor = vm.routes.load(r.id) },
                 onReverse = { vm.reverseRoute(r.id) },
@@ -371,6 +373,9 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     }
 
     tripPlanFor?.let { r -> TripPlanDialog(vm, r) { tripPlanFor = null } }
+    notesFor?.let { r ->
+        RouteNotesDialog(r.name, r.notes, onSave = { vm.setRouteNotes(r.id, it); notesFor = null }, onDismiss = { notesFor = null })
+    }
     waterFor?.let { r ->
         WaterAlongRouteDialog(vm, r.name, r.coords, waterNotes,
             onPick = { la, lo -> waterFor = null; vm.showRoute(r.id); vm.focusOn(listOf(la to lo)); onClose() },
@@ -510,7 +515,7 @@ private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, o
 @Composable
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?,
-    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onTripPlan: () -> Unit,
+    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onTripPlan: () -> Unit,
     onWater: () -> Unit, onReverse: () -> Unit,
     onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
 ) {
@@ -544,6 +549,7 @@ private fun RouteRow(
             "Edit route" to onEdit,
             "Water along route" to onWater,
             "Reverse direction" to onReverse,
+            "Route notes" to onNotes,
             "Trip plan (PDF)" to onTripPlan,
             "Move to folder" to onMove,
             "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete,

@@ -14,6 +14,8 @@ object Gpx {
         val waypoints: List<Waypoint>,
         val tracks: List<Pair<String, List<TrackPoint>>>,
         val routes: List<Pair<String, List<TrackPoint>>> = emptyList(),
+        /** Each route's description (its notes), lined up with [routes]. */
+        val routeNotes: List<String> = emptyList(),
     )
 
     private fun iso() = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
@@ -24,6 +26,8 @@ object Gpx {
         waypoints: List<Waypoint>,
         tracks: List<Pair<String, List<TrackPoint>>>,
         routes: List<Pair<String, List<DoubleArray>>> = emptyList(),
+        /** Route notes, lined up with [routes]; written as each route's description. */
+        routeNotes: List<String> = emptyList(),
     ): String {
         val f = iso()
         val sb = StringBuilder()
@@ -36,8 +40,10 @@ object Gpx {
             if (w.note.isNotBlank()) sb.append("<desc>${esc(w.note)}</desc>")
             sb.append("</wpt>\n")
         }
-        routes.forEach { (name, coords) ->
-            sb.append("  <rte><name>${esc(name)}</name>\n")
+        routes.forEachIndexed { i, (name, coords) ->
+            sb.append("  <rte><name>${esc(name)}</name>")
+            routeNotes.getOrNull(i)?.takeIf { it.isNotBlank() }?.let { sb.append("<desc>${esc(it)}</desc>") }
+            sb.append('\n')
             coords.forEach { c -> sb.append("""    <rtept lat="${c[0]}" lon="${c[1]}"/>""").append('\n') }
             sb.append("  </rte>\n")
         }
@@ -63,7 +69,10 @@ object Gpx {
         val waypoints = mutableListOf<Waypoint>()
         val tracks = mutableListOf<Pair<String, List<TrackPoint>>>()
         val routes = mutableListOf<Pair<String, List<TrackPoint>>>()
+        val routeNotes = mutableListOf<String>()
         var inRte = false
+        var inPt = false
+        var rteDesc: String? = null
 
         var inWpt = false
         var inTrk = false
@@ -87,9 +96,10 @@ object Gpx {
                             lat = parser.getAttributeValue(null, "lat")?.toDoubleOrNull() ?: 0.0
                             lon = parser.getAttributeValue(null, "lon")?.toDoubleOrNull() ?: 0.0
                             ele = null; time = null
+                            if (parser.name != "wpt") inPt = true
                             if (parser.name == "wpt") { inWpt = true; name = null; desc = null }
                         }
-                        "trk", "rte" -> { inTrk = true; inRte = parser.name == "rte"; trkName = null; trkPts = mutableListOf() }
+                        "trk", "rte" -> { inTrk = true; inRte = parser.name == "rte"; trkName = null; rteDesc = null; trkPts = mutableListOf() }
                     }
                 }
                 XmlPullParser.TEXT -> text += parser.text
@@ -99,19 +109,21 @@ object Gpx {
                         "time" -> time = runCatching { f.parse(text.trim().replace(Regex("\\.\\d+Z$"), "Z"))?.time }.getOrNull()
                         "name" -> if (inWpt) name = text.trim() else if (inTrk && trkName == null) trkName = text.trim()
                         "desc", "cmt" -> if (inWpt && desc == null) desc = text.trim()
+                            else if (inRte && !inPt && rteDesc == null) rteDesc = text.trim()
                         "wpt" -> {
                             waypoints += Waypoint(name = name ?: "Imported point", lat = lat, lon = lon, eleM = ele,
                                 note = desc ?: "", createdAt = time ?: System.currentTimeMillis())
                             inWpt = false
                         }
                         "trkpt", "rtept" -> {
+                            inPt = false
                             // Routes have no times; space them a second apart so order is kept.
                             fallbackTime += 1000
                             trkPts += TrackPoint(lat, lon, ele, time ?: fallbackTime)
                         }
                         "trk", "rte" -> {
                             if (trkPts.size >= 2) {
-                                if (inRte) routes += (trkName ?: "Imported route") to trkPts.toList()
+                                if (inRte) { routes += (trkName ?: "Imported route") to trkPts.toList(); routeNotes += rteDesc.orEmpty() }
                                 else tracks += (trkName ?: "Imported track") to trkPts.toList()
                             }
                             inTrk = false
@@ -122,6 +134,6 @@ object Gpx {
                 }
             }
         }
-        return Imported(waypoints, tracks, routes)
+        return Imported(waypoints, tracks, routes, routeNotes)
     }
 }

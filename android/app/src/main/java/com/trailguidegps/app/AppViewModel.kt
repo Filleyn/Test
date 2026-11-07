@@ -821,8 +821,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val r = withContext(Dispatchers.IO) {
                 runCatching {
                     val trk = tracks.summaries.value.mapNotNull { tracks.load(it.id) }
-                    val rte = routes.summaries.value.mapNotNull { routes.load(it.id) }.map { it.name to it.coords }
-                    val gpx = Gpx.write(waypoints.items.value, trk, rte)
+                    val loaded = routes.summaries.value.mapNotNull { routes.load(it.id) }
+                    val rte = loaded.map { it.name to it.coords }
+                    val gpx = Gpx.write(waypoints.items.value, trk, rte, loaded.map { it.notes })
                     app.contentResolver.openOutputStream(uri, "wt")!!.use { com.trailguidegps.app.data.Backup.write(app, it, gpx) }
                 }
             }
@@ -847,8 +848,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
                     val f = java.io.File(dir, backupFileName())
                     val trk = tracks.summaries.value.mapNotNull { tracks.load(it.id) }
-                    val rte = routes.summaries.value.mapNotNull { routes.load(it.id) }.map { it.name to it.coords }
-                    f.outputStream().use { com.trailguidegps.app.data.Backup.write(app, it, Gpx.write(waypoints.items.value, trk, rte)) }
+                    val loaded = routes.summaries.value.mapNotNull { routes.load(it.id) }
+                    val rte = loaded.map { it.name to it.coords }
+                    f.outputStream().use { com.trailguidegps.app.data.Backup.write(app, it, Gpx.write(waypoints.items.value, trk, rte, loaded.map { it.notes })) }
                     androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
                 }
             }
@@ -888,13 +890,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) {
                     waypoints.addAll(imp.waypoints)
                     imp.tracks.forEach { (n, pts) -> tracks.save(n, pts) }
-                    imp.routes.forEach { (n, pts) ->
+                    imp.routes.forEachIndexed { i, (n, pts) ->
                         val coords = pts.map { doubleArrayOf(it.lat, it.lon) }
                         val dist = coords.zipWithNext { a, b -> com.trailguidegps.app.geo.Geo.distanceM(a[0], a[1], b[0], b[1]) }.sum()
                         routes.save(SavedRoute(
                             RouteStore.newId(), n, System.currentTimeMillis(),
                             listOfNotNull(pts.firstOrNull(), pts.lastOrNull()).map { RoutePoint(it.lat, it.lon, true) },
                             coords, RouteStats.compute(coords, dist, terrain), emptyList(),
+                            notes = imp.routeNotes.getOrNull(i).orEmpty(),
                         ))
                     }
                 }
@@ -918,11 +921,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         return runCatching {
             val trk = trackIds.mapNotNull { tracks.load(it) }
-            val rte = routeIds.mapNotNull { routes.load(it) }.map { it.name to it.coords }
+            val loaded = routeIds.mapNotNull { routes.load(it) }
+            val rte = loaded.map { it.name to it.coords }
             val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
             val safe = fileName.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "TrailGuide" }
             val file = java.io.File(dir, "$safe.gpx")
-            file.writeText(Gpx.write(wps, trk, rte))
+            file.writeText(Gpx.write(wps, trk, rte, loaded.map { it.notes }))
             com.trailguidegps.app.data.Exports.publish(app, file, "application/gpx+xml")
                 ?: androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", file)
         }.getOrNull()
@@ -1232,7 +1236,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 SavedRoute(old?.id ?: RouteStore.newId(), name.ifBlank { "Route" }, old?.createdAt ?: System.currentTimeMillis(), st.points, coords,
                     st.stats, st.via, color, com.trailguidegps.app.data.RouteTerrain.of(st.legs),
                     // Camps stay if they're still on the route.
-                    camps = old?.camps.orEmpty().filter { it.alongM < st.stats.distanceM - 200 })
+                    camps = old?.camps.orEmpty().filter { it.alongM < st.stats.distanceM - 200 },
+                    notes = old?.notes.orEmpty())
                     .also { routes.save(it) }
             }
             _plan.value = PlanState()
@@ -1317,6 +1322,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteRoute(id: String) {
         routes.delete(id)
         hideRoute(id)
+    }
+
+    /** Saves your notes on a route (blank clears them). */
+    fun setRouteNotes(id: String, notes: String) {
+        val t = notes.trim()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { routes.setNotes(id, t) }
+            updateShown(id) { it.copy(notes = t) }
+        }
     }
 
     fun setRouteColor(id: String, color: String) {

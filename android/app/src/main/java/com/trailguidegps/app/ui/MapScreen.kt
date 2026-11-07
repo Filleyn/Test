@@ -1453,6 +1453,14 @@ private fun BottomPanel(
                     }
                 }
                 daysLine(r, pace)?.let { Text(it, fontSize = 12.sp, color = TG.Ink) }
+                var editingNotes by remember(r.id) { mutableStateOf(false) }
+                if (r.notes.isNotBlank()) {
+                    Text("Notes: ${r.notes}", fontSize = 12.sp, color = TG.Ink, lineHeight = 16.sp, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().clickable { editingNotes = true }.padding(top = 2.dp))
+                }
+                if (editingNotes) RouteNotesDialog(r.name, r.notes, onSave = { tripVm.setRouteNotes(r.id, it); editingNotes = false },
+                    onDismiss = { editingNotes = false })
                 if (shownRouteCount > 1) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("$shownRouteCount routes on the map · tap a line to switch", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f))
                     TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 12.sp, color = TG.Accent) }
@@ -1465,6 +1473,7 @@ private fun BottomPanel(
                     Action(Icons.Filled.WbSunny, "Weather") { onRouteWeather(r) },
                     Action(Icons.Filled.SwapHoriz, "Reverse") { onReverse(r.id) },
                     Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
+                    Action(Icons.Filled.StickyNote2, "Notes") { editingNotes = true },
                 ), Modifier.padding(top = 4.dp), columns = 4)
                 if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
             }

@@ -78,6 +78,7 @@ object TripPlan {
                 appendLine()
                 TripDays.days(route, route.camps, pace).forEach { d -> appendLine(dayLine(route, d)) }
             }
+            if (route.notes.isNotBlank()) { appendLine(); appendLine("Route notes: ${route.notes}") }
             if (form.notes.isNotBlank()) { appendLine(); appendLine("Notes: ${form.notes}") }
         }
     }
@@ -210,6 +211,12 @@ object TripPlan {
                 if (y < 735) y = block(dayLine(route, d), text, left, y, width, 2) + 2
             }
             y += 6
+        }
+
+        // Your notes on the route: road conditions, bugs, permits.
+        if (route.notes.isNotBlank() && y < 715) {
+            c.drawText("ROUTE NOTES", left, y + 9, label)
+            y = block(route.notes, text, left, y + 12, width, ((735 - y) / 14).toInt().coerceIn(1, 6)) + 6
         }
 
         // Named points along the way.
