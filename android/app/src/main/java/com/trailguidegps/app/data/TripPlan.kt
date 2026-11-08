@@ -89,8 +89,9 @@ object TripPlan {
         val camp = if (d.endsAtCamp) RouteStore.pointAt(route.coords, d.toM)?.let { p ->
             " Camp: ${d.endName ?: "mile %.1f".format(d.toM / Geo.M_PER_MI)} (%.5f, %.5f)".format(Locale.US, p[0], p[1])
         } ?: "" else " Out at the end of the route."
-        return "Day ${d.day}: %.1f mi, +%,d ft, about %s.".format(d.distanceM / Geo.M_PER_MI, (d.gainM * Geo.FT_PER_M).roundToInt(),
-            Pace.format(d.minutes)) + camp
+        val rating = Difficulty.LABELS[Difficulty.rating(d.distanceM, d.gainM).second].lowercase()
+        return "Day ${d.day}: %.1f mi, +%,d ft, about %s, %s.".format(d.distanceM / Geo.M_PER_MI, (d.gainM * Geo.FT_PER_M).roundToInt(),
+            Pace.format(d.minutes), rating) + camp
     }
 
     /** Writes the PDF. [map] is a snapshot of the route area with the route drawn on it, or null. */
@@ -168,10 +169,11 @@ object TripPlan {
         }
 
         // Numbers.
-        val d = Difficulty.of(route.stats, route.terrain)
+        val d = Difficulty.of(route.stats, route.terrain, if (route.camps.isNotEmpty()) TripDays.days(route, route.camps, pace) else emptyList())
         val summary = "%.1f mi · +%,d ft climb · −%,d ft descent · about %s at your pace · %s".format(
             route.stats.distanceM / Geo.M_PER_MI, (route.stats.gainM * Geo.FT_PER_M).roundToInt(),
-            (route.stats.lossM * Geo.FT_PER_M).roundToInt(), Pace.format(pace.minutes(route.stats.distanceM, route.stats.gainM)), d.label,
+            (route.stats.lossM * Geo.FT_PER_M).roundToInt(), Pace.format(pace.minutes(route.stats.distanceM, route.stats.gainM)),
+            d.label + (d.hardestDay?.let { " (hardest day, day ${it.day})" } ?: ""),
         ) + (d.highPointFt?.let { " · high point %,d ft".format(it.roundToInt()) } ?: "")
         y = block(summary, bold, left, y, width, 2) + 4
         if (route.via.isNotEmpty()) y = block("Via " + route.via.joinToString(" → "), text, left, y, width, 2) + 6

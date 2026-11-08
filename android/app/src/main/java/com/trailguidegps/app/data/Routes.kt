@@ -52,7 +52,18 @@ data class Difficulty(
     val steepestAtM: Double?,
     val highPointFt: Double?,
     val terrain: RouteTerrain?,
+    /** For a multi-day trip: each day's rating. The headline ([score], [level]) is then the hardest day. */
+    val days: List<DayRating> = emptyList(),
+    /** The whole route rated as if done in one day. */
+    val wholeScore: Double = score,
+    val wholeLevel: Int = level,
 ) {
+    /** One day of a trip: its Shenandoah score and level, and its steepest stretch. */
+    data class DayRating(val day: Int, val distanceM: Double, val gainM: Double, val score: Double, val level: Int, val steepestPct: Double?)
+
+    /** The day the headline comes from, for a multi-day trip. */
+    val hardestDay: DayRating? get() = days.maxWithOrNull(compareBy({ it.level }, { it.score }))
+
     companion object {
         val LABELS = listOf("Easiest", "Moderate", "Moderately strenuous", "Strenuous", "Very strenuous")
         val SAC = listOf(
@@ -71,21 +82,38 @@ data class Difficulty(
             return score to when { score < 50 -> 0; score < 100 -> 1; score < 150 -> 2; score < 200 -> 3; else -> 4 }
         }
 
-        fun of(stats: RouteStats, terrain: RouteTerrain?): Difficulty {
-            val (score, level) = rating(stats.distanceM, stats.gainM)
-            // Steepest grade held over at least a tenth of a mile.
+        /** Steepest grade (%) held over at least a tenth of a mile between [fromM] and [toM], and where it starts. */
+        fun steepest(p: List<Pair<Double, Double>>, fromM: Double = 0.0, toM: Double = Double.MAX_VALUE): Pair<Double?, Double?> {
             var steepest: Double? = null
             var steepAt: Double? = null
-            val p = stats.profile
             var j = 0
             for (i in p.indices) {
+                if (p[i].first < fromM) continue
                 if (j < i) j = i
                 while (j < p.size && p[j].first - p[i].first < 160.0) j++
-                if (j >= p.size) break
+                if (j >= p.size || p[j].first > toM + 1.0) break
                 val g = kotlin.math.abs(p[j].second - p[i].second) / (p[j].first - p[i].first) * 100
                 if (steepest == null || g > steepest) { steepest = g; steepAt = p[i].first }
             }
-            return Difficulty(score, LABELS[level], level, steepest, steepAt, p.maxOfOrNull { it.second }?.let { it * Geo.FT_PER_M }, terrain)
+            return steepest to steepAt
+        }
+
+        /**
+         * The route's rating. With [days] (a multi-day trip), each day is rated on its own and the
+         * headline is the hardest day, since the Shenandoah scale is meant for one day's walking.
+         */
+        fun of(stats: RouteStats, terrain: RouteTerrain?, days: List<TripDay> = emptyList()): Difficulty {
+            val (score, level) = rating(stats.distanceM, stats.gainM)
+            val p = stats.profile
+            val (steepest, steepAt) = steepest(p)
+            val high = p.maxOfOrNull { it.second }?.let { it * Geo.FT_PER_M }
+            if (days.size < 2) return Difficulty(score, LABELS[level], level, steepest, steepAt, high, terrain)
+            val rated = days.map { d ->
+                val (s, l) = rating(d.distanceM, d.gainM)
+                DayRating(d.day, d.distanceM, d.gainM, s, l, steepest(p, d.fromM, d.toM).first)
+            }
+            val hard = rated.maxWith(compareBy({ it.level }, { it.score }))
+            return Difficulty(hard.score, LABELS[hard.level], hard.level, steepest, steepAt, high, terrain, rated, score, level)
         }
     }
 }
@@ -231,6 +259,9 @@ data class RouteSummary(
     val color: String = RouteColors.DEFAULT,
     /** The route's notes, for searching Saved. */
     val notes: String = "",
+    /** Number of days (1 for a day hike) and, for a trip, the hardest day's level (0–4). */
+    val days: Int = 1,
+    val hardestLevel: Int? = null,
 )
 
 /** Colors you can give a route. Chosen to stand out from trails (red-brown), tracks and water. */
@@ -332,9 +363,14 @@ class RouteStore(context: Context) {
             runCatching {
                 // Read only the small fields; the line itself can be large.
                 val o = JSONObject(f.readText())
+                // A multi-day trip is rated by its hardest day.
+                val trip = if ((o.optJSONArray("camps")?.length() ?: 0) > 0) load(o.getString("id"))?.let { r ->
+                    TripDays.days(r, r.camps, Pace()).let { d -> d.size to Difficulty.of(r.stats, null, d).level }
+                } else null
                 RouteSummary(o.getString("id"), o.getString("name"), o.getLong("created"),
                     o.getDouble("distance"), o.getDouble("gain"), o.getDouble("loss"),
-                    o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT }, o.optString("notes", ""))
+                    o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT }, o.optString("notes", ""),
+                    trip?.first ?: 1, trip?.second)
             }.getOrNull()
         }
         .sortedByDescending { it.createdAt }

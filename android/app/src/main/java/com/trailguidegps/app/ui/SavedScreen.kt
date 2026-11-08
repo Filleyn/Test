@@ -643,8 +643,9 @@ private fun RouteRow(
                 ),
                 fontSize = 13.sp, color = TG.Muted,
             )
-            val level = com.trailguidegps.app.data.Difficulty.rating(r.distanceM, r.gainM).second
-            Text(com.trailguidegps.app.data.Difficulty.LABELS[level], fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DifficultyColors[level])
+            val level = r.hardestLevel ?: com.trailguidegps.app.data.Difficulty.rating(r.distanceM, r.gainM).second
+            Text(com.trailguidegps.app.data.Difficulty.LABELS[level] + if (r.days > 1) " · ${r.days} days, rated by the hardest" else "",
+                fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DifficultyColors[level])
             Text("Planned ${dateFmt.format(Date(r.createdAt))}" + if (onMap) " · on the map" else "", fontSize = 12.sp,
                 color = if (onMap) routeColor(r.color) else TG.Muted, fontWeight = if (onMap) FontWeight.SemiBold else FontWeight.Normal)
         }

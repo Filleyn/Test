@@ -83,6 +83,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.trailguidegps.app.AppViewModel
 import com.trailguidegps.app.data.Camp
+import com.trailguidegps.app.data.Difficulty
 import com.trailguidegps.app.data.CampSpot
 import com.trailguidegps.app.data.Features
 import com.trailguidegps.app.data.Pace
@@ -384,6 +385,16 @@ fun DaysContent(
         "or water when one is close. Drag a camp along the profile to move it.", fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp,
         modifier = Modifier.padding(top = 4.dp))
     if (spots == null) Text("Looking for campsites and water…", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.padding(top = 6.dp))
+    // How splitting into days changes the rating; updates as camps move.
+    if (tripDays.size >= 2) {
+        val trip = remember(tripDays) { Difficulty.of(route.stats, null, tripDays) }
+        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Trip rating", fontSize = 13.sp, color = TG.Ink, modifier = Modifier.padding(end = 8.dp))
+            DifficultyChip(trip.level)
+            Text(" hardest is day ${trip.hardestDay?.day}", fontSize = 12.sp, color = TG.Muted)
+        }
+        Text("As a single day it would be ${Difficulty.LABELS[trip.wholeLevel].lowercase()}.", fontSize = 12.sp, color = TG.Muted)
+    }
 
     if (route.stats.profile.size >= 2) {
         DaysProfile(route, camps, spots.orEmpty(), Modifier.padding(top = 10.dp),
@@ -403,6 +414,12 @@ fun DaysContent(
                     }
                     Text("Day ${d.day}", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.padding(start = 8.dp).weight(1f))
                     Text(Pace.format(d.minutes), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                }
+                val dayRating = remember(d) { Difficulty.rating(d.distanceM, d.gainM).second }
+                val daySteep = remember(d) { Difficulty.steepest(route.stats.profile, d.fromM, d.toM).first }
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    DifficultyChip(dayRating)
+                    daySteep?.let { Text("steepest ${it.roundToInt()}%", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(start = 8.dp)) }
                 }
                 Text("${mi(d.distanceM)} · +${ft(d.gainM)} / −${ft(d.lossM)} · miles %.1f–%.1f".format(d.fromM / Geo.M_PER_MI, d.toM / Geo.M_PER_MI),
                     fontSize = 13.sp, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))

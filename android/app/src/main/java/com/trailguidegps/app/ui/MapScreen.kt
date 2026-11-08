@@ -1460,11 +1460,15 @@ private fun BottomPanel(
                 }
                 var showDifficulty by remember(r.id) { mutableStateOf(false) }
                 var showTripPlan by remember(r.id) { mutableStateOf(false) }
-                val difficulty = remember(r) { com.trailguidegps.app.data.Difficulty.of(r.stats, r.terrain) }
+                val difficulty = remember(r, pace) {
+                    com.trailguidegps.app.data.Difficulty.of(r.stats, r.terrain,
+                        if (r.camps.isNotEmpty()) com.trailguidegps.app.data.TripDays.days(r, r.camps, pace) else emptyList())
+                }
                 if (!compactRoute) DifficultyLine(difficulty, onClick = { showDifficulty = true }, showLink = false)
                 if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
                 if (r.stats.profile.size >= 2) {
-                    ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub)
+                    ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub,
+                        camps = r.camps.map { it.alongM })
                 }
                 if (compactRoute) {
                     Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show route tools") { setRouteCompact(false) }.padding(top = 2.dp),

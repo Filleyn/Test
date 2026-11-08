@@ -62,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.drawText
 import com.trailguidegps.app.AppViewModel
 import com.trailguidegps.app.data.Pace
 import com.trailguidegps.app.data.RouteStats
@@ -77,9 +78,11 @@ val RoutePurple = Color(0xFF6B3FA0)
  * so the map can show where that is. It stays marked after you let go.
  */
 @Composable
-fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier, color: Color = RoutePurple, onScrub: ((Double?) -> Unit)? = null) {
+fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier, color: Color = RoutePurple, onScrub: ((Double?) -> Unit)? = null,
+                     camps: List<Double> = emptyList()) {
     val pts = stats.profile
     if (pts.size < 2) return
+    val dayLabels = androidx.compose.ui.text.rememberTextMeasurer()
     val minE = pts.minOf { it.second }
     val maxE = pts.maxOf { it.second }
     val maxD = pts.last().first.coerceAtLeast(1.0)
@@ -136,6 +139,22 @@ fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier, color: Co
             fun y(e: Double) = (size.height - ((e - minE) / range) * (size.height - 4f) - 2f).toFloat()
             val line = Path()
             pts.forEachIndexed { i, (d, e) -> if (i == 0) line.moveTo(x(d), y(e)) else line.lineTo(x(d), y(e)) }
+            // A multi-day trip: every other day lightly shaded, a dashed line at each camp, and the day numbers.
+            if (camps.isNotEmpty()) {
+                val marks = listOf(0.0) + camps.filter { it > 0 && it < maxD }.sorted() + listOf(maxD)
+                marks.zipWithNext().forEachIndexed { i, (a, b) ->
+                    if (i % 2 == 1) drawRect(TG.Ink.copy(alpha = 0.05f), Offset(x(a), 0f), androidx.compose.ui.geometry.Size(x(b) - x(a), size.height))
+                    if (x(b) - x(a) > 14.dp.toPx()) drawText(dayLabels, "${i + 1}", Offset(x(a) + 3.dp.toPx(), 0f),
+                        androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = TG.Muted, fontWeight = FontWeight.SemiBold))
+                }
+                marks.drop(1).dropLast(1).forEach { a ->
+                    drawLine(TG.Muted, Offset(x(a), 0f), Offset(x(a), size.height), strokeWidth = 1.dp.toPx(),
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())))
+                    // A little tent at the top of the line.
+                    val t = Path().apply { moveTo(x(a), 1f); lineTo(x(a) - 4.dp.toPx(), 8.dp.toPx()); lineTo(x(a) + 4.dp.toPx(), 8.dp.toPx()); close() }
+                    drawPath(t, TG.Ink.copy(alpha = 0.7f))
+                }
+            }
             val fill = Path().apply { addPath(line); lineTo(x(maxD), size.height); lineTo(0f, size.height); close() }
             drawPath(fill, color.copy(alpha = 0.14f))
             drawPath(line, color, style = Stroke(width = 2.dp.toPx()))
@@ -169,6 +188,7 @@ fun DifficultyLine(d: Difficulty, onClick: () -> Unit, modifier: Modifier = Modi
         }
         Spacer(Modifier.width(8.dp))
         val bits = buildList {
+            d.hardestDay?.let { add("${d.days.size} days, hardest is day ${it.day}") }
             d.steepestGradePct?.let { add("steepest ${it.roundToInt()}%") }
             d.highPointFt?.let { add("top %,d ft".format(it.roundToInt())) }
             d.terrain?.takeIf { it.sacMax > 0 }?.let { add("T${it.sacMax}") }
@@ -186,7 +206,14 @@ fun DifficultyDialog(d: Difficulty, onDismiss: () -> Unit) {
         title = { Text("Difficulty: ${d.label}") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                DetailRow("Rating", "%.0f".format(d.score) + " (Shenandoah National Park scale)")
+                if (d.days.isNotEmpty()) {
+                    DetailRow("Rated by the hardest day", "Day ${d.hardestDay?.day}: " + "%.0f".format(d.score) + " (Shenandoah National Park scale)")
+                    Column {
+                        Text("Each day", fontSize = 12.sp, color = TG.Muted)
+                        d.days.forEach { r -> DayRatingRow(r) }
+                    }
+                    DetailRow("As a single day", Difficulty.LABELS[d.wholeLevel] + " (" + "%.0f".format(d.wholeScore) + ")")
+                } else DetailRow("Rating", "%.0f".format(d.score) + " (Shenandoah National Park scale)")
                 Text(
                     "√(feet of climb × 2 × miles). Under 50 easiest · 50–100 moderate · 100–150 moderately strenuous · " +
                         "150–200 strenuous · over 200 very strenuous.",
@@ -226,6 +253,25 @@ fun DifficultyDialog(d: Difficulty, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+/** "Day 2 · 11.2 mi · +2,850 ft · steepest 18%" with its rating chip. */
+@Composable
+fun DayRatingRow(r: Difficulty.DayRating, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Day ${r.day}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.width(52.dp))
+        Text("%.1f mi · +%,d ft".format(r.distanceM / Geo.M_PER_MI, (r.gainM * Geo.FT_PER_M).roundToInt()) +
+            (r.steepestPct?.let { " · steepest ${it.roundToInt()}%" } ?: ""), fontSize = 13.sp, color = TG.Ink, modifier = Modifier.weight(1f))
+        DifficultyChip(r.level)
+    }
+}
+
+/** The colored rating label, e.g. "Moderate". */
+@Composable
+fun DifficultyChip(level: Int) {
+    Box(Modifier.background(DifficultyColors[level], RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+        Text(Difficulty.LABELS[level], fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+    }
 }
 
 @Composable
