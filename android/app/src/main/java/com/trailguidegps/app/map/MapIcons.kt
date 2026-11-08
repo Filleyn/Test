@@ -46,6 +46,7 @@ object MapIcons {
         style.addImage("photo-badge", photoBadge(d))
         // Direction arrows along routes, tinted to each route's color (an SDF image takes any color).
         style.addImage("route-arrow", arrow(d), true)
+        style.addImage("route-arrow-disc", disc(d), true)
         put("poi-lookout", 0xFFBF360C.toInt()) { c, s, p -> lookout(c, s, p) }
         put("poi-historic", 0xFF6D4C41.toInt()) { c, s, p -> letters(c, s, p, "H") }
         put("poi-campsite", 0xFFB4491A.toInt()) { c, s, p -> tent(c, s, p) }
@@ -103,15 +104,24 @@ object MapIcons {
     }
 
     /** A chevron pointing right (the way a line runs), white on transparent. */
+    /** A bold chevron pointing along the line (drawn white on [disc]). */
     private fun arrow(density: Float): Bitmap {
-        val s = 16f * density
+        val s = 18f * density
         val bmp = Bitmap.createBitmap(s.toInt(), s.toInt(), Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFFFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = s * 0.2f
+            color = 0xFFFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = s * 0.15f
             strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
         }
-        c.drawPath(Path().apply { moveTo(s * 0.32f, s * 0.2f); lineTo(s * 0.68f, s * 0.5f); lineTo(s * 0.32f, s * 0.8f) }, p)
+        c.drawPath(Path().apply { moveTo(s * 0.40f, s * 0.30f); lineTo(s * 0.60f, s * 0.5f); lineTo(s * 0.40f, s * 0.70f) }, p)
+        return bmp
+    }
+
+    /** A round badge behind each route arrow, tinted the route's color with a white ring. */
+    private fun disc(density: Float): Bitmap {
+        val s = 18f * density
+        val bmp = Bitmap.createBitmap(s.toInt(), s.toInt(), Bitmap.Config.ARGB_8888)
+        Canvas(bmp).drawCircle(s / 2, s / 2, s * 0.36f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() })
         return bmp
     }
 

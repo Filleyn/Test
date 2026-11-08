@@ -500,15 +500,20 @@ object MapStyle {
             .put("line-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("line-width", focusWidth(5.0, 3.5))
             .put("line-opacity", focusWidth(1.0, 0.55)),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))
-        // Which way each route runs: small arrows along it in its color.
-        layer("shown-route-arrows", "symbol", SRC_SHOWN_ROUTE,
+        // Which way each route runs: a badge in the route's color with a white ring and a white
+        // chevron, so it stands out on the line and on any background. Two layers placed alike.
+        val arrowLayout = { image: String -> JSONObject().put("symbol-placement", "line").put("symbol-spacing", 120).put("icon-image", image)
+            .put("icon-size", arr("interpolate", arr("linear"), arr("zoom"), 11, 0.8, 15, 1.05))
+            .put("icon-allow-overlap", true).put("icon-ignore-placement", true)
+            .put("icon-rotation-alignment", "map").put("icon-keep-upright", false) }
+        val arrowOpacity = arr("case", arr("==", arr("get", "focus"), true), 1.0, 0.7)
+        layer("shown-route-arrow-discs", "symbol", SRC_SHOWN_ROUTE,
             paint = JSONObject().put("icon-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
-                .put("icon-halo-color", "#FFFFFF").put("icon-halo-width", 1.5)
-                .put("icon-opacity", arr("case", arr("==", arr("get", "focus"), true), 1.0, 0.6)),
-            layout = JSONObject().put("symbol-placement", "line").put("symbol-spacing", 110).put("icon-image", "route-arrow")
-                .put("icon-size", 0.75).put("icon-allow-overlap", true).put("icon-ignore-placement", true)
-                .put("icon-rotation-alignment", "map").put("icon-keep-upright", false),
-            minzoom = 12.0)
+                .put("icon-halo-color", "#FFFFFF").put("icon-halo-width", 2).put("icon-opacity", arrowOpacity),
+            layout = arrowLayout("route-arrow-disc"), minzoom = 11.0)
+        layer("shown-route-arrows", "symbol", SRC_SHOWN_ROUTE,
+            paint = JSONObject().put("icon-color", "#FFFFFF").put("icon-opacity", arrowOpacity),
+            layout = arrowLayout("route-arrow"), minzoom = 11.0)
         // Each route's name along its line, so you can tell several apart.
         layer("shown-route-labels", "symbol", SRC_SHOWN_ROUTE,
             paint = JSONObject().put("text-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
