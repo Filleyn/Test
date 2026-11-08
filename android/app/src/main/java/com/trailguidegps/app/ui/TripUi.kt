@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -133,7 +133,7 @@ fun ScreenFrame(
 ) {
     Surface(Modifier.fillMaxSize(), color = TG.Surface) {
         // Keep the bottom bar above the phone's navigation bar (full-screen pages draw behind it).
-        Column(Modifier.fillMaxSize().windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.navigationBars)) {
+        Column(Modifier.fillMaxSize().navigationBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to the map", tint = TG.Ink) }
                 Column(Modifier.weight(1f)) {
