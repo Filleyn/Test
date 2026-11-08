@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Thunderstorm
 import androidx.compose.material.icons.filled.Umbrella
 import androidx.compose.material.icons.filled.WbCloudy
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -130,7 +132,8 @@ fun ScreenFrame(
     body: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(Modifier.fillMaxSize(), color = TG.Surface) {
-        Column(Modifier.fillMaxSize()) {
+        // Keep the bottom bar above the phone's navigation bar (full-screen pages draw behind it).
+        Column(Modifier.fillMaxSize().windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.navigationBars)) {
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "Back to the map", tint = TG.Ink) }
                 Column(Modifier.weight(1f)) {
@@ -354,16 +357,34 @@ fun TripDaysDialog(vm: AppViewModel, route: SavedRoute, pace: Pace, onDismiss: (
         onHeat = { h -> vm.setWaterHeat(route.id, h); heat = vm.waterHeat(route) },
         onRate = vm::setWaterRate, onHidden = vm::setWaterHidden,
     )
-    FullScreen(onDismiss) {
+    // Leaving with changes asks whether to keep them, so a plan isn't lost to the back arrow.
+    val toSave = if (days <= 1) emptyList() else camps
+    val changed = toSave != route.camps.sortedBy { it.alongM }
+    var askSave by remember { mutableStateOf(false) }
+    fun save() { vm.setCamps(route.id, toSave); onDismiss() }
+    fun back() { if (changed) askSave = true else onDismiss() }
+    if (askSave) AlertDialog(
+        onDismissRequest = { askSave = false },
+        title = { Text(if (days <= 1) "Save as a day hike?" else "Save $days days?") },
+        text = {
+            Text(if (days <= 1) "The route's camps will be removed." else
+                "Camps: " + toSave.mapIndexed { i, c -> "night ${i + 1} at " + (c.name ?: "mile %.1f".format(c.alongM / Geo.M_PER_MI)) }.joinToString(", ") +
+                    ". They'll show on the map and on the route's elevation graph.")
+        },
+        confirmButton = { TextButton(onClick = { askSave = false; save() }) { Text("Save", color = TG.Accent) } },
+        dismissButton = { TextButton(onClick = { askSave = false; onDismiss() }) { Text("Don't save", color = TG.Muted) } },
+    )
+    FullScreen({ back() }) {
         ScreenFrame(
-            "Days and camps", route.name, onDismiss,
+            "Days and camps", route.name, { back() },
             actions = {
                 TextButton(onClick = { editingDates = true }) { Text("Dates", color = TG.Accent) }
-                if (route.camps.isNotEmpty()) TextButton(onClick = { vm.setCamps(route.id, emptyList()); onDismiss() }) { Text("Day hike", color = TG.Muted) }
+                if (changed) TextButton(onClick = { save() }) { Text("Save", color = TG.Accent, fontWeight = FontWeight.SemiBold) }
+                else if (route.camps.isNotEmpty()) TextButton(onClick = { vm.setCamps(route.id, emptyList()); onDismiss() }) { Text("Day hike", color = TG.Muted) }
             },
             bottom = {
                 Button(
-                    onClick = { vm.setCamps(route.id, if (days <= 1) emptyList() else camps); onDismiss() },
+                    onClick = { save() },
                     shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = TG.Accent, contentColor = Color.White),
                 ) { Text("Save ${if (days <= 1) "as a day hike" else "$days days"}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
