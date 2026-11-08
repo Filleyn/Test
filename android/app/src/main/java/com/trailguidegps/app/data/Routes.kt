@@ -252,6 +252,9 @@ data class SavedRoute(
     val camps: List<Camp> = emptyList(),
     /** Your notes on the whole route: road to the trailhead, bugs, permits. */
     val notes: String = "",
+    /** When you plan to go: start and finish (epoch ms), or 0 when not set. */
+    val tripStart: Long = 0,
+    val tripEnd: Long = 0,
 )
 
 data class RouteSummary(
@@ -262,6 +265,9 @@ data class RouteSummary(
     /** Number of days (1 for a day hike) and, for a trip, the hardest day's level (0–4). */
     val days: Int = 1,
     val hardestLevel: Int? = null,
+    /** Planned trip dates (0 when not set). */
+    val tripStart: Long = 0,
+    val tripEnd: Long = 0,
 )
 
 /** Colors you can give a route. Chosen to stand out from trails (red-brown), tracks and water. */
@@ -288,6 +294,7 @@ class RouteStore(context: Context) {
         val o = JSONObject().put("id", r.id).put("name", r.name).put("created", r.createdAt)
             .put("distance", r.stats.distanceM).put("gain", r.stats.gainM).put("loss", r.stats.lossM)
             .put("via", JSONArray(r.via)).put("color", r.color).put("notes", r.notes)
+            .put("trip_start", r.tripStart).put("trip_end", r.tripEnd)
             .put("terrain", r.terrain?.let { t ->
                 JSONObject().put("trail", t.trailM).put("track", t.trackM).put("road", t.roadM).put("off", t.offTrailM)
                     .put("sac", t.sacMax).put("sacRated", t.sacRatedM)
@@ -335,6 +342,7 @@ class RouteStore(context: Context) {
                 }
             },
             notes = o.optString("notes", ""),
+            tripStart = o.optLong("trip_start", 0), tripEnd = o.optLong("trip_end", 0),
         )
     }.getOrNull()
 
@@ -344,6 +352,10 @@ class RouteStore(context: Context) {
 
     fun setColor(id: String, color: String) {
         load(id)?.let { save(it.copy(color = color)) }
+    }
+
+    fun setTripDates(id: String, start: Long, end: Long) {
+        load(id)?.let { save(it.copy(tripStart = start, tripEnd = end)) }
     }
 
     fun setNotes(id: String, notes: String) {
@@ -370,7 +382,7 @@ class RouteStore(context: Context) {
                 RouteSummary(o.getString("id"), o.getString("name"), o.getLong("created"),
                     o.getDouble("distance"), o.getDouble("gain"), o.getDouble("loss"),
                     o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT }, o.optString("notes", ""),
-                    trip?.first ?: 1, trip?.second)
+                    trip?.first ?: 1, trip?.second, o.optLong("trip_start", 0), o.optLong("trip_end", 0))
             }.getOrNull()
         }
         .sortedByDescending { it.createdAt }

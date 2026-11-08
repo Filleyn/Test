@@ -671,10 +671,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { com.trailguidegps.app.data.WaterCarry.Heat.valueOf(n) }.getOrNull()?.let { return it to "your choice" }
         }
         val fresh = savedWeather("route:${route.id}").filter { System.currentTimeMillis() - it.fetchedAt < 7 * 86_400_000L }
-        fresh.flatMap { f -> f.periods.filter { it.isDay }.mapNotNull { it.tempF } }.maxOrNull()?.let { t ->
-            return com.trailguidegps.app.data.WaterCarry.Heat.of(t) to "saved forecast, highs up to $t°F"
+        val dayMs = 86_400_000L
+        val periods = fresh.flatMap { f -> f.periods.filter { it.isDay && it.tempF != null } }
+        // With trip dates, only the forecast for those days counts (when it reaches that far).
+        val forTrip = if (route.tripStart > 0) periods.filter { it.start > 0 && it.start >= route.tripStart - dayMs / 2 &&
+            it.start <= maxOf(route.tripEnd, route.tripStart) + dayMs / 2 } else periods
+        forTrip.mapNotNull { it.tempF }.maxOrNull()?.let { t ->
+            return com.trailguidegps.app.data.WaterCarry.Heat.of(t) to (if (route.tripStart > 0) "the forecast for your dates" else "saved forecast") +
+                ", highs up to $t°F"
         }
-        val month = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1
+        val month = java.util.Calendar.getInstance().apply { if (route.tripStart > 0) timeInMillis = route.tripStart }.get(java.util.Calendar.MONTH) + 1
         val highFt = (route.stats.profile.maxOfOrNull { it.second } ?: 0.0) * com.trailguidegps.app.geo.Geo.FT_PER_M
         val monthName = java.text.DateFormatSymbols.getInstance().months[month - 1]
         return wc.guess(month, highFt) to "a guess for $monthName up to %,d ft; open Weather for a forecast".format(highFt.toInt())
@@ -1373,7 +1379,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     st.stats, st.via, color, com.trailguidegps.app.data.RouteTerrain.of(st.legs),
                     // Camps stay if they're still on the route.
                     camps = old?.camps.orEmpty().filter { it.alongM < st.stats.distanceM - 200 },
-                    notes = old?.notes.orEmpty())
+                    notes = old?.notes.orEmpty(), tripStart = old?.tripStart ?: 0, tripEnd = old?.tripEnd ?: 0)
                     .also { routes.save(it) }
             }
             _plan.value = PlanState()
@@ -1461,6 +1467,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves your notes on a route (blank clears them). */
+    /** Saves when you plan to do a route (0, 0 clears it). Used by Days, water, the after-dark warning and the trip plan. */
+    fun setTripDates(id: String, start: Long, end: Long) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { routes.setTripDates(id, start, end) }
+            updateShown(id) { it.copy(tripStart = start, tripEnd = end) }
+        }
+    }
+
     fun setRouteNotes(id: String, notes: String) {
         val t = notes.trim()
         viewModelScope.launch {

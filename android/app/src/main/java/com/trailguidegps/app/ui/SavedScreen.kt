@@ -92,6 +92,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     var recoloring by remember { mutableStateOf<RouteSummary?>(null) }
     var tripPlanFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var notesFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
+    var datesFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var waterFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     val waterNotes by vm.waterNotes.notes.collectAsStateWithLifecycle()
     val fix by vm.tracker.fix.collectAsStateWithLifecycle()
@@ -123,13 +124,14 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         fix?.let { f -> if (lat == null || lon == null || lat.isNaN()) null else Geo.distanceM(f.lat, f.lon, lat, lon) } ?: Double.MAX_VALUE
     fun <T> sorted(list: List<T>, created: (T) -> Long, name: (T) -> String, key: (T) -> String,
                    lat: ((T) -> Double)? = null, lon: ((T) -> Double)? = null,
-                   length: ((T) -> Double)? = null, climb: ((T) -> Double)? = null): List<T> = when (sort) {
+                   length: ((T) -> Double)? = null, climb: ((T) -> Double)? = null, trip: ((T) -> Long)? = null): List<T> = when (sort) {
         SavedSort.NEWEST -> list.sortedByDescending(created)
         SavedSort.OLDEST -> list.sortedBy(created)
         SavedSort.NAME -> list.sortedBy { name(it).lowercase() }
         SavedSort.NEAREST -> list.sortedBy { if (lat != null && lon != null) away(lat(it), lon(it)) else away(areas[key(it)]?.lat, areas[key(it)]?.lon) }
         SavedSort.LONGEST -> if (length != null) list.sortedByDescending(length) else list.sortedByDescending(created)
         SavedSort.CLIMB -> if (climb != null) list.sortedByDescending(climb) else list.sortedByDescending(created)
+        SavedSort.TRIP -> list.sortedWith(compareBy<T>({ tripOrder(trip?.invoke(it) ?: 0L) }, { tripKey(trip?.invoke(it) ?: 0L) }))
     }
     BackHandler(onBack = onClose)
 
@@ -177,6 +179,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 onRename = { renamingRoute = r },
                 onColor = { recoloring = r },
                 onNotes = { notesFor = vm.routes.load(r.id) },
+                onDates = { datesFor = vm.routes.load(r.id) },
                 onTripPlan = { tripPlanFor = vm.routes.load(r.id) },
                 onWater = { waterFor = vm.routes.load(r.id) },
                 onReverse = { vm.reverseRoute(r.id) },
@@ -228,7 +231,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         }
 
         val shownR = sorted(routes.filter { matches(it.name, "r:${it.id}", it.notes) }, { it.createdAt }, { it.name }, { "r:${it.id}" },
-            length = { it.distanceM }, climb = { it.gainM })
+            length = { it.distanceM }, climb = { it.gainM }, trip = { it.tripStart })
         val shownT = sorted(tracks.filter { matches(it.name, "t:${it.id}") }, { it.startedAt }, { it.name }, { "t:${it.id}" },
             length = { it.stats.distanceM }, climb = { it.stats.gainM })
         val shownW = sorted(waypoints.filter { matches(it.name, "w:${it.id}", it.note) }, { it.createdAt }, { it.name }, { "w:${it.id}" },
@@ -300,7 +303,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                     IconButton(onClick = { sortOpen = true }) { Icon(Icons.Filled.Sort, contentDescription = "Sort: ${sort.label}", tint = TG.Ink) }
                     DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
                         Text("Sort by", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                        SavedSort.entries.filter { tab in 1..2 || !it.lengthy }.forEach { opt ->
+                        SavedSort.entries.filter { (tab in 1..2 || !it.lengthy) && (tab == 1 || !it.routesOnly) }.forEach { opt ->
                             DropdownMenuItem(
                                 text = { Text((if (opt == sort) "✓ " else "    ") + opt.label + if (opt == SavedSort.NEAREST && fix == null) " (needs GPS)" else "",
                                     color = if (opt == sort) TG.Accent else TG.Ink, fontWeight = if (opt == sort) FontWeight.SemiBold else FontWeight.Normal) },
@@ -482,6 +485,9 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     }
 
     tripPlanFor?.let { r -> TripPlanDialog(vm, r) { tripPlanFor = null } }
+    datesFor?.let { r ->
+        TripDatesDialog(r, pace, onSave = { a, b -> vm.setTripDates(r.id, a, b); datesFor = null }, onDismiss = { datesFor = null })
+    }
     notesFor?.let { r ->
         RouteNotesDialog(r.name, r.notes, onSave = { vm.setRouteNotes(r.id, it); notesFor = null }, onDismiss = { notesFor = null })
     }
@@ -625,7 +631,7 @@ private fun TrackRow(t: TrackSummary, folderName: String?, area: String?, onShow
 @Composable
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?, area: String?,
-    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onTripPlan: () -> Unit,
+    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onDates: () -> Unit, onTripPlan: () -> Unit,
     onWater: () -> Unit, onReverse: () -> Unit,
     onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
 ) {
@@ -635,6 +641,8 @@ private fun RouteRow(
         Column(Modifier.weight(1f)) {
             Text(r.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
             folderName?.let { Text("In $it", fontSize = 12.sp, color = TG.Accent, maxLines = 1) }
+            if (r.tripStart > 0) Text("Trip: " + com.trailguidegps.app.data.TripDates.short(r.tripStart, r.tripEnd), fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold, color = TG.Accent, maxLines = 1)
             AreaLine(area)
             Text(
                 "%.1f mi · +%,d ft · −%,d ft · est %s".format(
@@ -662,6 +670,7 @@ private fun RouteRow(
             "Water along route" to onWater,
             "Reverse direction" to onReverse,
             "Route notes" to onNotes,
+            "Trip dates" to onDates,
             "Trip plan (PDF)" to onTripPlan,
             "Move to folder" to onMove,
             "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete,
@@ -704,10 +713,18 @@ private fun RowMenu(items: List<Pair<String, () -> Unit>>) {
 }
 
 /** How Saved lists are ordered. [lengthy] ones only make sense for routes and tracks. */
-private enum class SavedSort(val label: String, val lengthy: Boolean = false) {
+private enum class SavedSort(val label: String, val lengthy: Boolean = false, val routesOnly: Boolean = false) {
     NEWEST("Newest"), OLDEST("Oldest"), NAME("Name A–Z"), NEAREST("Nearest to you"),
-    LONGEST("Longest", true), CLIMB("Most climbing", true),
+    LONGEST("Longest", true), CLIMB("Most climbing", true), TRIP("Trip date", routesOnly = true),
 }
+
+/** Trip date order: upcoming trips soonest first, then past ones, then routes with no dates. */
+private fun tripOrder(start: Long): Int = when {
+    start <= 0 -> 2
+    start >= System.currentTimeMillis() - 86_400_000L -> 0
+    else -> 1
+}
+private fun tripKey(start: Long): Long = if (start >= System.currentTimeMillis() - 86_400_000L) start else -start
 
 private fun sizeFor(tab: Int, r: Int, t: Int, w: Int, n: Int) = when (tab) { 1 -> r; 2 -> t; 3 -> w; else -> n }
 

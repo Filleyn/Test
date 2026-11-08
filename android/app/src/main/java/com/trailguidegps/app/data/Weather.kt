@@ -22,6 +22,8 @@ object Weather {
         val short: String,
         val detail: String,
         val rainChance: Int?,
+        /** When the period starts (epoch ms), or 0 for forecasts saved before this was kept. */
+        val start: Long = 0,
     )
 
     data class Forecast(
@@ -86,6 +88,7 @@ object Weather {
                     p.optString("shortForecast"),
                     p.optString("detailedForecast"),
                     p.optJSONObject("probabilityOfPrecipitation")?.let { if (it.isNull("value")) null else it.optInt("value") },
+                    runCatching { java.time.OffsetDateTime.parse(p.optString("startTime")).toInstant().toEpochMilli() }.getOrDefault(0L),
                 )
             },
             area,
@@ -120,7 +123,8 @@ object Weather {
         .put("periods", JSONArray().apply {
             f.periods.forEach { p ->
                 put(JSONObject().put("name", p.name).put("temp", p.tempF ?: JSONObject.NULL).put("day", p.isDay)
-                    .put("wind", p.wind).put("short", p.short).put("detail", p.detail).put("rain", p.rainChance ?: JSONObject.NULL))
+                    .put("wind", p.wind).put("short", p.short).put("detail", p.detail).put("rain", p.rainChance ?: JSONObject.NULL)
+                    .put("start", p.start))
             }
         })
 
@@ -133,7 +137,8 @@ object Weather {
             (0 until ps.length()).map { i ->
                 val p = ps.getJSONObject(i)
                 Period(p.optString("name"), if (p.isNull("temp")) null else p.optInt("temp"), p.optBoolean("day", true),
-                    p.optString("wind"), p.optString("short"), p.optString("detail"), if (p.isNull("rain")) null else p.optInt("rain"))
+                    p.optString("wind"), p.optString("short"), p.optString("detail"), if (p.isNull("rain")) null else p.optInt("rain"),
+                    p.optLong("start", 0))
             },
             if (o.isNull("area")) null else o.optString("area"),
         )

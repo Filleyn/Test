@@ -54,6 +54,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -336,7 +337,16 @@ fun TripDaysDialog(vm: AppViewModel, route: SavedRoute, pace: Pace, onDismiss: (
     // Water to carry: a planning estimate that follows the camps, the heat and your drinking rate.
     val waterHidden by vm.waterHidden.collectAsStateWithLifecycle()
     val waterRate by vm.waterRate.collectAsStateWithLifecycle()
+    var tripStart by remember(route.id) { mutableLongStateOf(route.tripStart) }
+    var tripEnd by remember(route.id) { mutableLongStateOf(route.tripEnd) }
+    var editingDates by remember { mutableStateOf(false) }
     var heat by remember(route.id) { mutableStateOf(vm.waterHeat(route)) }
+    if (editingDates) TripDatesDialog(route.copy(camps = if (days <= 1) emptyList() else camps, tripStart = tripStart, tripEnd = tripEnd), pace,
+        onSave = { a, b ->
+            tripStart = a; tripEnd = b; editingDates = false
+            vm.setTripDates(route.id, a, b)
+            heat = vm.waterHeat(route.copy(tripStart = a, tripEnd = b))
+        }, onDismiss = { editingDates = false })
     val waterDays = remember(camps, heat, waterRate, features, pace) { vm.waterDays(route, camps, heat.first, reliableOnly = true) }
     val waterDaysAll = remember(camps, heat, waterRate, features, pace) { vm.waterDays(route, camps, heat.first, reliableOnly = false) }
     val water = WaterUi(
@@ -348,6 +358,7 @@ fun TripDaysDialog(vm: AppViewModel, route: SavedRoute, pace: Pace, onDismiss: (
         ScreenFrame(
             "Days and camps", route.name, onDismiss,
             actions = {
+                TextButton(onClick = { editingDates = true }) { Text("Dates", color = TG.Accent) }
                 if (route.camps.isNotEmpty()) TextButton(onClick = { vm.setCamps(route.id, emptyList()); onDismiss() }) { Text("Day hike", color = TG.Muted) }
             },
             bottom = {
@@ -362,7 +373,7 @@ fun TripDaysDialog(vm: AppViewModel, route: SavedRoute, pace: Pace, onDismiss: (
                 route, pace, days, onDays = { n -> days = n.coerceIn(1, 10); camps = TripDays.suggest(route, days, pace, spots.orEmpty()) },
                 camps = camps, onCamps = { camps = it }, spots = spots,
                 waterNear = { la, lo -> features?.waterNear(la, lo, Search.CAMP_WATER_M) }, waterAlong = waterAlong,
-                water = water,
+                water = water, tripStart = tripStart, tripEnd = tripEnd,
             )
         }
     }
@@ -374,7 +385,15 @@ fun DaysContent(
     camps: List<Camp>, onCamps: (List<Camp>) -> Unit, spots: List<CampSpot>?,
     waterNear: (Double, Double) -> Pair<Features.Point, Double>?, waterAlong: List<Double>,
     water: WaterUi? = null,
+    tripStart: Long = 0, tripEnd: Long = 0,
 ) {
+    if (tripStart > 0) {
+        Text("Trip: " + com.trailguidegps.app.data.TripDates.range(tripStart, tripEnd), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            color = TG.Ink, modifier = Modifier.padding(bottom = 2.dp))
+        val cover = com.trailguidegps.app.data.TripDates.calendarDays(tripStart, tripEnd)
+        if (cover != days) Text("Your dates cover $cover day${if (cover == 1) "" else "s"}; this plan has $days. Change the days below or tap Dates.",
+            fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
+    }
     val total = route.stats.distanceM
     val tripDays = remember(camps, pace) { TripDays.days(route, camps, pace) }
     var choosing by remember { mutableStateOf<Int?>(null) }
@@ -427,7 +446,8 @@ fun DaysContent(
                     Box(Modifier.size(26.dp).background(TG.Accent, CircleShape), contentAlignment = Alignment.Center) {
                         Text("${d.day}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
-                    Text("Day ${d.day}", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                    Text("Day ${d.day}" + if (tripStart > 0) " · " + com.trailguidegps.app.data.TripDates.dayLabel(tripStart, d.day) else "",
+                        fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.padding(start = 8.dp).weight(1f))
                     Text(Pace.format(d.minutes), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
                 }
                 val dayRating = remember(d) { Difficulty.rating(d.distanceM, d.gainM).second }

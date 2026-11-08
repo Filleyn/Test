@@ -1480,11 +1480,23 @@ private fun BottomPanel(
                     return@Column
                 }
                 r.coords.firstOrNull()?.let { s ->
-                    afterDarkWarning(s[0], s[1], System.currentTimeMillis(), pace.minutes(r.stats.distanceM, r.stats.gainM))?.let {
-                        Text("If you start now: $it", fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp)
+                    // From your planned start when it's ahead; the first day's walking for a trip.
+                    val now = System.currentTimeMillis()
+                    val planned = r.tripStart > now
+                    val start = if (planned) r.tripStart else now
+                    val minutes = if (r.camps.isNotEmpty()) com.trailguidegps.app.data.TripDays.days(r, r.camps, pace).firstOrNull()?.minutes ?: 0
+                        else pace.minutes(r.stats.distanceM, r.stats.gainM)
+                    afterDarkWarning(s[0], s[1], start, minutes)?.let {
+                        Text((if (planned) "Starting ${com.trailguidegps.app.data.TripDates.startLabel(start)}: " else "If you start now: ") + it,
+                            fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp)
                     }
                 }
                 daysLine(r, pace)?.let { Text(it, fontSize = 12.sp, color = TG.Ink) }
+                var editingDates by remember(r.id) { mutableStateOf(false) }
+                Text(if (r.tripStart > 0) "Trip: ${com.trailguidegps.app.data.TripDates.range(r.tripStart, r.tripEnd)} · change" else "Set trip dates",
+                    fontSize = 12.sp, color = TG.Accent, modifier = Modifier.clickable { editingDates = true }.padding(vertical = 2.dp))
+                if (editingDates) TripDatesDialog(r, pace, onSave = { a, b -> tripVm.setTripDates(r.id, a, b); editingDates = false },
+                    onDismiss = { editingDates = false })
                 tripVm.areas.collectAsStateWithLifecycle().value["r:${r.id}"]?.line?.takeIf { it.isNotBlank() }?.let {
                     Text(it, fontSize = 12.sp, color = TG.Muted, maxLines = 2, lineHeight = 15.sp)
                 }
