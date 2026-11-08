@@ -668,11 +668,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun waterHeat(route: SavedRoute): Pair<com.trailguidegps.app.data.WaterCarry.Heat, String> {
         val wc = com.trailguidegps.app.data.WaterCarry
         waterPrefs.getString("heat_${route.id}", null)?.let { n ->
-            runCatching { wc.Heat.valueOf(n) }.getOrNull()?.let { return it to "your choice" }
+            runCatching { com.trailguidegps.app.data.WaterCarry.Heat.valueOf(n) }.getOrNull()?.let { return it to "your choice" }
         }
         val fresh = savedWeather("route:${route.id}").filter { System.currentTimeMillis() - it.fetchedAt < 7 * 86_400_000L }
         fresh.flatMap { f -> f.periods.filter { it.isDay }.mapNotNull { it.tempF } }.maxOrNull()?.let { t ->
-            return wc.Heat.of(t) to "saved forecast, highs up to $t°F"
+            return com.trailguidegps.app.data.WaterCarry.Heat.of(t) to "saved forecast, highs up to $t°F"
         }
         val month = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1
         val highFt = (route.stats.profile.maxOfOrNull { it.second } ?: 0.0) * com.trailguidegps.app.geo.Geo.FT_PER_M
