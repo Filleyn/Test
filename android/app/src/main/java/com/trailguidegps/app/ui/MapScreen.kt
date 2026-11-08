@@ -652,6 +652,13 @@ fun MapScreen(
         var topControlsBottom by remember { mutableFloatStateOf(0f) }
         var sideControlsTop by remember { mutableFloatStateOf(Float.MAX_VALUE) }
         val crowded = sideControlsTop < topControlsBottom + with(LocalDensity.current) { 8.dp.toPx() }
+        // The north arrow sits just under whatever is at the top (search button, planning bar, notices).
+        LaunchedEffect(map, topControlsBottom) {
+            val m = map ?: return@LaunchedEffect
+            if (topControlsBottom <= 0f) return@LaunchedEffect
+            val d = context.resources.displayMetrics.density
+            m.uiSettings.setCompassMargins((16 * d).toInt(), (topControlsBottom + 8 * d).toInt(), 0, 0)
+        }
         val bbox = remember(mapVersion) { vm.store.bbox() }
         // Off the downloaded maps: outside every downloaded state's area.
         val installedBoxes = remember(mapVersion) { vm.stores.mapNotNull { it.bbox() } }
@@ -727,12 +734,6 @@ fun MapScreen(
             // Across the top beside the search button; stacked beside a measuring or planning bar.
             if (measure == null && satSelect == null && !plan.active) topButtons()
             else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { topButtons() }
-        }
-        if (plan.active) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModeChip("Follow trails", plan.followTrails) { vm.setFollowTrails(true) }
-                ModeChip("Straight line", !plan.followTrails) { vm.setFollowTrails(false) }
-            }
         }
         val update by vm.update.collectAsStateWithLifecycle()
         val updateDismissed by vm.updateDismissed.collectAsStateWithLifecycle()
@@ -871,6 +872,7 @@ fun MapScreen(
                             onRemoveSelected = { plan.selected?.let { vm.removePlanPoint(it) } },
                             onClearSelected = { vm.selectPlanPoint(null) },
                             onAddAtStart = { vm.setAddAtStart(it) },
+                            onFollowTrails = { vm.setFollowTrails(it) },
                         )
                     }
                 }

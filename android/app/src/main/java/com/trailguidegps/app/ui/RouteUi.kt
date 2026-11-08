@@ -396,8 +396,31 @@ fun RoutePlannerPanel(
     onRemoveSelected: () -> Unit = {},
     onClearSelected: () -> Unit = {},
     onAddAtStart: (Boolean) -> Unit = {},
+    onFollowTrails: (Boolean) -> Unit = {},
 ) {
     var showDifficulty by remember { mutableStateOf(false) }
+    // Compact by default, so the map gets most of the screen while you tap out a route. Remembered.
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("panel", android.content.Context.MODE_PRIVATE) }
+    var compact by remember { mutableStateOf(prefs.getBoolean("plan_compact", true)) }
+    fun setCompact(v: Boolean) { compact = v; prefs.edit().putBoolean("plan_compact", v).apply() }
+    val difficulty = remember(plan.stats, plan.legs) { Difficulty.of(plan.stats, RouteTerrain.of(plan.legs)) }
+    if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
+
+    @Composable
+    fun ModeToggle() {
+        Row(Modifier.background(TG.Card, RoundedCornerShape(10.dp)).padding(2.dp)) {
+            listOf(true to "Trails", false to "Straight").forEach { (on, label) ->
+                val sel = plan.followTrails == on
+                Box(Modifier.background(if (sel) RoutePurple else Color.Transparent, RoundedCornerShape(8.dp))
+                    .clickable { onFollowTrails(on) }.padding(horizontal = 10.dp, vertical = 7.dp)
+                    .semantics { contentDescription = if (on) "Follow trails" else "Straight line" }) {
+                    Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (sel) Color.White else TG.Ink)
+                }
+            }
+        }
+    }
+
     Column {
         // A point picked on the map: move it with the next tap, or take it out.
         plan.selected?.let { i ->
@@ -412,6 +435,40 @@ fun RoutePlannerPanel(
                     TextButton(onClick = onClearSelected) { Text("Done", color = TG.Accent) }
                 }
             }
+        }
+        if (compact) {
+            if (plan.points.isEmpty()) {
+                Text("Tap the map where your route starts.", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                if (routingReady == false) Text("The trail network isn't downloaded yet, so routes use straight lines.", fontSize = 12.sp, color = TG.Muted)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "%.1f mi · +%,d ft · −%,d ft · %s".format(plan.stats.distanceM / Geo.M_PER_MI, (plan.stats.gainM * Geo.FT_PER_M).roundToInt(),
+                            (plan.stats.lossM * Geo.FT_PER_M).roundToInt(), Pace.format(pace.minutes(plan.stats.distanceM, plan.stats.gainM))) +
+                            if (plan.busy) " · finding trail…" else "",
+                        fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (plan.points.size >= 2) Box(Modifier.clickable { showDifficulty = true }) { DifficultyChip(difficulty.level) }
+                }
+                if (plan.stats.profile.size >= 2) ElevationProfile(plan.stats, Modifier.padding(top = 4.dp), onScrub = onScrub)
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                ModeToggle()
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { setCompact(false) }) { Text("More ▲", fontSize = 13.sp, color = TG.Accent) }
+                Button(
+                    onClick = onSave, enabled = plan.points.size >= 2 && !plan.busy, shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RoutePurple, contentColor = Color.White),
+                    modifier = Modifier.height(42.dp),
+                ) { Text("Save", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+            }
+            return@Column
+        }
+        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            ModeToggle()
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { setCompact(true) }) { Text("Less ▼ (more map)", fontSize = 12.sp, color = TG.Accent) }
         }
         if (plan.points.size >= 2 && plan.selected == null) {
             Row(Modifier.padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -434,9 +491,7 @@ fun RoutePlannerPanel(
             )
         } else {
             RouteStatsRow(plan.stats, pace)
-            val difficulty = remember(plan.stats, plan.legs) { Difficulty.of(plan.stats, RouteTerrain.of(plan.legs)) }
             if (plan.points.size >= 2) DifficultyLine(difficulty, onClick = { showDifficulty = true }, Modifier.padding(top = 4.dp), showLink = false)
-            if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
             if (plan.stats.profile.size >= 2) {
                 Spacer(Modifier.height(8.dp))
                 ElevationProfile(plan.stats, onScrub = onScrub)
