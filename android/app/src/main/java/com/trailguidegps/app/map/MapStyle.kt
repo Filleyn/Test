@@ -521,15 +521,30 @@ object MapStyle {
             layout = JSONObject().put("symbol-placement", "line").put("symbol-spacing", 350).put("text-font", arr(MEDIUM))
                 .put("text-size", 12).put("text-field", arr("get", "name")).put("text-optional", true),
             minzoom = 11.0)
-        // Nights out on multi-day routes.
-        layer("route-camps", "circle", SRC_CAMPS, paint = JSONObject()
-            .put("circle-radius", 7).put("circle-color", "#FFFFFF")
-            .put("circle-stroke-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("circle-stroke-width", 4))
-        layer("route-camps-labels", "symbol", SRC_CAMPS,
+        // Multi-day routes: "Day 1 · 5.9 mi" halfway along each day...
+        val isCamp = arr("==", arr("get", "kind"), "camp")
+        layer("route-day-labels", "symbol", SRC_CAMPS, filter = arr("==", arr("get", "kind"), "day"),
+            paint = JSONObject().put("text-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
+                .put("text-halo-color", "#FFFFFF").put("text-halo-width", 2.5),
+            layout = JSONObject().put("text-field", arr("get", "label")).put("text-font", arr(MEDIUM)).put("text-size", 13)
+                .put("text-offset", arr(0, -1.2)).put("text-anchor", "bottom").put("text-optional", true),
+            minzoom = 10.0)
+        // ...and each night's camp as a tent badge in the route's color, labeled below.
+        val campSize = arr("interpolate", arr("linear"), arr("zoom"), 9, 0.7, 14, 1.0)
+        layer("route-camps", "symbol", SRC_CAMPS, filter = isCamp,
+            paint = JSONObject().put("icon-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
+                .put("icon-halo-color", "#FFFFFF").put("icon-halo-width", 2.5),
+            layout = JSONObject().put("icon-image", "camp-disc").put("icon-size", campSize)
+                .put("icon-allow-overlap", true).put("icon-ignore-placement", true))
+        layer("route-camps-tent", "symbol", SRC_CAMPS, filter = isCamp,
+            paint = JSONObject().put("icon-color", "#FFFFFF"),
+            layout = JSONObject().put("icon-image", "camp-tent").put("icon-size", campSize)
+                .put("icon-allow-overlap", true).put("icon-ignore-placement", true))
+        layer("route-camps-labels", "symbol", SRC_CAMPS, filter = isCamp,
             paint = JSONObject().put("text-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
                 .put("text-halo-color", "#FFFFFF").put("text-halo-width", 2),
             layout = JSONObject().put("text-field", arr("get", "label")).put("text-font", arr(MEDIUM)).put("text-size", 12)
-                .put("text-offset", arr(0, 1.3)).put("text-anchor", "top").put("text-optional", true),
+                .put("text-offset", arr(0, 1.5)).put("text-anchor", "top").put("text-optional", true),
             minzoom = 10.0)
         layer("plan-casing", "line", SRC_PLAN, paint = JSONObject().put("line-color", "#FFFFFF").put("line-width", 8),
             layout = JSONObject().put("line-cap", "round").put("line-join", "round"))

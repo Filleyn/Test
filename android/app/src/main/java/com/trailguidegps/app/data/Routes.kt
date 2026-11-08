@@ -444,14 +444,24 @@ class RouteStore(context: Context) {
         }
 
         /** Each shown route's camps, as "Night 1: Lost Lake" points in the route's color. */
+        /** Each night's camp ("camp") and a "Day 1 · 5.9 mi" label halfway along each day ("day") of multi-day routes. */
         fun campsGeoJson(routes: List<SavedRoute>): String {
             val features = JSONArray()
+            fun point(kind: String, label: String, color: String, p: DoubleArray) {
+                features.put(JSONObject().put("type", "Feature")
+                    .put("properties", JSONObject().put("kind", kind).put("label", label).put("color", color))
+                    .put("geometry", JSONObject().put("type", "Point").put("coordinates", JSONArray().put(p[1]).put(p[0]))))
+            }
             routes.forEach { r ->
-                r.camps.sortedBy { it.alongM }.forEachIndexed { i, c ->
+                val camps = r.camps.sortedBy { it.alongM }.filter { it.alongM > 0 && it.alongM < r.stats.distanceM }
+                if (camps.isEmpty()) return@forEach
+                val marks = listOf(0.0) + camps.map { it.alongM } + listOf(r.stats.distanceM)
+                marks.zipWithNext().forEachIndexed { i, (a, b) ->
+                    pointAt(r.coords, (a + b) / 2)?.let { point("day", "Day ${i + 1} · %.1f mi".format((b - a) / Geo.M_PER_MI), r.color, it) }
+                }
+                camps.forEachIndexed { i, c ->
                     val p = pointAt(r.coords, c.alongM) ?: return@forEachIndexed
-                    features.put(JSONObject().put("type", "Feature")
-                        .put("properties", JSONObject().put("label", "Night ${i + 1}" + (c.name?.let { ": $it" } ?: "")).put("color", r.color))
-                        .put("geometry", JSONObject().put("type", "Point").put("coordinates", JSONArray().put(p[1]).put(p[0]))))
+                    point("camp", "Night ${i + 1}" + (c.name?.let { ": $it" } ?: ""), r.color, p)
                 }
             }
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()

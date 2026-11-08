@@ -47,6 +47,8 @@ object MapIcons {
         // Direction arrows along routes, tinted to each route's color (an SDF image takes any color).
         style.addImage("route-arrow", arrow(d), true)
         style.addImage("route-arrow-disc", disc(d), true)
+        style.addImage("camp-disc", campDisc(d), true)
+        style.addImage("camp-tent", tent(d), true)
         put("poi-lookout", 0xFFBF360C.toInt()) { c, s, p -> lookout(c, s, p) }
         put("poi-historic", 0xFF6D4C41.toInt()) { c, s, p -> letters(c, s, p, "H") }
         put("poi-campsite", 0xFFB4491A.toInt()) { c, s, p -> tent(c, s, p) }
@@ -114,6 +116,32 @@ object MapIcons {
             strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
         }
         c.drawPath(Path().apply { moveTo(s * 0.40f, s * 0.30f); lineTo(s * 0.60f, s * 0.5f); lineTo(s * 0.40f, s * 0.70f) }, p)
+        return bmp
+    }
+
+    /** The round badge for a night's camp (tinted the route's color, with a white ring). */
+    private fun campDisc(density: Float): Bitmap {
+        val s = 28f * density
+        val bmp = Bitmap.createBitmap(s.toInt(), s.toInt(), Bitmap.Config.ARGB_8888)
+        Canvas(bmp).drawCircle(s / 2, s / 2, s * 0.40f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() })
+        return bmp
+    }
+
+    /** A small tent (drawn white on [campDisc]): an A-frame with its door. */
+    private fun tent(density: Float): Bitmap {
+        val s = 28f * density
+        val bmp = Bitmap.createBitmap(s.toInt(), s.toInt(), Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); style = Paint.Style.FILL }
+        val path = Path().apply {
+            moveTo(s * 0.50f, s * 0.27f)                  // peak
+            lineTo(s * 0.74f, s * 0.68f); lineTo(s * 0.26f, s * 0.68f); close()
+            // The door, cut out of the middle.
+            moveTo(s * 0.50f, s * 0.44f); lineTo(s * 0.43f, s * 0.68f); lineTo(s * 0.57f, s * 0.68f); close()
+            fillType = Path.FillType.EVEN_ODD
+        }
+        c.drawPath(path, p)
+        c.drawRect(s * 0.22f, s * 0.67f, s * 0.78f, s * 0.71f, p)  // ground line
         return bmp
     }
 
