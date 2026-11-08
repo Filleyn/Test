@@ -652,6 +652,68 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun waterPlan(coords: List<DoubleArray>, maxOffM: Double): com.trailguidegps.app.data.WaterPlan =
         com.trailguidegps.app.data.WaterPlanner.plan(coords, features.value?.allPoints.orEmpty(), maxOffM)
 
+    // ---- Water to carry (a planning estimate) ----
+
+    private val waterPrefs = app.getSharedPreferences("water", android.content.Context.MODE_PRIVATE)
+    private val _waterRate = MutableStateFlow(runCatching { com.trailguidegps.app.data.WaterCarry.Rate.valueOf(waterPrefs.getString("rate", "NORMAL")!!) }
+        .getOrDefault(com.trailguidegps.app.data.WaterCarry.Rate.NORMAL))
+    val waterRate: StateFlow<com.trailguidegps.app.data.WaterCarry.Rate> = _waterRate.asStateFlow()
+    fun setWaterRate(r: com.trailguidegps.app.data.WaterCarry.Rate) { _waterRate.value = r; waterPrefs.edit().putString("rate", r.name).apply() }
+    private val _waterHidden = MutableStateFlow(waterPrefs.getBoolean("hidden", false))
+    /** Water estimates can be turned off; they're then left off the Days screen and the trip plan. */
+    val waterHidden: StateFlow<Boolean> = _waterHidden.asStateFlow()
+    fun setWaterHidden(v: Boolean) { _waterHidden.value = v; waterPrefs.edit().putBoolean("hidden", v).apply() }
+
+    /** The heat to plan for and why: your choice for this route, the saved forecast, or a guess from the month and elevation. */
+    fun waterHeat(route: SavedRoute): Pair<com.trailguidegps.app.data.WaterCarry.Heat, String> {
+        val wc = com.trailguidegps.app.data.WaterCarry
+        waterPrefs.getString("heat_${route.id}", null)?.let { n ->
+            runCatching { wc.Heat.valueOf(n) }.getOrNull()?.let { return it to "your choice" }
+        }
+        val fresh = savedWeather("route:${route.id}").filter { System.currentTimeMillis() - it.fetchedAt < 7 * 86_400_000L }
+        fresh.flatMap { f -> f.periods.filter { it.isDay }.mapNotNull { it.tempF } }.maxOrNull()?.let { t ->
+            return wc.Heat.of(t) to "saved forecast, highs up to $t°F"
+        }
+        val month = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1
+        val highFt = (route.stats.profile.maxOfOrNull { it.second } ?: 0.0) * com.trailguidegps.app.geo.Geo.FT_PER_M
+        val monthName = java.text.DateFormatSymbols.getInstance().months[month - 1]
+        return wc.guess(month, highFt) to "a guess for $monthName up to %,d ft; open Weather for a forecast".format(highFt.toInt())
+    }
+    fun setWaterHeat(routeId: String, heat: com.trailguidegps.app.data.WaterCarry.Heat?) {
+        waterPrefs.edit().apply { if (heat == null) remove("heat_$routeId") else putString("heat_$routeId", heat.name) }.apply()
+    }
+
+    /**
+     * Stretches between water along [route] with [camps]. With [reliableOnly], seasonal sources
+     * (intermittent creeks, seasonal springs) don't count.
+     */
+    fun waterGaps(route: SavedRoute, camps: List<com.trailguidegps.app.data.Camp>, heat: com.trailguidegps.app.data.WaterCarry.Heat,
+                  reliableOnly: Boolean): List<com.trailguidegps.app.data.WaterCarry.Gap> {
+        val stops = waterPlan(route.coords, 0.25 * com.trailguidegps.app.geo.Geo.M_PER_MI).stops
+            .filter { !reliableOnly || !it.point.seasonal }.map { it.alongM }
+        val f = features.value
+        val campWater = camps.map { c ->
+            val p = RouteStore.pointAt(route.coords, c.alongM)
+            val w = p?.let { f?.waterNear(it[0], it[1], com.trailguidegps.app.data.Search.CAMP_WATER_M) }
+            c.alongM to (w != null && (!reliableOnly || !w.first.seasonal))
+        }
+        return com.trailguidegps.app.data.WaterCarry.gaps(route.stats, stops, campWater, _pace.value, heat, _waterRate.value)
+    }
+
+    /** For the trip plan: a water line per day (or one for a day hike), or nothing when turned off. */
+    private fun tripWater(route: SavedRoute): Pair<Map<Int, String>, String?> {
+        if (_waterHidden.value) return emptyMap<Int, String>() to null
+        val wc = com.trailguidegps.app.data.WaterCarry
+        val (heat, _) = waterHeat(route)
+        val gaps = waterGaps(route, route.camps, heat, reliableOnly = true)
+        fun line(g: com.trailguidegps.app.data.WaterCarry.Gap) = "Water: carry about ${wc.liters(g.carryL)} " +
+            "(longest stretch between mapped water %.1f mi, ${heat.label.lowercase()} weather".format(g.lengthM / com.trailguidegps.app.geo.Geo.M_PER_MI) +
+            (if (g.dryCamps > 0) ", includes a dry camp" else "") + ")."
+        if (route.camps.isEmpty()) return emptyMap<Int, String>() to wc.worst(gaps)?.let(::line)
+        val days = com.trailguidegps.app.data.TripDays.days(route, route.camps, _pace.value)
+        return days.mapNotNull { d -> wc.worst(gaps, d.fromM, d.toM)?.let { d.day to line(it) } }.toMap() to null
+    }
+
     // ---- Trip folders ----
 
     val folders = com.trailguidegps.app.data.FolderStore(app)
@@ -709,12 +771,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _message.value = "Making the trip plan…"
         snapshotRoute(route) { bitmap ->
             viewModelScope.launch {
+                val water = withContext(Dispatchers.Default) {
+                    runCatching { tripWater(route) }.getOrDefault(emptyMap<Int, String>() to null)
+                }
                 val r = withContext(Dispatchers.IO) {
                     runCatching {
                         val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
                         val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
                         val f = java.io.File(dir, "Trip plan - $safe.pdf")
-                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line)
+                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line, water)
                         com.trailguidegps.app.data.Exports.publish(app, f, "application/pdf")
                             ?: androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
                     }
@@ -722,7 +787,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 r.onSuccess { uri ->
                     if (uri.authority == android.provider.MediaStore.AUTHORITY) _message.value = "Trip plan saved to Downloads › TrailGuide"
                     onReady(uri, com.trailguidegps.app.data.TripPlan.subject(route, form),
-                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value, areaStore.areas.value["r:${route.id}"]?.line))
+                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value, areaStore.areas.value["r:${route.id}"]?.line, water))
                 }.onFailure { _message.value = "Couldn't make the trip plan: ${it.message}" }
             }
         }

@@ -65,7 +65,7 @@ object TripDays {
     }
 
     /** Raw climb and descent between [a] and [b] along the profile. */
-    private fun gainLoss(prof: List<Pair<Double, Double>>, a: Double, b: Double): Pair<Double, Double> {
+    fun gainLoss(prof: List<Pair<Double, Double>>, a: Double, b: Double): Pair<Double, Double> {
         if (prof.size < 2 || b <= a) return 0.0 to 0.0
         val xs = listOf(a) + prof.map { it.first }.filter { it > a && it < b } + listOf(b)
         var g = 0.0
