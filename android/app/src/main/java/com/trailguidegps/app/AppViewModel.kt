@@ -628,6 +628,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun reverseRoute(id: String) {
         viewModelScope.launch {
             val r = withContext(Dispatchers.IO) { routes.load(id) } ?: return@launch
+            if (r.outAndBack) { _message.value = "\"${r.name}\" comes back the same way, so it's the same both ways."; return@launch }
             val coords = r.coords.reversed()
             val pts = r.points.reversed()
             // Each point's flag says how the leg *into* it was drawn; reversed, that leg leads into the previous point.
@@ -1119,6 +1120,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val selected: Int? = null,
         /** New points go before the first one instead of after the last. */
         val addAtStart: Boolean = false,
+        /** Come back the same way: the route returns to the start along the way in. */
+        val outAndBack: Boolean = false,
     ) {
         val via: List<String> get() = legs.flatMap { it.names }.fold(mutableListOf()) { acc, n -> if (acc.lastOrNull() != n) acc += n; acc }
     }
@@ -1152,9 +1155,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 r.copy(coords = coords, points = com.trailguidegps.app.data.RouteNear.planningPoints(coords))
             } else r
             select(null)
-            val legs = withContext(Dispatchers.Default) { splitIntoLegs(route) }
+            // An out-and-back is edited as its way in; the way back follows.
+            val wayIn = if (route.outAndBack && route.outCount in 2..route.coords.size) route.copy(coords = route.coords.take(route.outCount)) else route
+            val legs = withContext(Dispatchers.Default) { splitIntoLegs(wayIn) }
             _plan.value = PlanState(active = true, points = route.points, legs = legs, stats = route.stats,
-                followTrails = route.points.last().followTrails, editing = route)
+                followTrails = route.points.last().followTrails, editing = route, outAndBack = route.outAndBack)
             hideRoute(id)
         }
     }
@@ -1202,7 +1207,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val result = withContext(Dispatchers.Default) { change(st) }
                 if (result == null) { _plan.value = _plan.value.copy(busy = false); return@launch }
                 val (pts, legs) = result
-                val stats = withContext(Dispatchers.Default) { statsFor(legs) }
+                val stats = withContext(Dispatchers.Default) { statsFor(fullLegs(legs, _plan.value.outAndBack)) }
                 _plan.value = _plan.value.copy(points = pts, legs = legs, stats = stats, busy = false, selected = null)
             } finally {
                 planLock.unlock()
@@ -1263,6 +1268,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setFollowTrails(on: Boolean) { _plan.value = _plan.value.copy(followTrails = on) }
+
+    /** The way in followed by the same legs walked back, for an out-and-back. */
+    private fun fullLegs(legs: List<RouteLeg>, outAndBack: Boolean): List<RouteLeg> =
+        if (!outAndBack || legs.isEmpty()) legs
+        else legs + legs.reversed().map { it.copy(coords = it.coords.reversed(), names = it.names.reversed()) }
+
+    /** Turns "come back the same way" on or off while planning; the totals include the way back. */
+    fun setPlanOutAndBack(on: Boolean) {
+        viewModelScope.launch {
+            planLock.lock()
+            try {
+                val st = _plan.value
+                if (!st.active || st.outAndBack == on) return@launch
+                val stats = withContext(Dispatchers.Default) { statsFor(fullLegs(st.legs, on)) }
+                _plan.value = _plan.value.copy(outAndBack = on, stats = stats)
+            } finally {
+                planLock.unlock()
+            }
+        }
+    }
+
+    /**
+     * Makes a saved route an out-and-back (adds the way back along the same path) or one-way again
+     * (drops the way back). Camps on the way back are dropped when it's taken off.
+     */
+    fun setRouteOutAndBack(id: String, on: Boolean) {
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) { routes.load(id) } ?: return@launch
+            if (r.outAndBack == on) return@launch
+            val updated = withContext(Dispatchers.Default) {
+                fun scaled(t: com.trailguidegps.app.data.RouteTerrain?, k: Double) = t?.copy(trailM = t.trailM * k, trackM = t.trackM * k,
+                    roadM = t.roadM * k, offTrailM = t.offTrailM * k, sacRatedM = t.sacRatedM * k)
+                if (on) {
+                    val coords = r.coords + r.coords.reversed().drop(1)
+                    r.copy(coords = coords, stats = RouteStats.compute(coords, r.stats.distanceM * 2, terrain), terrain = scaled(r.terrain, 2.0),
+                        outAndBack = true, outCount = r.coords.size, via = r.via)
+                } else {
+                    val n = r.outCount.takeIf { it in 2..r.coords.size } ?: ((r.coords.size + 1) / 2)
+                    val coords = r.coords.take(n)
+                    val dist = r.turnM ?: (r.stats.distanceM / 2)
+                    r.copy(coords = coords, stats = RouteStats.compute(coords, dist, terrain), terrain = scaled(r.terrain, 0.5),
+                        outAndBack = false, outCount = 0, camps = r.camps.filter { it.alongM < dist - 200 })
+                }
+            }
+            withContext(Dispatchers.IO) { routes.save(updated) }
+            updateShown(id) { updated }
+            _message.value = if (on) "\"${r.name}\" now comes back the same way: %.1f mi round trip.".format(updated.stats.distanceM / com.trailguidegps.app.geo.Geo.M_PER_MI)
+                else "\"${r.name}\" is one way again: %.1f mi.".format(updated.stats.distanceM / com.trailguidegps.app.geo.Geo.M_PER_MI)
+        }
+    }
 
     /** Adds a point; the leg to it follows trails when that mode is on and a connection exists. */
     fun addPlanPoint(lat: Double, lon: Double, waypointName: String? = null) {
@@ -1373,10 +1428,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val old = st.editing?.takeIf { !asNew }
         viewModelScope.launch {
             val saved = withContext(Dispatchers.IO) {
-                val coords = ArrayList<DoubleArray>()
-                st.legs.forEach { leg -> leg.coords.forEach { c -> if (coords.lastOrNull()?.let { it[0] == c[0] && it[1] == c[1] } != true) coords += c } }
+                fun join(legs: List<RouteLeg>) = ArrayList<DoubleArray>().also { coords ->
+                    legs.forEach { leg -> leg.coords.forEach { c -> if (coords.lastOrNull()?.let { it[0] == c[0] && it[1] == c[1] } != true) coords += c } }
+                }
+                val all = fullLegs(st.legs, st.outAndBack)
+                val coords = join(all)
                 SavedRoute(old?.id ?: RouteStore.newId(), name.ifBlank { "Route" }, old?.createdAt ?: System.currentTimeMillis(), st.points, coords,
-                    st.stats, st.via, color, com.trailguidegps.app.data.RouteTerrain.of(st.legs),
+                    st.stats, st.via, color, com.trailguidegps.app.data.RouteTerrain.of(all),
+                    outAndBack = st.outAndBack, outCount = if (st.outAndBack) join(st.legs).size else 0,
                     // Camps stay if they're still on the route.
                     camps = old?.camps.orEmpty().filter { it.alongM < st.stats.distanceM - 200 },
                     notes = old?.notes.orEmpty(), tripStart = old?.tripStart ?: 0, tripEnd = old?.tripEnd ?: 0)

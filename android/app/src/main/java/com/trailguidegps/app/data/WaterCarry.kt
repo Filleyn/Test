@@ -100,7 +100,8 @@ object WaterCarry {
             if (startsDry && pieces.isNotEmpty()) pieces = pieces.drop(1)   // carried in to last night's camp
             if (endsDry && pieces.isNotEmpty()) pieces = pieces.dropLast(1) // part of the fill-up for tonight
             val walk = pieces.filter { (a, b) -> b - a > 1 }.map { (a, b) -> gap(a, b) }.maxByOrNull { it.minutes }
-            val fill = if (endsDry) whole.firstOrNull { it.fromM < to && it.toM > to } else null
+            // The fill-up goes with the day you walk in; rest days at the same camp are covered by it.
+            val fill = if (endsDry && to - from > 1) whole.firstOrNull { it.fromM < to && it.toM > to } else null
             Day(i + 1, walk, fill)
         }
     }

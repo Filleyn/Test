@@ -107,8 +107,9 @@ data class Difficulty(
             val p = stats.profile
             val (steepest, steepAt) = steepest(p)
             val high = p.maxOfOrNull { it.second }?.let { it * Geo.FT_PER_M }
-            if (days.size < 2) return Difficulty(score, LABELS[level], level, steepest, steepAt, high, terrain)
-            val rated = days.map { d ->
+            val walking = days.filter { !it.rest }
+            if (walking.size < 2) return Difficulty(score, LABELS[level], level, steepest, steepAt, high, terrain)
+            val rated = walking.map { d ->
                 val (s, l) = rating(d.distanceM, d.gainM)
                 DayRating(d.day, d.distanceM, d.gainM, s, l, steepest(p, d.fromM, d.toM).first)
             }
@@ -255,7 +256,23 @@ data class SavedRoute(
     /** When you plan to go: start and finish (epoch ms), or 0 when not set. */
     val tripStart: Long = 0,
     val tripEnd: Long = 0,
-)
+    /**
+     * An out-and-back: [points] are the way in only (for editing), while [coords] and [stats] are the
+     * whole round trip. [outCount] is how many of [coords] are the way in.
+     */
+    val outAndBack: Boolean = false,
+    val outCount: Int = 0,
+) {
+    /** Where an out-and-back turns around, in metres along the route; null for a one-way route or loop. */
+    val turnM: Double? get() {
+        if (!outAndBack || outCount < 2 || outCount > coords.size) return null
+        var d = 0.0
+        for (i in 1 until outCount) d += Geo.distanceM(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1])
+        return d
+    }
+    /** What the turnaround is called: the last planning point's waypoint, else null. */
+    val turnName: String? get() = if (outAndBack) points.lastOrNull()?.waypointName else null
+}
 
 data class RouteSummary(
     val id: String, val name: String, val createdAt: Long, val distanceM: Double, val gainM: Double, val lossM: Double,
@@ -268,6 +285,7 @@ data class RouteSummary(
     /** Planned trip dates (0 when not set). */
     val tripStart: Long = 0,
     val tripEnd: Long = 0,
+    val outAndBack: Boolean = false,
 )
 
 /** Colors you can give a route. Chosen to stand out from trails (red-brown), tracks and water. */
@@ -295,6 +313,7 @@ class RouteStore(context: Context) {
             .put("distance", r.stats.distanceM).put("gain", r.stats.gainM).put("loss", r.stats.lossM)
             .put("via", JSONArray(r.via)).put("color", r.color).put("notes", r.notes)
             .put("trip_start", r.tripStart).put("trip_end", r.tripEnd)
+            .put("out_back", r.outAndBack).put("out_count", r.outCount)
             .put("terrain", r.terrain?.let { t ->
                 JSONObject().put("trail", t.trailM).put("track", t.trackM).put("road", t.roadM).put("off", t.offTrailM)
                     .put("sac", t.sacMax).put("sacRated", t.sacRatedM)
@@ -305,7 +324,7 @@ class RouteStore(context: Context) {
                 }
             })
             .put("camps", JSONArray().apply {
-                r.camps.forEach { put(JSONObject().put("along", it.alongM.roundToInt()).put("name", it.name ?: JSONObject.NULL)) }
+                r.camps.forEach { put(JSONObject().put("along", it.alongM.roundToInt()).put("name", it.name ?: JSONObject.NULL).put("nights", it.nights)) }
             })
             .put("coords", JSONArray().apply { r.coords.forEach { put(JSONArray().put(round6(it[0])).put(round6(it[1]))) } })
             .put("profile", JSONArray().apply { r.stats.profile.forEach { put(JSONArray().put(it.first.roundToInt()).put((it.second * 10).roundToInt() / 10.0)) } })
@@ -338,11 +357,13 @@ class RouteStore(context: Context) {
             },
             (o.optJSONArray("camps") ?: JSONArray()).let { a ->
                 (0 until a.length()).map { i ->
-                    a.getJSONObject(i).let { c -> Camp(c.getDouble("along"), c.optString("name").takeIf { !c.isNull("name") && it.isNotBlank() }) }
+                    a.getJSONObject(i).let { c -> Camp(c.getDouble("along"), c.optString("name").takeIf { !c.isNull("name") && it.isNotBlank() },
+                        c.optInt("nights", 1).coerceIn(1, 7)) }
                 }
             },
             notes = o.optString("notes", ""),
             tripStart = o.optLong("trip_start", 0), tripEnd = o.optLong("trip_end", 0),
+            outAndBack = o.optBoolean("out_back", false), outCount = o.optInt("out_count", 0),
         )
     }.getOrNull()
 
@@ -382,7 +403,7 @@ class RouteStore(context: Context) {
                 RouteSummary(o.getString("id"), o.getString("name"), o.getLong("created"),
                     o.getDouble("distance"), o.getDouble("gain"), o.getDouble("loss"),
                     o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT }, o.optString("notes", ""),
-                    trip?.first ?: 1, trip?.second, o.optLong("trip_start", 0), o.optLong("trip_end", 0))
+                    trip?.first ?: 1, trip?.second, o.optLong("trip_start", 0), o.optLong("trip_end", 0), o.optBoolean("out_back", false))
             }.getOrNull()
         }
         .sortedByDescending { it.createdAt }
@@ -454,14 +475,18 @@ class RouteStore(context: Context) {
             }
             routes.forEach { r ->
                 val camps = r.camps.sortedBy { it.alongM }.filter { it.alongM > 0 && it.alongM < r.stats.distanceM }
+                // An out-and-back's turnaround, unless a camp is already there.
+                r.turnM?.let { t ->
+                    if (camps.none { kotlin.math.abs(it.alongM - t) < 150 }) pointAt(r.coords, t)?.let { point("turn", "Turnaround", r.color, it) }
+                }
                 if (camps.isEmpty()) return@forEach
-                val marks = listOf(0.0) + camps.map { it.alongM } + listOf(r.stats.distanceM)
-                marks.zipWithNext().forEachIndexed { i, (a, b) ->
-                    pointAt(r.coords, (a + b) / 2)?.let { point("day", "Day ${i + 1} · %.1f mi".format((b - a) / Geo.M_PER_MI), r.color, it) }
+                val days = TripDays.days(r, camps, Pace())
+                days.filter { !it.rest }.forEach { d ->
+                    pointAt(r.coords, (d.fromM + d.toM) / 2)?.let { point("day", "Day ${d.day} · %.1f mi".format(d.distanceM / Geo.M_PER_MI), r.color, it) }
                 }
                 camps.forEachIndexed { i, c ->
                     val p = pointAt(r.coords, c.alongM) ?: return@forEachIndexed
-                    point("camp", "Night ${i + 1}" + (c.name?.let { ": $it" } ?: ""), r.color, p)
+                    point("camp", TripDays.nightsLabel(days, i) + (c.name?.let { ": $it" } ?: ""), r.color, p)
                 }
             }
             return JSONObject().put("type", "FeatureCollection").put("features", features).toString()

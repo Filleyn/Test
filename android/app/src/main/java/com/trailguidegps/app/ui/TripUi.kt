@@ -360,16 +360,19 @@ fun TripDaysDialog(vm: AppViewModel, route: SavedRoute, pace: Pace, onDismiss: (
     // Leaving with changes asks whether to keep them, so a plan isn't lost to the back arrow.
     val toSave = if (days <= 1) emptyList() else camps
     val changed = toSave != route.camps.sortedBy { it.alongM }
+    val allDays = TripDays.totalDays(toSave)
     var askSave by remember { mutableStateOf(false) }
     fun save() { vm.setCamps(route.id, toSave); onDismiss() }
     fun back() { if (changed) askSave = true else onDismiss() }
     if (askSave) AlertDialog(
         onDismissRequest = { askSave = false },
-        title = { Text(if (days <= 1) "Save as a day hike?" else "Save $days days?") },
+        title = { Text(if (days <= 1) "Save as a day hike?" else "Save $allDays days?") },
         text = {
+            val planned = TripDays.days(route, toSave, pace)
             Text(if (days <= 1) "The route's camps will be removed." else
-                "Camps: " + toSave.mapIndexed { i, c -> "night ${i + 1} at " + (c.name ?: "mile %.1f".format(c.alongM / Geo.M_PER_MI)) }.joinToString(", ") +
-                    ". They'll show on the map and on the route's elevation graph.")
+                "Camps: " + toSave.mapIndexed { i, c -> TripDays.nightsLabel(planned, i).lowercase() + " at " +
+                    (c.name ?: "mile %.1f".format(c.alongM / Geo.M_PER_MI)) }.joinToString(", ") +
+                    ". They'll show on the map, on the route's elevation graph and on the trip plan.")
         },
         confirmButton = { TextButton(onClick = { askSave = false; save() }) { Text("Save", color = TG.Accent) } },
         dismissButton = { TextButton(onClick = { askSave = false; onDismiss() }) { Text("Don't save", color = TG.Muted) } },
@@ -387,7 +390,7 @@ fun TripDaysDialog(vm: AppViewModel, route: SavedRoute, pace: Pace, onDismiss: (
                     onClick = { save() },
                     shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = TG.Accent, contentColor = Color.White),
-                ) { Text("Save ${if (days <= 1) "as a day hike" else "$days days"}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                ) { Text("Save ${if (days <= 1) "as a day hike" else "$allDays days"}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
             },
         ) {
             DaysContent(
@@ -412,7 +415,8 @@ fun DaysContent(
         Text("Trip: " + com.trailguidegps.app.data.TripDates.range(tripStart, tripEnd), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
             color = TG.Ink, modifier = Modifier.padding(bottom = 2.dp))
         val cover = com.trailguidegps.app.data.TripDates.calendarDays(tripStart, tripEnd)
-        if (cover != days) Text("Your dates cover $cover day${if (cover == 1) "" else "s"}; this plan has $days. Change the days below or tap Dates.",
+        val planDays = TripDays.totalDays(if (days <= 1) emptyList() else camps)
+        if (cover != planDays) Text("Your dates cover $cover day${if (cover == 1) "" else "s"}; this plan has $planDays. Change the days below or tap Dates.",
             fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
     }
     val total = route.stats.distanceM
@@ -426,18 +430,27 @@ fun DaysContent(
         if (hi <= lo) return
         val a = along.coerceIn(lo, hi)
         val s = if (snap) spots.orEmpty().filter { abs(it.alongM - a) < 150 && it.alongM in lo..hi }.minWithOrNull(compareBy({ it.tier }, { abs(it.alongM - a) })) else null
-        onCamps(camps.toMutableList().also { it[i] = s?.let { sp -> Camp(sp.alongM, sp.point.label) } ?: Camp(a, null) })
+        onCamps(camps.toMutableList().also { it[i] = (s?.let { sp -> Camp(sp.alongM, sp.point.label) } ?: Camp(a, null)).copy(nights = camps[i].nights) })
+    }
+
+    /** Stays [n] nights at camp [i]: more than one adds rest days there. */
+    fun setNights(i: Int, n: Int) {
+        onCamps(camps.toMutableList().also { it[i] = it[i].copy(nights = n.coerceIn(1, 5)) })
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Days", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.weight(1f))
+        Text("Walking days", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.weight(1f))
         OutlinedButton(onClick = { onDays(days - 1); choosing = null }, enabled = days > 1, shape = RoundedCornerShape(10.dp)) { Text("−", fontSize = 18.sp, color = TG.Ink) }
         Text("$days", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TG.Ink, modifier = Modifier.padding(horizontal = 16.dp))
         OutlinedButton(onClick = { onDays(days + 1); choosing = null }, enabled = days < 10, shape = RoundedCornerShape(10.dp)) { Text("+", fontSize = 18.sp, color = TG.Ink) }
     }
     Text("Camps start where each day takes about the same time at your pace, moved to a campsite (with water within 1,000 ft if possible) " +
-        "or water when one is close. Drag a camp along the profile to move it.", fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp,
-        modifier = Modifier.padding(top = 4.dp))
+        "or water when one is close" + (if (route.outAndBack) "; an out-and-back over an even number of days camps at the turnaround" else "") +
+        ". Drag a camp along the profile to move it. To stay more than one night at a camp (a base camp), use Nights here on that camp.",
+        fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp, modifier = Modifier.padding(top = 4.dp))
+    val restDays = tripDays.count { it.rest }
+    if (restDays > 0) Text("${tripDays.size} days in all: ${tripDays.size - restDays} walking, $restDays at camp.", fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold, color = TG.Ink, modifier = Modifier.padding(top = 4.dp))
     if (spots == null) Text("Looking for campsites and water…", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.padding(top = 6.dp))
     // How splitting into days changes the rating; updates as camps move.
     if (tripDays.size >= 2) {
@@ -452,7 +465,7 @@ fun DaysContent(
     water?.let { WaterSection(it) }
 
     if (route.stats.profile.size >= 2) {
-        DaysProfile(route, camps, spots.orEmpty(), Modifier.padding(top = 10.dp),
+        DaysProfile(route, camps, spots.orEmpty(), camps.indices.map { TripDays.nightsLabel(tripDays, it).substringAfter(' ') }, Modifier.padding(top = 10.dp),
             onDrag = { i, a -> placeCamp(i, a, snap = false) }, onDrop = { i, a -> placeCamp(i, a, snap = true) })
         Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(9.dp).background(CampBrown, CircleShape)); Text("campsite", fontSize = 11.sp, color = TG.Muted)
@@ -460,7 +473,25 @@ fun DaysContent(
         }
     }
 
-    tripDays.forEachIndexed { i, d ->
+    tripDays.forEach { d ->
+        val i = d.campIndex
+        if (d.rest) {
+            // A day at camp: no walking on the route.
+            Surface(shape = RoundedCornerShape(12.dp), color = TG.Card, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(26.dp).background(TG.Muted, CircleShape), contentAlignment = Alignment.Center) {
+                        Text("${d.day}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Column(Modifier.padding(start = 8.dp).weight(1f)) {
+                        Text("Day ${d.day}" + (if (tripStart > 0) " · " + com.trailguidegps.app.data.TripDates.dayLabel(tripStart, d.day) else "") + ": at camp",
+                            fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                        Text("Night ${d.night} at " + (d.endName ?: "mile %.1f".format(d.toM / Geo.M_PER_MI)) + ". No miles on the route today.",
+                            fontSize = 13.sp, color = TG.Muted)
+                    }
+                }
+            }
+            return@forEach
+        }
         Surface(shape = RoundedCornerShape(12.dp), color = TG.Card, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -487,8 +518,14 @@ fun DaysContent(
                     val c = camps[i]
                     val p = RouteStore.pointAt(route.coords, c.alongM)
                     HorizontalDivider(color = TG.Line, modifier = Modifier.padding(vertical = 8.dp))
-                    Text("Night ${i + 1}: " + (c.name ?: "mile %.1f (no campsite mapped here)".format(c.alongM / Geo.M_PER_MI)),
+                    Text(TripDays.nightsLabel(tripDays, i) + ": " + (c.name ?: "mile %.1f (no campsite mapped here)".format(c.alongM / Geo.M_PER_MI)),
                         fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Nights here", fontSize = 13.sp, color = TG.Ink, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { setNights(i, c.nights - 1) }, enabled = c.nights > 1) { Text("−", fontSize = 18.sp, color = TG.Accent) }
+                        Text("${c.nights}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TG.Ink)
+                        TextButton(onClick = { setNights(i, c.nights + 1) }, enabled = c.nights < 5) { Text("+", fontSize = 18.sp, color = TG.Accent) }
+                    }
                     val w = p?.let { waterNear(it[0], it[1]) }
                     Text(w?.let { (wp, dist) -> "Water ${if (dist < 15) "right there" else Geo.formatDistance(dist)}: ${wp.label}" + if (wp.seasonal) " (may be seasonal)" else "" }
                         ?: "No mapped water within 1,000 ft of camp", fontSize = 13.sp, color = if (w == null || w.first.seasonal) Amber else WaterBlue)
@@ -504,7 +541,7 @@ fun DaysContent(
                         val near = TripDays.nearby(spots.orEmpty(), c.alongM, 8000.0).filter { it.alongM > lo + 200 && it.alongM < hi - 200 }.take(12)
                         if (near.isEmpty()) Text("No mapped campsites or water within 5 miles.", fontSize = 12.sp, color = TG.Muted)
                         near.forEach { s ->
-                            Row(Modifier.fillMaxWidth().clickable { onCamps(camps.toMutableList().also { it[i] = Camp(s.alongM, s.point.label) }); choosing = null }
+                            Row(Modifier.fillMaxWidth().clickable { onCamps(camps.toMutableList().also { it[i] = Camp(s.alongM, s.point.label, c.nights) }); choosing = null }
                                 .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.size(10.dp).background(if (s.isCampsite) CampBrown else WaterBlue, CircleShape))
                                 Column(Modifier.padding(start = 10.dp)) {
@@ -529,7 +566,7 @@ fun DaysContent(
 /** The route's elevation profile split into days, with campsites and water marked along the bottom. Camps can be dragged. */
 @Composable
 private fun DaysProfile(
-    route: SavedRoute, camps: List<Camp>, spots: List<CampSpot>, modifier: Modifier,
+    route: SavedRoute, camps: List<Camp>, spots: List<CampSpot>, labels: List<String>, modifier: Modifier,
     onDrag: (Int, Double) -> Unit, onDrop: (Int, Double) -> Unit,
 ) {
     val prof = route.stats.profile
@@ -581,9 +618,10 @@ private fun DaysProfile(
         camps.forEachIndexed { i, c ->
             val cx = x(c.alongM)
             drawLine(TG.Accent, Offset(cx, top), Offset(cx, bottom), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f)))
-            val r = if (dragging == i) 13.dp.toPx() else 11.dp.toPx()
+            val label = labels.getOrNull(i) ?: "${i + 1}"
+            val r = (if (dragging == i) 13.dp.toPx() else 11.dp.toPx()) + (if (label.length > 2) 6.dp.toPx() else 0f)
             drawCircle(TG.Accent, r, Offset(cx, top - 2.dp.toPx()))
-            val lay = tm.measure("${i + 1}", TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White))
+            val lay = tm.measure(label, TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White))
             drawText(lay, topLeft = Offset(cx - lay.size.width / 2, top - 2.dp.toPx() - lay.size.height / 2))
         }
         val st = TextStyle(fontSize = 10.sp, color = TG.Muted)
@@ -599,7 +637,7 @@ private fun DaysProfile(
 fun daysLine(route: SavedRoute, pace: Pace): String? {
     if (route.camps.isEmpty()) return null
     val d = TripDays.days(route, route.camps, pace)
-    return "${d.size} days: " + d.joinToString(" · ") { "%.1f".format(it.distanceM / Geo.M_PER_MI) } + " mi"
+    return "${d.size} days: " + d.joinToString(" · ") { if (it.rest) "rest" else "%.1f mi".format(it.distanceM / Geo.M_PER_MI) }
 }
 
 // ---- Weather ----

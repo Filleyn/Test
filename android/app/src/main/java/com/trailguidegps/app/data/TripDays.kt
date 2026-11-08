@@ -3,8 +3,8 @@ package com.trailguidegps.app.data
 import kotlin.math.abs
 import kotlin.math.max
 
-/** A night's camp on a route: metres along it, and what's there. */
-data class Camp(val alongM: Double, val name: String? = null)
+/** A camp on a route: metres along it, what's there, and how many nights you stay (more than 1 adds rest days). */
+data class Camp(val alongM: Double, val name: String? = null, val nights: Int = 1)
 
 /** A place on or near a route that would make a camp. */
 data class CampSpot(
@@ -40,6 +40,12 @@ data class TripDay(
     /** Where the day ends: the camp's name, or null for the end of the route. */
     val endName: String?,
     val endsAtCamp: Boolean,
+    /** A day spent at camp (an extra night there), with no walking on the route. */
+    val rest: Boolean = false,
+    /** Which camp (index into the sorted camps) the day ends at, or -1. */
+    val campIndex: Int = -1,
+    /** The night number spent at that camp tonight (1 = first night of the trip), or 0. */
+    val night: Int = 0,
 ) {
     val distanceM get() = toM - fromM
 }
@@ -90,12 +96,35 @@ object TripDays {
         val rl = raw.sumOf { it.second }
         val gs = if (rg > 0) route.stats.gainM / rg else 0.0
         val ls = if (rl > 0) route.stats.lossM / rl else 0.0
-        return marks.zipWithNext().mapIndexed { i, (a, b) ->
+        val out = ArrayList<TripDay>()
+        var night = 0
+        marks.zipWithNext().forEachIndexed { i, (a, b) ->
             val gain = raw[i].first * gs
-            TripDay(i + 1, a, b, gain, raw[i].second * ls, pace.minutes(b - a, gain),
-                sorted.getOrNull(i)?.name, i < sorted.size)
+            val camp = sorted.getOrNull(i)
+            if (camp != null) night++
+            out += TripDay(out.size + 1, a, b, gain, raw[i].second * ls, pace.minutes(b - a, gain),
+                camp?.name, camp != null, campIndex = if (camp != null) i else -1, night = if (camp != null) night else 0)
+            // Extra nights at this camp: a rest day for each.
+            if (camp != null) repeat((camp.nights - 1).coerceIn(0, 6)) {
+                night++
+                out += TripDay(out.size + 1, b, b, 0.0, 0.0, 0, camp.name, true, rest = true, campIndex = i, night = night)
+            }
+        }
+        return out
+    }
+
+    /** "Night 2" or "Nights 2–3" for camp [campIndex], from [days]. */
+    fun nightsLabel(days: List<TripDay>, campIndex: Int): String {
+        val ns = days.filter { it.campIndex == campIndex }.map { it.night }.filter { it > 0 }
+        return when {
+            ns.isEmpty() -> "Night ${campIndex + 1}"
+            ns.size == 1 -> "Night ${ns[0]}"
+            else -> "Nights ${ns.first()}–${ns.last()}"
         }
     }
+
+    /** All days counting rest days: 1 for a day hike. */
+    fun totalDays(camps: List<Camp>): Int = if (camps.isEmpty()) 1 else camps.size + 1 + camps.sumOf { (it.nights - 1).coerceAtLeast(0) }
 
     /** Campsites and water sources along the route, in order. */
     fun spots(route: SavedRoute, features: Features): List<CampSpot> =
@@ -128,8 +157,10 @@ object TripDays {
         val camps = ArrayList<Camp>()
         var last = 0.0
         val dayLen = total / days
+        // An out-and-back over an even number of days camps at the turnaround halfway (often the lake or spring).
+        val turn = route.turnM
         for (k in 1 until days) {
-            val target = distanceAtTime(cum.last() * k / days)
+            val target = if (turn != null && days % 2 == 0 && k == days / 2) turn else distanceAtTime(cum.last() * k / days)
             val window = max(1600.0, dayLen * 0.15)
             val pick = spots.filter { abs(it.alongM - target) <= window && it.alongM > last + 1000 && it.alongM < total - 1000 }
                 .minWithOrNull(compareBy({ it.tier }, { abs(it.alongM - target) }))

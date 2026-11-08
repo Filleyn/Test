@@ -873,6 +873,7 @@ fun MapScreen(
                             onClearSelected = { vm.selectPlanPoint(null) },
                             onAddAtStart = { vm.setAddAtStart(it) },
                             onFollowTrails = { vm.setFollowTrails(it) },
+                            onOutAndBack = { vm.setPlanOutAndBack(it) },
                         )
                     }
                 }
@@ -1469,8 +1470,9 @@ private fun BottomPanel(
                 if (!compactRoute) DifficultyLine(difficulty, onClick = { showDifficulty = true }, showLink = false)
                 if (showDifficulty) DifficultyDialog(difficulty) { showDifficulty = false }
                 if (r.stats.profile.size >= 2) {
+                    val walkDays = remember(r, pace) { if (r.camps.isEmpty()) emptyList() else com.trailguidegps.app.data.TripDays.days(r, r.camps, pace).filter { !it.rest } }
                     ElevationProfile(r.stats, Modifier.padding(top = 2.dp), color = routeColor(r.color), onScrub = onRouteScrub,
-                        camps = r.camps.map { it.alongM })
+                        camps = r.camps.map { it.alongM }, dayLabels = walkDays.map { "${it.day}" })
                 }
                 if (compactRoute) {
                     Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show route tools") { setRouteCompact(false) }.padding(top = 2.dp),
@@ -1492,6 +1494,10 @@ private fun BottomPanel(
                     }
                 }
                 daysLine(r, pace)?.let { Text(it, fontSize = 12.sp, color = TG.Ink) }
+                r.turnM?.let { t ->
+                    Text("Out & back: turn around at " + (r.turnName ?: "mile %.1f".format(t / com.trailguidegps.app.geo.Geo.M_PER_MI)) +
+                        " (%.1f mi in)".format(t / com.trailguidegps.app.geo.Geo.M_PER_MI), fontSize = 12.sp, color = TG.Ink)
+                }
                 var editingDates by remember(r.id) { mutableStateOf(false) }
                 Text(if (r.tripStart > 0) "Trip: ${com.trailguidegps.app.data.TripDates.range(r.tripStart, r.tripEnd)} · change" else "Set trip dates",
                     fontSize = 12.sp, color = TG.Accent, modifier = Modifier.clickable { editingDates = true }.padding(vertical = 2.dp))

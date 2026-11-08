@@ -145,7 +145,7 @@ fun TripDatesDialog(route: SavedRoute, pace: com.trailguidegps.app.data.Pace, on
             TextButton(onClick = { pickDateTime(context, value, onChange) }) { Text("Change", color = TG.Accent) }
         }
     }
-    val days = if (route.camps.isEmpty()) 1 else route.camps.size + 1
+    val days = com.trailguidegps.app.data.TripDays.totalDays(route.camps)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Trip dates") },

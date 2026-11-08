@@ -62,7 +62,8 @@ object TripPlan {
         return buildString {
             appendLine("Here's my trip plan. The PDF attached has the map.")
             appendLine()
-            appendLine("Route: ${route.name}")
+            appendLine("Route: ${route.name}" + if (route.outAndBack) " (out and back)" else "")
+            turnLine(route)?.let { appendLine(it) }
             area?.takeIf { it.isNotBlank() }?.let { appendLine("Where: $it") }
             appendLine("Who: ${form.party.ifBlank { "(not given)" }}")
             if (form.phones.isNotBlank()) appendLine("Phone: ${form.phones}")
@@ -91,7 +92,15 @@ object TripPlan {
     /** Under any water estimate, on the plan and in the email. */
     const val WATER_NOTE = "Water amounts are planning estimates from map data; mapped water can be missing or dry, so carry extra."
 
+    /** "Out and back: in 6.1 mi to Minnie Scott Spring, then back the same way." */
+    private fun turnLine(route: SavedRoute): String? {
+        val t = route.turnM ?: return null
+        val where = route.turnName ?: RouteStore.pointAt(route.coords, t)?.let { "%.5f, %.5f".format(Locale.US, it[0], it[1]) }
+        return "Out and back: in %.1f mi".format(t / Geo.M_PER_MI) + (where?.let { " to $it" } ?: "") + ", then back the same way."
+    }
+
     private fun dayLine(route: SavedRoute, d: TripDay, water: String? = null): String {
+        if (d.rest) return "Day ${d.day}: at camp, night ${d.night} at ${d.endName ?: "mile %.1f".format(d.toM / Geo.M_PER_MI)} (no miles on the route)."
         val camp = if (d.endsAtCamp) RouteStore.pointAt(route.coords, d.toM)?.let { p ->
             " Camp: ${d.endName ?: "mile %.1f".format(d.toM / Geo.M_PER_MI)} (%.5f, %.5f)".format(Locale.US, p[0], p[1])
         } ?: "" else " Out at the end of the route."
@@ -125,6 +134,7 @@ object TripPlan {
         c.drawText("TRIP PLAN", left, y, label)
         y = block(route.name, title, left, y + 4, width, 2) + 6
         area?.takeIf { it.isNotBlank() }?.let { y = block(it, text, left, y, width, 2) + 6 }
+        turnLine(route)?.let { y = block(it, text, left, y, width, 2) + 6 }
 
         // The one thing someone at home needs to know.
         val alarm = "If you haven't heard from us by ${dateTime.format(Date(form.alarmAt))}, call 911 and ask for the county " +

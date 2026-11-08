@@ -78,7 +78,7 @@ object RouteFollower {
     }
 
     /** Nearest point on segments [from, to): (segment, fraction, distance m). */
-    private fun nearestOn(c: List<DoubleArray>, lat: Double, lon: Double, from: Int, to: Int): Triple<Int, Double, Double> {
+    private fun nearestOn(c: List<DoubleArray>, lat: Double, lon: Double, from: Int, to: Int, preferFrom: Int = from): Triple<Int, Double, Double> {
         val kx = cos(Math.toRadians(lat)) * 111_320.0
         val ky = 110_540.0
         var best = Triple(from, 0.0, Double.MAX_VALUE)
@@ -91,6 +91,21 @@ object RouteFollower {
             val t = if (l2 == 0.0) 0.0 else (-(ax * dx + ay * dy) / l2).coerceIn(0.0, 1.0)
             val d = hypot(ax + t * dx, ay + t * dy)
             if (d < best.third) best = Triple(i, t, d)
+        }
+        // Where the line runs over itself (an out-and-back, a lollipop), several segments are about as
+        // close. Take the first of those at or after where you were: it carries on from there, so you
+        // stay on the way in until the turnaround and then move onto the way back.
+        if (best.third < Double.MAX_VALUE) {
+            for (i in preferFrom.coerceIn(from, to) until to) {
+                val ax = (c[i][1] - lon) * kx
+                val ay = (c[i][0] - lat) * ky
+                val dx = (c[i + 1][1] - c[i][1]) * kx
+                val dy = (c[i + 1][0] - c[i][0]) * ky
+                val l2 = dx * dx + dy * dy
+                val t = if (l2 == 0.0) 0.0 else (-(ax * dx + ay * dy) / l2).coerceIn(0.0, 1.0)
+                val d = hypot(ax + t * dx, ay + t * dy)
+                if (d <= best.third + 12.0) return Triple(i, t, d)
+            }
         }
         return best
     }
@@ -106,7 +121,7 @@ object RouteFollower {
         // Search near where you were, mostly ahead, so an out-and-back or a loop that
         // crosses itself doesn't jump you to the other half. Fall back to the whole line.
         var hit = if (lastSeg < 0) nearestOn(c, lat, lon, 0, segs)
-        else nearestOn(c, lat, lon, (lastSeg - 20).coerceAtLeast(0), (lastSeg + 400).coerceAtMost(segs))
+        else nearestOn(c, lat, lon, (lastSeg - 20).coerceAtLeast(0), (lastSeg + 400).coerceAtMost(segs), preferFrom = lastSeg)
         if (lastSeg >= 0 && hit.third > 150) {
             val all = nearestOn(c, lat, lon, 0, segs)
             if (all.third < hit.third - 50) hit = all

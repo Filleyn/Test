@@ -180,6 +180,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 onColor = { recoloring = r },
                 onNotes = { notesFor = vm.routes.load(r.id) },
                 onDates = { datesFor = vm.routes.load(r.id) },
+                onOutBack = { vm.setRouteOutAndBack(r.id, !r.outAndBack) },
                 onTripPlan = { tripPlanFor = vm.routes.load(r.id) },
                 onWater = { waterFor = vm.routes.load(r.id) },
                 onReverse = { vm.reverseRoute(r.id) },
@@ -631,7 +632,7 @@ private fun TrackRow(t: TrackSummary, folderName: String?, area: String?, onShow
 @Composable
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?, area: String?,
-    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onDates: () -> Unit, onTripPlan: () -> Unit,
+    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onDates: () -> Unit, onOutBack: () -> Unit, onTripPlan: () -> Unit,
     onWater: () -> Unit, onReverse: () -> Unit,
     onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
 ) {
@@ -641,6 +642,7 @@ private fun RouteRow(
         Column(Modifier.weight(1f)) {
             Text(r.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
             folderName?.let { Text("In $it", fontSize = 12.sp, color = TG.Accent, maxLines = 1) }
+            if (r.outAndBack) Text("Out & back", fontSize = 12.sp, color = TG.Muted, maxLines = 1)
             if (r.tripStart > 0) Text("Trip: " + com.trailguidegps.app.data.TripDates.short(r.tripStart, r.tripEnd), fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold, color = TG.Accent, maxLines = 1)
             AreaLine(area)
@@ -671,6 +673,7 @@ private fun RouteRow(
             "Reverse direction" to onReverse,
             "Route notes" to onNotes,
             "Trip dates" to onDates,
+            (if (r.outAndBack) "Make one way (drop the way back)" else "Make out & back (same way back)") to onOutBack,
             "Trip plan (PDF)" to onTripPlan,
             "Move to folder" to onMove,
             "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete,

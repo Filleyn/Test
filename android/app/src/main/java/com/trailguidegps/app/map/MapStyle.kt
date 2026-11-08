@@ -529,6 +529,16 @@ object MapStyle {
             layout = JSONObject().put("text-field", arr("get", "label")).put("text-font", arr(MEDIUM)).put("text-size", 13)
                 .put("text-offset", arr(0, -1.2)).put("text-anchor", "bottom").put("text-optional", true),
             minzoom = 10.0)
+        // An out-and-back's turnaround.
+        layer("route-turn", "circle", SRC_CAMPS, filter = arr("==", arr("get", "kind"), "turn"), paint = JSONObject()
+            .put("circle-radius", 6).put("circle-color", "#FFFFFF")
+            .put("circle-stroke-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE)).put("circle-stroke-width", 3.5))
+        layer("route-turn-label", "symbol", SRC_CAMPS, filter = arr("==", arr("get", "kind"), "turn"),
+            paint = JSONObject().put("text-color", arr("coalesce", arr("get", "color"), ROUTE_PURPLE))
+                .put("text-halo-color", "#FFFFFF").put("text-halo-width", 2),
+            layout = JSONObject().put("text-field", arr("get", "label")).put("text-font", arr(MEDIUM)).put("text-size", 12)
+                .put("text-offset", arr(0, 1.2)).put("text-anchor", "top").put("text-optional", true),
+            minzoom = 10.0)
         // ...and each night's camp as a tent badge in the route's color, labeled below.
         val campSize = arr("interpolate", arr("linear"), arr("zoom"), 9, 0.7, 14, 1.0)
         layer("route-camps", "symbol", SRC_CAMPS, filter = isCamp,

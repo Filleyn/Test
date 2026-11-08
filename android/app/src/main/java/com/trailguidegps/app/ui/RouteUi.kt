@@ -79,10 +79,10 @@ val RoutePurple = Color(0xFF6B3FA0)
  */
 @Composable
 fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier, color: Color = RoutePurple, onScrub: ((Double?) -> Unit)? = null,
-                     camps: List<Double> = emptyList()) {
+                     camps: List<Double> = emptyList(), dayLabels: List<String>? = null) {
     val pts = stats.profile
     if (pts.size < 2) return
-    val dayLabels = androidx.compose.ui.text.rememberTextMeasurer()
+    val dayText = androidx.compose.ui.text.rememberTextMeasurer()
     val minE = pts.minOf { it.second }
     val maxE = pts.maxOf { it.second }
     val maxD = pts.last().first.coerceAtLeast(1.0)
@@ -141,10 +141,10 @@ fun ElevationProfile(stats: RouteStats, modifier: Modifier = Modifier, color: Co
             pts.forEachIndexed { i, (d, e) -> if (i == 0) line.moveTo(x(d), y(e)) else line.lineTo(x(d), y(e)) }
             // A multi-day trip: every other day lightly shaded, a dashed line at each camp, and the day numbers.
             if (camps.isNotEmpty()) {
-                val marks = listOf(0.0) + camps.filter { it > 0 && it < maxD }.sorted() + listOf(maxD)
+                val marks = (listOf(0.0) + camps.filter { it > 0 && it < maxD }.sorted() + listOf(maxD)).distinct()
                 marks.zipWithNext().forEachIndexed { i, (a, b) ->
                     if (i % 2 == 1) drawRect(TG.Ink.copy(alpha = 0.05f), Offset(x(a), 0f), androidx.compose.ui.geometry.Size(x(b) - x(a), size.height))
-                    if (x(b) - x(a) > 14.dp.toPx()) drawText(dayLabels, "${i + 1}", Offset(x(a) + 3.dp.toPx(), 0f),
+                    if (x(b) - x(a) > 14.dp.toPx()) drawText(dayText, dayLabels?.getOrNull(i) ?: "${i + 1}", Offset(x(a) + 3.dp.toPx(), 0f),
                         androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = TG.Muted, fontWeight = FontWeight.SemiBold))
                 }
                 marks.drop(1).dropLast(1).forEach { a ->
@@ -397,6 +397,7 @@ fun RoutePlannerPanel(
     onClearSelected: () -> Unit = {},
     onAddAtStart: (Boolean) -> Unit = {},
     onFollowTrails: (Boolean) -> Unit = {},
+    onOutAndBack: (Boolean) -> Unit = {},
 ) {
     var showDifficulty by remember { mutableStateOf(false) }
     // Compact by default, so the map gets most of the screen while you tap out a route. Remembered.
@@ -418,6 +419,17 @@ fun RoutePlannerPanel(
                     Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (sel) Color.White else TG.Ink)
                 }
             }
+        }
+    }
+
+    /** "Out & back": the route comes back to the start the same way. */
+    @Composable
+    fun OutBackToggle() {
+        val on = plan.outAndBack
+        Box(Modifier.padding(start = 6.dp).background(if (on) RoutePurple else TG.Card, RoundedCornerShape(10.dp))
+            .clickable { onOutAndBack(!on) }.padding(horizontal = 10.dp, vertical = 9.dp)
+            .semantics { contentDescription = if (on) "Out and back is on" else "Come back the same way" }) {
+            Text("⇄ Out & back", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (on) Color.White else TG.Ink)
         }
     }
 
@@ -455,18 +467,22 @@ fun RoutePlannerPanel(
             }
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 ModeToggle()
+                OutBackToggle()
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = { setCompact(false) }) { Text("More ▲", fontSize = 13.sp, color = TG.Accent) }
                 Button(
                     onClick = onSave, enabled = plan.points.size >= 2 && !plan.busy, shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = RoutePurple, contentColor = Color.White),
                     modifier = Modifier.height(42.dp),
                 ) { Text("Save", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
             }
+            Row(Modifier.fillMaxWidth().clickable { setCompact(false) }, horizontalArrangement = Arrangement.Center) {
+                Text("More ▲", fontSize = 13.sp, color = TG.Accent, modifier = Modifier.padding(top = 2.dp))
+            }
             return@Column
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             ModeToggle()
+            OutBackToggle()
             Spacer(Modifier.weight(1f))
             TextButton(onClick = { setCompact(true) }) { Text("Less ▼ (more map)", fontSize = 12.sp, color = TG.Accent) }
         }
