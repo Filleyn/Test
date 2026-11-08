@@ -684,20 +684,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Stretches between water along [route] with [camps]. With [reliableOnly], seasonal sources
-     * (intermittent creeks, seasonal springs) don't count.
+     * Water day by day along [route] with [camps] (one day for a day hike). With [reliableOnly],
+     * seasonal sources (intermittent creeks, seasonal springs) don't count, at camp or on the way.
      */
-    fun waterGaps(route: SavedRoute, camps: List<com.trailguidegps.app.data.Camp>, heat: com.trailguidegps.app.data.WaterCarry.Heat,
-                  reliableOnly: Boolean): List<com.trailguidegps.app.data.WaterCarry.Gap> {
+    fun waterDays(route: SavedRoute, camps: List<com.trailguidegps.app.data.Camp>, heat: com.trailguidegps.app.data.WaterCarry.Heat,
+                  reliableOnly: Boolean): List<com.trailguidegps.app.data.WaterCarry.Day> {
         val stops = waterPlan(route.coords, 0.25 * com.trailguidegps.app.geo.Geo.M_PER_MI).stops
             .filter { !reliableOnly || !it.point.seasonal }.map { it.alongM }
         val f = features.value
-        val campWater = camps.map { c ->
-            val p = RouteStore.pointAt(route.coords, c.alongM)
+        val days = com.trailguidegps.app.data.TripDays.days(route, camps, _pace.value)
+        val campWater = days.dropLast(1).map { d ->
+            val p = RouteStore.pointAt(route.coords, d.toM)
             val w = p?.let { f?.waterNear(it[0], it[1], com.trailguidegps.app.data.Search.CAMP_WATER_M) }
-            c.alongM to (w != null && (!reliableOnly || !w.first.seasonal))
+            w != null && (!reliableOnly || !w.first.seasonal)
         }
-        return com.trailguidegps.app.data.WaterCarry.gaps(route.stats, stops, campWater, _pace.value, heat, _waterRate.value)
+        return com.trailguidegps.app.data.WaterCarry.days(route.stats, stops, days.map { it.fromM to it.toM }, campWater,
+            _pace.value, heat, _waterRate.value)
     }
 
     /** For the trip plan: a water line per day (or one for a day hike), or nothing when turned off. */
@@ -705,13 +707,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_waterHidden.value) return emptyMap<Int, String>() to null
         val wc = com.trailguidegps.app.data.WaterCarry
         val (heat, _) = waterHeat(route)
-        val gaps = waterGaps(route, route.camps, heat, reliableOnly = true)
-        fun line(g: com.trailguidegps.app.data.WaterCarry.Gap) = "Water: carry about ${wc.liters(g.carryL)} " +
-            "(longest stretch between mapped water %.1f mi, ${heat.label.lowercase()} weather".format(g.lengthM / com.trailguidegps.app.geo.Geo.M_PER_MI) +
-            (if (g.dryCamps > 0) ", includes a dry camp" else "") + ")."
-        if (route.camps.isEmpty()) return emptyMap<Int, String>() to wc.worst(gaps)?.let(::line)
-        val days = com.trailguidegps.app.data.TripDays.days(route, route.camps, _pace.value)
-        return days.mapNotNull { d -> wc.worst(gaps, d.fromM, d.toM)?.let { d.day to line(it) } }.toMap() to null
+        val days = waterDays(route, route.camps, heat, reliableOnly = true)
+        val mi = com.trailguidegps.app.geo.Geo.M_PER_MI
+        fun line(d: com.trailguidegps.app.data.WaterCarry.Day): String? {
+            val parts = listOfNotNull(
+                d.walk?.let { g -> "Water: longest stretch without mapped water %.1f mi (miles %.1f–%.1f), carry about ${wc.liters(g.carryL)}"
+                    .format(g.lengthM / mi, g.fromM / mi, g.toM / mi) },
+                d.campFill?.let { g -> "No reliable water at camp: fill up with about ${wc.liters(g.carryL)} at mile %.1f".format(g.fromM / mi) +
+                    " (to camp, the night and on to water at mile %.1f)".format(g.toM / mi) },
+            )
+            return if (parts.isEmpty()) null else parts.joinToString("; ") + " (${heat.label.lowercase()} weather)."
+        }
+        if (route.camps.isEmpty()) return emptyMap<Int, String>() to days.firstOrNull()?.let(::line)
+        return days.mapNotNull { d -> line(d)?.let { d.day to it } }.toMap() to null
     }
 
     // ---- Trip folders ----

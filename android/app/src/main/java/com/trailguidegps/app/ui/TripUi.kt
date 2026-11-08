@@ -337,10 +337,10 @@ fun TripDaysDialog(vm: AppViewModel, route: SavedRoute, pace: Pace, onDismiss: (
     val waterHidden by vm.waterHidden.collectAsStateWithLifecycle()
     val waterRate by vm.waterRate.collectAsStateWithLifecycle()
     var heat by remember(route.id) { mutableStateOf(vm.waterHeat(route)) }
-    val gaps = remember(camps, heat, waterRate, features, pace) { vm.waterGaps(route, camps, heat.first, reliableOnly = true) }
-    val gapsAll = remember(camps, heat, waterRate, features, pace) { vm.waterGaps(route, camps, heat.first, reliableOnly = false) }
+    val waterDays = remember(camps, heat, waterRate, features, pace) { vm.waterDays(route, camps, heat.first, reliableOnly = true) }
+    val waterDaysAll = remember(camps, heat, waterRate, features, pace) { vm.waterDays(route, camps, heat.first, reliableOnly = false) }
     val water = WaterUi(
-        waterHidden, heat.first, heat.second, waterRate, gaps, gapsAll,
+        waterHidden, heat.first, heat.second, waterRate, waterDays, waterDaysAll,
         onHeat = { h -> vm.setWaterHeat(route.id, h); heat = vm.waterHeat(route) },
         onRate = vm::setWaterRate, onHidden = vm::setWaterHidden,
     )
@@ -441,7 +441,7 @@ fun DaysContent(
                 val sources = waterAlong.count { it >= d.fromM && it < d.toM }
                 Text(if (sources == 0) "No mapped water within ¼ mi of the trail" else "$sources water source${if (sources == 1) "" else "s"} within ¼ mi",
                     fontSize = 12.sp, color = if (sources == 0) Amber else TG.Muted)
-                water?.takeIf { !it.hidden }?.let { DayWater(it, d.day, d.fromM, d.toM) }
+                water?.takeIf { !it.hidden }?.let { DayWater(it, d.day) }
                 if (d.endsAtCamp) {
                     val c = camps[i]
                     val p = RouteStore.pointAt(route.coords, c.alongM)
@@ -451,6 +451,7 @@ fun DaysContent(
                     val w = p?.let { waterNear(it[0], it[1]) }
                     Text(w?.let { (wp, dist) -> "Water ${if (dist < 15) "right there" else Geo.formatDistance(dist)}: ${wp.label}" + if (wp.seasonal) " (may be seasonal)" else "" }
                         ?: "No mapped water within 1,000 ft of camp", fontSize = 13.sp, color = if (w == null || w.first.seasonal) Amber else WaterBlue)
+                    water?.takeIf { !it.hidden }?.let { CampFill(it, d.day, seasonalCamp = w?.first?.seasonal == true) }
                     Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         PillButton(Icons.Filled.NightsStay, if (choosing == i) "Hide campsites" else "Campsites nearby") { choosing = if (choosing == i) null else i }
                         TextButton(onClick = { placeCamp(i, c.alongM - 0.5 * Geo.M_PER_MI, snap = true) }) { Text("◀ ½ mi", color = TG.Accent) }
@@ -728,7 +729,7 @@ fun WeatherContent(forecasts: List<Weather.Forecast>, loading: Boolean, error: S
 /** What the Days screen needs for water to carry. */
 class WaterUi(
     val hidden: Boolean, val heat: WaterCarry.Heat, val why: String, val rate: WaterCarry.Rate,
-    val gaps: List<WaterCarry.Gap>, val gapsAll: List<WaterCarry.Gap>,
+    val days: List<WaterCarry.Day>, val daysAll: List<WaterCarry.Day>,
     val onHeat: (WaterCarry.Heat?) -> Unit, val onRate: (WaterCarry.Rate) -> Unit, val onHidden: (Boolean) -> Unit,
 )
 
@@ -767,30 +768,55 @@ private fun WaterSection(w: WaterUi) {
     }
 }
 
-/** One day's water: how much to carry for its longest dry stretch, with the working shown on tap. */
+/** One day's water: the longest stretch without water in the day's own miles, with the working shown on tap. */
 @Composable
-private fun DayWater(w: WaterUi, day: Int, fromM: Double, toM: Double) {
-    val g = WaterCarry.worst(w.gaps, fromM, toM) ?: return
-    val gs = WaterCarry.worst(w.gapsAll, fromM, toM)
+private fun DayWater(w: WaterUi, day: Int) {
+    val d = w.days.firstOrNull { it.day == day } ?: return
+    val g = d.walk
+    val gs = w.daysAll.firstOrNull { it.day == day }?.walk
     var open by remember(day) { mutableStateOf(false) }
+    if (g == null) {
+        if (d.campFill == null && w.days.getOrNull(day - 2)?.campFill == null) return
+        Text("No stretch without water today beyond the walk to or from a dry camp (see the camp).", fontSize = 12.sp, color = TG.Muted,
+            modifier = Modifier.padding(top = 4.dp))
+        return
+    }
     Column(Modifier.fillMaxWidth().clickable { open = !open }.padding(top = 4.dp)) {
-        Text("Carry about ${WaterCarry.liters(g.carryL)} · longest stretch without water ${mi(g.lengthM)} " +
-            "(miles %.1f–%.1f)".format(g.fromM / Geo.M_PER_MI, g.toM / Geo.M_PER_MI),
+        Text("Longest stretch without water ${mi(g.lengthM)} (miles %.1f–%.1f): carry about ${WaterCarry.liters(g.carryL)}"
+            .format(g.fromM / Geo.M_PER_MI, g.toM / Geo.M_PER_MI),
             fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = WaterBlue, lineHeight = 17.sp)
         if (gs != null && gs.carryL < g.carryL) {
             Text("About ${WaterCarry.liters(gs.carryL)} if seasonal water is flowing", fontSize = 12.sp, color = TG.Muted)
         }
-        if (open) {
-            val rate = w.heat.litersPerHour * w.rate.factor
-            Text(
-                "${mi(g.lengthM)} with +${ft(g.gainM)} is about ${Pace.format(g.minutes)} at your pace. " +
-                    "× ${rateText(rate)} L an hour (${w.heat.label.lowercase()}) = " + "%.1f L".format(g.walkL) +
-                    (if (g.dryCamps > 0) ", + ${WaterCarry.liters(g.dryCamps * WaterCarry.CAMP_L)} for the night at a dry camp" else "") +
-                    ", + ${WaterCarry.liters(WaterCarry.EXTRA_L)} extra, rounded up to ${WaterCarry.liters(g.carryL)}.",
-                fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp,
-            )
-        } else Text("How this is worked out ▸", fontSize = 12.sp, color = TG.Accent)
+        if (open) WaterMath(w, g) else Text("How this is worked out ▸", fontSize = 12.sp, color = TG.Accent)
     }
+}
+
+/** At a camp with no reliable water: what to fill up with at the last water before it. */
+@Composable
+private fun CampFill(w: WaterUi, day: Int, seasonalCamp: Boolean) {
+    val g = w.days.firstOrNull { it.day == day }?.campFill ?: return
+    var open by remember(day) { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().clickable { open = !open }.padding(top = 4.dp)) {
+        Text((if (seasonalCamp) "If it's dry here, fill" else "No water at camp: fill") +
+            " up at mile %.1f with about ${WaterCarry.liters(g.carryL)}".format(g.fromM / Geo.M_PER_MI),
+            fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = WaterBlue, lineHeight = 17.sp)
+        Text("That covers the rest of the way to camp, the night (${WaterCarry.liters(WaterCarry.CAMP_L)}) and " +
+            "the walk on to water at mile %.1f.".format(g.toM / Geo.M_PER_MI), fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
+        if (open) WaterMath(w, g) else Text("How this is worked out ▸", fontSize = 12.sp, color = TG.Accent)
+    }
+}
+
+@Composable
+private fun WaterMath(w: WaterUi, g: WaterCarry.Gap) {
+    val rate = w.heat.litersPerHour * w.rate.factor
+    Text(
+        "${mi(g.lengthM)} of walking with +${ft(g.gainM)} is about ${Pace.format(g.minutes)} at your pace. " +
+            "× ${rateText(rate)} L an hour (${w.heat.label.lowercase()}) = " + "%.1f L".format(g.walkL) +
+            (if (g.dryCamps > 0) ", + ${WaterCarry.liters(g.dryCamps * WaterCarry.CAMP_L)} for the night" + (if (g.dryCamps > 1) "s" else "") else "") +
+            ", + ${WaterCarry.liters(WaterCarry.EXTRA_L)} extra, rounded up to ${WaterCarry.liters(g.carryL)}.",
+        fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp,
+    )
 }
 
 private fun rateText(r: Double) = "%.2f".format(r).trimEnd('0').trimEnd('.')

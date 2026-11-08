@@ -45,4 +45,21 @@ class WaterCarryTest {
         assertEquals(2.5, WaterCarry.roundUp(2.01), 1e-9)
         assertEquals(2.0, WaterCarry.roundUp(2.0), 1e-9)
     }
+
+    @Test fun eachDayOnlyItsOwnMiles() {
+        val days = listOf(0.0 to 5_000.0, 5_000.0 to 10_000.0)
+        // Dry camp at 5 km: day 1's walk stops at the last water before camp, the fill-up covers
+        // 2–8 km including the night, and day 2 starts counting after the morning's first water.
+        val dry = WaterCarry.days(flat, listOf(2_000.0, 8_000.0), days, listOf(false), pace, WaterCarry.Heat.MILD, WaterCarry.Rate.NORMAL)
+        assertEquals(0.0, dry[0].walk!!.fromM, 0.1); assertEquals(2_000.0, dry[0].walk!!.toM, 0.1)
+        assertEquals(2_000.0, dry[0].campFill!!.fromM, 0.1); assertEquals(8_000.0, dry[0].campFill!!.toM, 0.1)
+        assertEquals(5.0, dry[0].campFill!!.carryL, 1e-9)
+        assertEquals(8_000.0, dry[1].walk!!.fromM, 0.1); assertEquals(10_000.0, dry[1].walk!!.toM, 0.1)
+        assertEquals(null, dry[1].campFill)
+        // Water at camp: each day's longest stretch is its own 3 km to or from camp.
+        val wet = WaterCarry.days(flat, listOf(2_000.0, 8_000.0), days, listOf(true), pace, WaterCarry.Heat.MILD, WaterCarry.Rate.NORMAL)
+        assertEquals(3_000.0, wet[0].walk!!.lengthM, 0.1); assertEquals(5_000.0, wet[0].walk!!.toM, 0.1)
+        assertEquals(3_000.0, wet[1].walk!!.lengthM, 0.1); assertEquals(5_000.0, wet[1].walk!!.fromM, 0.1)
+        assertEquals(null, wet[0].campFill)
+    }
 }
