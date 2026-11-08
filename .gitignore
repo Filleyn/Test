@@ -13,3 +13,6 @@ android/app/build/
 android/local.properties
 # Map label fonts are fetched during the CI build
 android/app/src/main/assets/fonts/
+
+# Small test fixture (real tiles around a few Oregon spots)
+!android/app/src/test/resources/*.pmtiles
