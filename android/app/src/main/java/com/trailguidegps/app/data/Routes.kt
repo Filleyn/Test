@@ -229,6 +229,8 @@ data class SavedRoute(
 data class RouteSummary(
     val id: String, val name: String, val createdAt: Long, val distanceM: Double, val gainM: Double, val lossM: Double,
     val color: String = RouteColors.DEFAULT,
+    /** The route's notes, for searching Saved. */
+    val notes: String = "",
 )
 
 /** Colors you can give a route. Chosen to stand out from trails (red-brown), tracks and water. */
@@ -332,7 +334,7 @@ class RouteStore(context: Context) {
                 val o = JSONObject(f.readText())
                 RouteSummary(o.getString("id"), o.getString("name"), o.getLong("created"),
                     o.getDouble("distance"), o.getDouble("gain"), o.getDouble("loss"),
-                    o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT })
+                    o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT }, o.optString("notes", ""))
             }.getOrNull()
         }
         .sortedByDescending { it.createdAt }

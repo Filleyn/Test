@@ -56,12 +56,13 @@ object TripPlan {
         "Trip plan: ${route.name} (${SimpleDateFormat("EEE, MMM d", Locale.US).format(Date(form.startAt))})"
 
     /** A short plain-text version for the email body, so the essentials show without opening the PDF. */
-    fun body(route: SavedRoute, form: TripForm, pace: Pace): String {
+    fun body(route: SavedRoute, form: TripForm, pace: Pace, area: String? = null): String {
         val start = route.coords.firstOrNull()
         return buildString {
             appendLine("Here's my trip plan. The PDF attached has the map.")
             appendLine()
             appendLine("Route: ${route.name}")
+            area?.takeIf { it.isNotBlank() }?.let { appendLine("Where: $it") }
             appendLine("Who: ${form.party.ifBlank { "(not given)" }}")
             if (form.phones.isNotBlank()) appendLine("Phone: ${form.phones}")
             appendLine("Start: ${dateTime.format(Date(form.startAt))}")
@@ -93,7 +94,7 @@ object TripPlan {
     }
 
     /** Writes the PDF. [map] is a snapshot of the route area with the route drawn on it, or null. */
-    fun write(out: File, route: SavedRoute, form: TripForm, pace: Pace, map: Bitmap?) {
+    fun write(out: File, route: SavedRoute, form: TripForm, pace: Pace, map: Bitmap?, area: String? = null) {
         val doc = PdfDocument()
         val page = doc.startPage(PdfDocument.PageInfo.Builder(612, 792, 1).create())
         val c = page.canvas
@@ -115,6 +116,7 @@ object TripPlan {
         label.textSize = 10f
         c.drawText("TRIP PLAN", left, y, label)
         y = block(route.name, title, left, y + 4, width, 2) + 6
+        area?.takeIf { it.isNotBlank() }?.let { y = block(it, text, left, y, width, 2) + 6 }
 
         // The one thing someone at home needs to know.
         val alarm = "If you haven't heard from us by ${dateTime.format(Date(form.alarmAt))}, call 911 and ask for the county " +

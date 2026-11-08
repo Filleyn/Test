@@ -64,11 +64,11 @@ jobs:
             exit 1
           fi
 
-      - name: Test coordinate search
+      - name: Unit tests (coordinate search, land lookup)
         working-directory: android
         run: |
           exec > >(tee -a "$LOG") 2>&1
-          gradle --no-daemon :app:testDebugUnitTest --tests 'com.trailguidegps.app.geo.CoordsTest'
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.trailguidegps.app.geo.CoordsTest' --tests 'com.trailguidegps.app.data.LandLookupTest'
 
       - name: Build APK
         working-directory: android

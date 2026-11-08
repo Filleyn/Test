@@ -23,6 +23,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -95,6 +103,34 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     var adding by remember { mutableStateOf<String?>(null) } // folder id
     var naming by remember { mutableStateOf(false) }
     var renamingFolder by remember { mutableStateOf<com.trailguidegps.app.data.Folder?>(null) }
+    // Search, sort and the area filter. The sort is remembered.
+    val areas by vm.areas.collectAsStateWithLifecycle()
+    var query by rememberSaveable { mutableStateOf("") }
+    var areaFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    val savedPrefs = remember { context.getSharedPreferences("saved", android.content.Context.MODE_PRIVATE) }
+    var sort by remember { mutableStateOf(runCatching { SavedSort.valueOf(savedPrefs.getString("sort", null) ?: "NEWEST") }.getOrDefault(SavedSort.NEWEST)) }
+    val filtering = query.isNotBlank() || areaFilter != null
+    fun words(): List<String> = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    fun matches(name: String, key: String, extra: String = ""): Boolean {
+        val a = areas[key]
+        if (areaFilter != null && (a == null || areaFilter !in a.names)) return false
+        val w = words()
+        if (w.isEmpty()) return true
+        val hay = "$name ${a?.line.orEmpty()} $extra".lowercase()
+        return w.all { it in hay }
+    }
+    fun away(lat: Double?, lon: Double?): Double =
+        fix?.let { f -> if (lat == null || lon == null || lat.isNaN()) null else Geo.distanceM(f.lat, f.lon, lat, lon) } ?: Double.MAX_VALUE
+    fun <T> sorted(list: List<T>, created: (T) -> Long, name: (T) -> String, key: (T) -> String,
+                   lat: ((T) -> Double)? = null, lon: ((T) -> Double)? = null,
+                   length: ((T) -> Double)? = null, climb: ((T) -> Double)? = null): List<T> = when (sort) {
+        SavedSort.NEWEST -> list.sortedByDescending(created)
+        SavedSort.OLDEST -> list.sortedBy(created)
+        SavedSort.NAME -> list.sortedBy { name(it).lowercase() }
+        SavedSort.NEAREST -> list.sortedBy { if (lat != null && lon != null) away(lat(it), lon(it)) else away(areas[key(it)]?.lat, areas[key(it)]?.lon) }
+        SavedSort.LONGEST -> if (length != null) list.sortedByDescending(length) else list.sortedByDescending(created)
+        SavedSort.CLIMB -> if (climb != null) list.sortedByDescending(climb) else list.sortedByDescending(created)
+    }
     BackHandler(onBack = onClose)
 
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -119,7 +155,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         @Composable
         fun TrackItem(t: TrackSummary, inFolder: Boolean) {
             TrackRow(
-                t, if (inFolder) null else folderName(FolderStore.trackKey(t.id)),
+                t, if (inFolder) null else folderName(FolderStore.trackKey(t.id)), areas["t:${t.id}"]?.line,
                 onShow = { vm.showTrack(t.id); onClose() },
                 onToRoute = { vm.trackToRoute(t.id); onClose() },
                 onRename = { renaming = t },
@@ -133,7 +169,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         @Composable
         fun RouteItem(r: RouteSummary, inFolder: Boolean) {
             RouteRow(
-                r, pace, shownRoutes.any { it.id == r.id }, if (inFolder) null else folderName(FolderStore.routeKey(r.id)),
+                r, pace, shownRoutes.any { it.id == r.id }, if (inFolder) null else folderName(FolderStore.routeKey(r.id)), areas["r:${r.id}"]?.line,
                 onShow = { vm.showRoute(r.id); onClose() },
                 onHide = { vm.hideRoute(r.id) },
                 onEdit = { vm.editRoute(r.id); onClose() },
@@ -154,7 +190,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         @Composable
         fun WaypointItem(w: Waypoint, inFolder: Boolean) {
             WaypointRow(
-                w, fix?.let { f -> Geo.distanceM(f.lat, f.lon, w.lat, w.lon) }, if (inFolder) null else folderName(FolderStore.waypointKey(w.id)),
+                w, fix?.let { f -> Geo.distanceM(f.lat, f.lon, w.lat, w.lon) }, if (inFolder) null else folderName(FolderStore.waypointKey(w.id)), areas["w:${w.id}"]?.line,
                 onShow = { vm.focusOn(listOf(w.lat to w.lon)); onClose() },
                 onEdit = { onEditWaypoint(w) },
                 onMove = { moving = FolderStore.waypointKey(w.id) to w.name },
@@ -173,6 +209,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 Column(Modifier.weight(1f)) {
                     Text(n.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
                     if (!inFolder) folderName(FolderStore.noteKey(n.id))?.let { Text("In $it", fontSize = 12.sp, color = TG.Accent, maxLines = 1) }
+                    AreaLine(areas["n:${n.id}"]?.line)
                     val parts = mutableListOf(dateFmt.format(Date(n.createdAt)))
                     fix?.let { f -> parts += "${Geo.formatDistance(Geo.distanceM(f.lat, f.lon, n.lat, n.lon))} away" }
                     if (n.photos.isNotEmpty()) parts += "${n.photos.size} photo${if (n.photos.size == 1) "" else "s"}"
@@ -189,6 +226,16 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             }
             HorizontalDivider(color = TG.Line)
         }
+
+        val shownR = sorted(routes.filter { matches(it.name, "r:${it.id}", it.notes) }, { it.createdAt }, { it.name }, { "r:${it.id}" },
+            length = { it.distanceM }, climb = { it.gainM })
+        val shownT = sorted(tracks.filter { matches(it.name, "t:${it.id}") }, { it.startedAt }, { it.name }, { "t:${it.id}" },
+            length = { it.stats.distanceM }, climb = { it.stats.gainM })
+        val shownW = sorted(waypoints.filter { matches(it.name, "w:${it.id}", it.note) }, { it.createdAt }, { it.name }, { "w:${it.id}" },
+            lat = { it.lat }, lon = { it.lon })
+        val shownN = sorted(notes.filter { matches(it.title, "n:${it.id}", it.text) }, { it.createdAt }, { it.title }, { "n:${it.id}" },
+            lat = { it.lat }, lon = { it.lon })
+        val shownF = folders.filter { f -> words().all { it in f.name.lowercase() } }
 
         val folder = openFolder?.let { id -> folders.firstOrNull { it.id == id } }
         if (folder != null) {
@@ -227,11 +274,73 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             selectedTabIndex = tab, containerColor = TG.Surface, contentColor = TG.Ink,
             indicator = { pos -> TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(pos[tab]), color = TG.Accent) },
         ) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Folders", maxLines = 1, fontSize = 13.sp) })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Routes", maxLines = 1, fontSize = 13.sp) })
-            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Tracks", maxLines = 1, fontSize = 13.sp) })
-            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Points", maxLines = 1, fontSize = 13.sp) })
-            Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("Notes", maxLines = 1, fontSize = 13.sp) })
+            fun label(base: String, n: Int) = if (filtering) "$base $n" else base
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(if (query.isNotBlank()) "Folders ${shownF.size}" else "Folders", maxLines = 1, fontSize = 13.sp) })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(label("Routes", shownR.size), maxLines = 1, fontSize = 13.sp) })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text(label("Tracks", shownT.size), maxLines = 1, fontSize = 13.sp) })
+            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text(label("Points", shownW.size), maxLines = 1, fontSize = 13.sp) })
+            Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text(label("Notes", shownN.size), maxLines = 1, fontSize = 13.sp) })
+        }
+
+        // Search box and sort.
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                placeholder = { Text("Search name, area, notes", color = TG.Muted, fontSize = 14.sp) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = TG.Muted) },
+                trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear search", tint = TG.Muted) } },
+                shape = RoundedCornerShape(24.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = TG.Accent, unfocusedBorderColor = TG.Line, cursorColor = TG.Accent),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, color = TG.Ink),
+                modifier = Modifier.weight(1f),
+            )
+            if (tab != 0) {
+                var sortOpen by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { sortOpen = true }) { Icon(Icons.Filled.Sort, contentDescription = "Sort: ${sort.label}", tint = TG.Ink) }
+                    DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+                        Text("Sort by", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        SavedSort.entries.filter { tab in 1..2 || !it.lengthy }.forEach { opt ->
+                            DropdownMenuItem(
+                                text = { Text((if (opt == sort) "✓ " else "    ") + opt.label + if (opt == SavedSort.NEAREST && fix == null) " (needs GPS)" else "",
+                                    color = if (opt == sort) TG.Accent else TG.Ink, fontWeight = if (opt == sort) FontWeight.SemiBold else FontWeight.Normal) },
+                                onClick = { sort = opt; savedPrefs.edit().putString("sort", opt.name).apply(); sortOpen = false },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        // Areas in this tab, most used first: tap one to see only what's there.
+        if (tab != 0) {
+            val tabKeys = when (tab) {
+                1 -> routes.map { "r:${it.id}" }
+                2 -> tracks.map { "t:${it.id}" }
+                3 -> waypoints.map { "w:${it.id}" }
+                else -> notes.map { "n:${it.id}" }
+            }
+            val counts = tabKeys.flatMap { areas[it]?.names.orEmpty() }.groupingBy { it }.eachCount()
+            val chips = (listOfNotNull(areaFilter) + counts.entries.sortedByDescending { it.value }.map { it.key }).distinct().take(12)
+            if (chips.size > (if (areaFilter == null) 1 else 0)) {
+                LazyRow(Modifier.fillMaxWidth().padding(top = 6.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                    items(chips, key = { it }) { name ->
+                        FilterChip(
+                            selected = areaFilter == name,
+                            onClick = { areaFilter = if (areaFilter == name) null else name },
+                            label = { Text(name + (counts[name]?.let { " ($it)" } ?: ""), maxLines = 1, fontSize = 13.sp) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TG.Accent, selectedLabelColor = androidx.compose.ui.graphics.Color.White),
+                        )
+                    }
+                }
+            }
+        }
+        if (tab != 0 && filtering && sizeFor(tab, shownR.size, shownT.size, shownW.size, shownN.size) == 0 &&
+            sizeFor(tab, routes.size, tracks.size, waypoints.size, notes.size) > 0) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Text("Nothing here matches.", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
+                TextButton(onClick = { query = ""; areaFilter = null }) { Text("Clear search and area", color = TG.Accent) }
+            }
         }
 
         when (tab) {
@@ -246,7 +355,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                     Empty("No folders yet", "Make a folder for a trip, like \"Mt Jefferson 2027\", and keep its routes, tracks and waypoints together. " +
                         "Then show the whole trip on the map with one tap.")
                 }
-                items(folders, key = { it.id }) { f ->
+                items(shownF, key = { it.id }) { f ->
                     val keys = members.filterValues { it == f.id }.keys
                     val nR = routes.count { FolderStore.routeKey(it.id) in keys }
                     val nT = tracks.count { FolderStore.trackKey(it.id) in keys }
@@ -288,24 +397,24 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                     }
                     HorizontalDivider(color = TG.Line)
                 }
-                items(routes, key = { it.id }) { RouteItem(it, false) }
+                items(shownR, key = { it.id }) { RouteItem(it, false) }
             }
             2 -> if (tracks.isEmpty()) {
                 Empty("No tracks yet", "Tap Record on the map to record your hike. It keeps recording with the screen off.")
                 Spacer(Modifier.weight(1f))
-            } else LazyColumn(Modifier.weight(1f)) { items(tracks, key = { it.id }) { TrackItem(it, false) } }
+            } else LazyColumn(Modifier.weight(1f)) { items(shownT, key = { it.id }) { TrackItem(it, false) } }
             4 -> if (notes.isEmpty()) {
                 Empty("No trail notes yet", "Tap Note on the map panel to note conditions where you are, or Trail note on any place's card. " +
                     "Notes can have photos and go in trip folders.")
                 Spacer(Modifier.weight(1f))
             } else LazyColumn(Modifier.weight(1f)) {
-                items(notes.sortedByDescending { it.createdAt }, key = { it.id }) { NoteItem(it, false) }
+                items(shownN, key = { it.id }) { NoteItem(it, false) }
             }
             else -> if (waypoints.isEmpty()) {
                 Empty("No waypoints yet", "Tap Pin on the map to mark where you are, or long-press anywhere on the map.")
                 Spacer(Modifier.weight(1f))
             } else LazyColumn(Modifier.weight(1f)) {
-                items(waypoints.sortedByDescending { it.createdAt }, key = { it.id }) { WaypointItem(it, false) }
+                items(shownW, key = { it.id }) { WaypointItem(it, false) }
             }
         }
         }
@@ -493,13 +602,14 @@ private fun Empty(title: String, body: String) {
 private val dateFmt = SimpleDateFormat("EEE, MMM d, yyyy", Locale.US)
 
 @Composable
-private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, onToRoute: () -> Unit, onRename: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
+private fun TrackRow(t: TrackSummary, folderName: String?, area: String?, onShow: () -> Unit, onToRoute: () -> Unit, onRename: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 22.dp, height = 4.dp).background(Color(0xFF8E3218), RoundedCornerShape(2.dp)))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(t.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
             folderName?.let { Text("In $it", fontSize = 12.sp, color = TG.Accent, maxLines = 1) }
+            AreaLine(area)
             Text(
                 "${dateFmt.format(Date(t.startedAt))} · ${Geo.formatMiles(t.stats.distanceM)} · +%,d ft · %s moving".format(
                     (t.stats.gainM * Geo.FT_PER_M).roundToInt(), Geo.formatDuration(t.stats.movingMs),
@@ -514,7 +624,7 @@ private fun TrackRow(t: TrackSummary, folderName: String?, onShow: () -> Unit, o
 
 @Composable
 private fun RouteRow(
-    r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?,
+    r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?, area: String?,
     onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onTripPlan: () -> Unit,
     onWater: () -> Unit, onReverse: () -> Unit,
     onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
@@ -525,6 +635,7 @@ private fun RouteRow(
         Column(Modifier.weight(1f)) {
             Text(r.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
             folderName?.let { Text("In $it", fontSize = 12.sp, color = TG.Accent, maxLines = 1) }
+            AreaLine(area)
             Text(
                 "%.1f mi · +%,d ft · −%,d ft · est %s".format(
                     r.distanceM / Geo.M_PER_MI, (r.gainM * Geo.FT_PER_M).roundToInt(), (r.lossM * Geo.FT_PER_M).roundToInt(),
@@ -558,13 +669,14 @@ private fun RouteRow(
 }
 
 @Composable
-private fun WaypointRow(w: Waypoint, distanceM: Double?, folderName: String?, onShow: () -> Unit, onEdit: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
+private fun WaypointRow(w: Waypoint, distanceM: Double?, folderName: String?, area: String?, onShow: () -> Unit, onEdit: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(14.dp).background(Color(android.graphics.Color.parseColor(w.color)), CircleShape))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(w.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
             folderName?.let { Text("In $it", fontSize = 12.sp, color = TG.Accent, maxLines = 1) }
+            AreaLine(area)
             val parts = mutableListOf(dateFmt.format(Date(w.createdAt)))
             distanceM?.let { parts += "${Geo.formatDistance(it)} away" }
             if (w.note.isNotBlank()) parts += w.note
@@ -588,4 +700,19 @@ private fun RowMenu(items: List<Pair<String, () -> Unit>>) {
             }
         }
     }
+}
+
+/** How Saved lists are ordered. [lengthy] ones only make sense for routes and tracks. */
+private enum class SavedSort(val label: String, val lengthy: Boolean = false) {
+    NEWEST("Newest"), OLDEST("Oldest"), NAME("Name A–Z"), NEAREST("Nearest to you"),
+    LONGEST("Longest", true), CLIMB("Most climbing", true),
+}
+
+private fun sizeFor(tab: Int, r: Int, t: Int, w: Int, n: Int) = when (tab) { 1 -> r; 2 -> t; 3 -> w; else -> n }
+
+/** Where an item is: "Three Sisters Wilderness · Willamette National Forest · 9 mi W of Sisters". */
+@Composable
+private fun AreaLine(area: String?) {
+    if (area.isNullOrBlank()) return
+    Text(area, fontSize = 12.sp, color = TG.Ink, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
 }

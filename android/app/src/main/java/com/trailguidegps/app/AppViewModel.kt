@@ -19,6 +19,7 @@ import com.trailguidegps.app.data.TrackPoint
 import com.trailguidegps.app.data.WaterNotes
 import com.trailguidegps.app.data.TrackStore
 import com.trailguidegps.app.data.Waypoint
+import com.trailguidegps.app.data.RouteSummary
 import com.trailguidegps.app.data.WaypointStore
 import com.trailguidegps.app.location.LocationTracker
 import com.trailguidegps.app.record.Recording
@@ -28,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.trailguidegps.app.record.MapDownloads
@@ -712,7 +714,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
                         val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
                         val f = java.io.File(dir, "Trip plan - $safe.pdf")
-                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap)
+                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line)
                         com.trailguidegps.app.data.Exports.publish(app, f, "application/pdf")
                             ?: androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
                     }
@@ -720,7 +722,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 r.onSuccess { uri ->
                     if (uri.authority == android.provider.MediaStore.AUTHORITY) _message.value = "Trip plan saved to Downloads › TrailGuide"
                     onReady(uri, com.trailguidegps.app.data.TripPlan.subject(route, form),
-                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value))
+                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value, areaStore.areas.value["r:${route.id}"]?.line))
                 }.onFailure { _message.value = "Couldn't make the trip plan: ${it.message}" }
             }
         }
@@ -948,6 +950,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setPace(p: Pace) { Pace.save(getApplication(), p); _pace.value = p }
 
     init { loadRouting() }
+
+    // ---- Where each saved item is ("Mt. Hood National Forest · 12 mi SE of Estacada") ----
+    val areaStore = com.trailguidegps.app.data.AreaStore(app)
+    val areas: StateFlow<Map<String, com.trailguidegps.app.data.AreaStore.Info>> get() = areaStore.areas
+    private val landLookups = HashMap<String, com.trailguidegps.app.data.LandLookup>()
+
+    /** Public land at a spot, from whichever downloaded state covers it (null if none does). */
+    private fun landAt(lat: Double, lon: Double): com.trailguidegps.app.data.LandLookup.Hit? {
+        var empty: com.trailguidegps.app.data.LandLookup.Hit? = null
+        for (st in stores) {
+            val b = st.bbox() ?: continue
+            if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue
+            val f = java.io.File(st.dir, "publiclands.pmtiles")
+            if (!f.exists()) continue
+            val hit = runCatching { synchronized(landLookups) { landLookups.getOrPut(f.path) { com.trailguidegps.app.data.LandLookup(f) } }.at(lat, lon) }.getOrNull()
+                ?: continue
+            if (hit.special != null || hit.boundary != null || hit.land != null) return hit
+            empty = hit
+        }
+        return empty
+    }
+
+    private fun areaInfo(points: List<DoubleArray>, sig: String): com.trailguidegps.app.data.AreaStore.Info? {
+        val start = points.firstOrNull() ?: return null
+        val hits = com.trailguidegps.app.data.AreaStore.samples(points).map { landAt(it[0], it[1]) }
+        val near = _features.value?.nearTown(start[0], start[1])
+        return com.trailguidegps.app.data.AreaStore.describe(hits, near, start[0], start[1], sig)
+    }
+
+    init {
+        // Fill in (and keep up to date) the area line for every saved item, in the background.
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                routes.summaries, tracks.summaries, waypoints.items, trailNotes.items,
+                kotlinx.coroutines.flow.combine(_installed, _features) { i, f -> i.sorted().joinToString(",") + "|" + (f != null) },
+            ) { r, t, w, n, maps -> listOf(r, t, w, n, maps) }.collectLatest { list ->
+                kotlinx.coroutines.delay(1500)
+                @Suppress("UNCHECKED_CAST") val r = list[0] as List<RouteSummary>
+                @Suppress("UNCHECKED_CAST") val t = list[1] as List<com.trailguidegps.app.data.TrackSummary>
+                @Suppress("UNCHECKED_CAST") val w = list[2] as List<Waypoint>
+                @Suppress("UNCHECKED_CAST") val n = list[3] as List<com.trailguidegps.app.data.TrailNote>
+                val maps = list[4] as String
+                withContext(Dispatchers.IO) {
+                    val have = areaStore.areas.value
+                    val changes = HashMap<String, com.trailguidegps.app.data.AreaStore.Info>()
+                    val keep = HashSet<String>()
+                    fun want(key: String, sig: String, points: () -> List<DoubleArray>) {
+                        keep += key
+                        val full = "$sig|$maps"
+                        if (have[key]?.sig == full) return
+                        runCatching { areaInfo(points(), full) }.getOrNull()?.let { changes[key] = it }
+                    }
+                    r.forEach { s -> want("r:${s.id}", "%.0f".format(s.distanceM)) { routes.load(s.id)?.coords.orEmpty() } }
+                    t.forEach { s -> want("t:${s.id}", "${s.pointCount}") { tracks.load(s.id)?.second.orEmpty().map { doubleArrayOf(it.lat, it.lon) } } }
+                    w.forEach { p -> want("w:${p.id}", "${p.lat},${p.lon}") { listOf(doubleArrayOf(p.lat, p.lon)) } }
+                    n.forEach { p -> want("n:${p.id}", "${p.lat},${p.lon}") { listOf(doubleArrayOf(p.lat, p.lon)) } }
+                    areaStore.update(changes, keep)
+                }
+            }
+        }
+    }
 
     /** Opens the trail network and elevation tiles (unpacking the network the first time). */
     fun loadRouting() {

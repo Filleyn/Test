@@ -1479,6 +1479,9 @@ private fun BottomPanel(
                     }
                 }
                 daysLine(r, pace)?.let { Text(it, fontSize = 12.sp, color = TG.Ink) }
+                tripVm.areas.collectAsStateWithLifecycle().value["r:${r.id}"]?.line?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, fontSize = 12.sp, color = TG.Muted, maxLines = 2, lineHeight = 15.sp)
+                }
                 var editingNotes by remember(r.id) { mutableStateOf(false) }
                 if (r.notes.isNotBlank()) {
                     Text("Notes: ${r.notes}", fontSize = 12.sp, color = TG.Ink, lineHeight = 16.sp, maxLines = 2,
