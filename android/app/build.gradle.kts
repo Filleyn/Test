@@ -97,3 +97,8 @@ dependencies {
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.40.1")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.40.1")
 }
+
+// Print each test's result in the build log, so it's clear which tests ran.
+tasks.withType<Test>().configureEach {
+    testLogging { events("passed", "failed", "skipped") }
+}
