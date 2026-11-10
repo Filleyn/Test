@@ -328,9 +328,26 @@ fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: ()
             }
             Text("%.1f of %.1f mi".format(f.alongM / Geo.M_PER_MI, total / Geo.M_PER_MI), fontSize = 11.sp, color = TG.Muted,
                 modifier = Modifier.padding(top = 2.dp))
+            // On a multi-day route, what matters today is tonight's camp, not the end of the trip.
+            val camp = remember(f.route.id, (f.alongM / 50).toInt()) {
+                f.route.camps.sortedBy { it.alongM }.firstOrNull { it.alongM > f.alongM + 50 }?.let { c ->
+                    val prof = f.route.stats.profile
+                    val raw = com.trailguidegps.app.data.TripDays.gainLoss(prof, 0.0, f.route.stats.distanceM).first
+                    val scale = if (raw > 0) f.route.stats.gainM / raw else 0.0
+                    Triple(c, c.alongM - f.alongM, com.trailguidegps.app.data.TripDays.gainLoss(prof, f.alongM, c.alongM).first * scale)
+                }
+            }
+            val campMins = camp?.let { (_, dist, gain) -> pace.minutes(dist, gain) }
+            if (camp != null && campMins != null) {
+                val at = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(System.currentTimeMillis() + campMins * 60_000L))
+                Text("To tonight's camp" + (camp.first.name?.let { " ($it)" } ?: "") + ": %.1f mi · +%,d ft · %s, about %s".format(
+                    camp.second / Geo.M_PER_MI, (camp.third * Geo.FT_PER_M).roundToInt(), Pace.format(campMins), at),
+                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, lineHeight = 17.sp, modifier = Modifier.padding(top = 2.dp))
+            }
             f.nearest?.let { n ->
-                afterDarkWarning(n[0], n[1], System.currentTimeMillis(), mins)?.let {
-                    Text(it, fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp)
+                afterDarkWarning(n[0], n[1], System.currentTimeMillis(), campMins ?: mins)?.let {
+                    Text((if (campMins != null) "Camp: " else "") + it.replaceFirst("Back about", if (campMins != null) "there about" else "Back about"),
+                        fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp)
                 }
             }
         }

@@ -696,7 +696,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         val fresh = savedWeather("route:${route.id}").filter { System.currentTimeMillis() - it.fetchedAt < 7 * 86_400_000L }
         val dayMs = 86_400_000L
-        val periods = fresh.flatMap { f -> f.periods.filter { it.isDay && it.tempF != null } }
+        // Temperatures shifted for the route's height against the forecast grid's, as the Weather screen shows them.
+        val periods = fresh.flatMap { f -> f.periods.filter { it.isDay && it.tempF != null }.map { p -> p.copy(tempF = p.tempF!! + (f.tempAdjustF ?: 0)) } }
         // With trip dates, only the forecast for those days counts (when it reaches that far).
         val forTrip = if (route.tripStart > 0) periods.filter { it.start > 0 && it.start >= route.tripStart - dayMs / 2 &&
             it.start <= maxOf(route.tripEnd, route.tripStart) + dayMs / 2 } else periods
@@ -720,17 +721,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun waterDays(route: SavedRoute, camps: List<com.trailguidegps.app.data.Camp>, heat: com.trailguidegps.app.data.WaterCarry.Heat,
                   reliableOnly: Boolean): List<com.trailguidegps.app.data.WaterCarry.Day> {
         val stops = waterPlan(route.coords, 0.25 * com.trailguidegps.app.geo.Geo.M_PER_MI).stops
-            .filter { !reliableOnly || !it.point.seasonal }.map { it.alongM }
+            .filter { !reliableOnly || !unreliableWater(it.point) }.map { it.alongM }
         val f = features.value
         val days = com.trailguidegps.app.data.TripDays.days(route, camps, _pace.value)
         val campWater = days.dropLast(1).map { d ->
             val p = RouteStore.pointAt(route.coords, d.toM)
             val w = p?.let { f?.waterNear(it[0], it[1], com.trailguidegps.app.data.Search.CAMP_WATER_M) }
-            w != null && (!reliableOnly || !w.first.seasonal)
+            w != null && (!reliableOnly || !unreliableWater(w.first))
         }
         return com.trailguidegps.app.data.WaterCarry.days(route.stats, stops, days.map { it.fromM to it.toM }, campWater,
             _pace.value, heat, _waterRate.value)
     }
+
+    /**
+     * Water not to count on when working out what to carry: anything marked seasonal, and small
+     * unnamed stream crossings, which the map often doesn't mark either way and which are often dry
+     * by late summer.
+     */
+    private fun unreliableWater(p: com.trailguidegps.app.data.Features.Point) = p.seasonal || (p.kind == "stream" && p.name.isNullOrBlank())
 
     /** For the trip plan: a water line per day (or one for a day hike), or nothing when turned off. */
     private fun tripWater(route: SavedRoute): Pair<Map<Int, String>, String?> {

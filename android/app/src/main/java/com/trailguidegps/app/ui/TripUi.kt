@@ -842,7 +842,7 @@ private fun WaterSection(w: WaterUi) {
         }
         Text("A planning estimate: about ${rateText(w.heat.litersPerHour * w.rate.factor)} L per hour of walking at this heat, plus " +
             "${WaterCarry.liters(WaterCarry.CAMP_L)} for a night at a dry camp and ${WaterCarry.liters(WaterCarry.EXTRA_L)} extra, rounded up. " +
-            "Seasonal water isn't counted as reliable. Mapped water can be missing or dry, so carry extra and check recent reports.",
+            "Seasonal water and small unnamed streams aren't counted as reliable. Mapped water can be missing or dry, so carry extra and check recent reports.",
             fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
     }
 }
@@ -865,7 +865,7 @@ private fun DayWater(w: WaterUi, day: Int) {
             .format(g.fromM / Geo.M_PER_MI, g.toM / Geo.M_PER_MI),
             fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = WaterBlue, lineHeight = 17.sp)
         if (gs != null && gs.carryL < g.carryL) {
-            Text("About ${WaterCarry.liters(gs.carryL)} if seasonal water is flowing", fontSize = 12.sp, color = TG.Muted)
+            Text("About ${WaterCarry.liters(gs.carryL)} if seasonal water and small unnamed streams are flowing", fontSize = 12.sp, color = TG.Muted)
         }
         if (open) WaterMath(w, g) else Text("How this is worked out ▸", fontSize = 12.sp, color = TG.Accent)
     }
