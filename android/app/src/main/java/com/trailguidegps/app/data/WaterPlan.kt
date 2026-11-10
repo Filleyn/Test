@@ -90,6 +90,7 @@ object RouteNear {
      * Points kept by [keep] within [maxOffM] of the line, as (point, metres along, metres off), in
      * order along it. A point the line passes more than once (the way in and the way back of an
      * out-and-back, a stretch of trail walked twice) is listed once for each pass.
+     */
     fun project(
         coords: List<DoubleArray>, points: List<Features.Point>, maxOffM: Double, keep: (Features.Point) -> Boolean,
     ): List<Triple<Features.Point, Double, Double>> {
