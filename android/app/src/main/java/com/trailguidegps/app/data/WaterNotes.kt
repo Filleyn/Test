@@ -35,11 +35,11 @@ class WaterNotes(context: Context) {
         tmp.renameTo(file)
     }
 
-    private fun load(): Map<String, Note> = runCatching {
-        val o = JSONObject(file.readText())
-        o.keys().asSequence().associateWith { k ->
-            val n = o.getJSONObject(k)
-            Note(n.getString("text"), n.optString("date"))
-        }
-    }.getOrDefault(emptyMap())
+    private fun load(): Map<String, Note> {
+        if (!file.exists()) return emptyMap()
+        val o = runCatching { JSONObject(file.readText()) }.getOrElse { SafeFile.setAside(file); return emptyMap() }
+        val out = LinkedHashMap<String, Note>()
+        o.keys().forEach { k -> runCatching { o.getJSONObject(k).let { n -> out[k] = Note(n.getString("text"), n.optString("date")) } } }
+        return out
+    }
 }

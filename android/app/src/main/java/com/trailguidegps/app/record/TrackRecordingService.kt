@@ -138,6 +138,8 @@ class TrackRecordingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // If Android restarted the service after killing the app, the in-memory recording
         // is gone; its points are on disk and get saved as a recovered track on next launch.
+        // Restarted by Android with a recording cut off on disk: carry on recording it.
+        if (intent == null && !TrackRecorder.isRecording()) runCatching { TrackRecorder.resume(this) }
         if (intent?.action == ACTION_STOP || (!TrackRecorder.isRecording() && !RouteFollower.isFollowing())) {
             stopSelf()
             return START_NOT_STICKY

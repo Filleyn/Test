@@ -54,9 +54,12 @@ class WaypointStore(context: Context) {
     /** Re-reads the file (after restoring a backup). */
     fun reload() { _items.value = load() }
 
-    private fun load(): List<Waypoint> = runCatching {
-        val arr = JSONArray(file.readText())
-        (0 until arr.length()).map { i ->
+    private fun load(): List<Waypoint> {
+        if (!file.exists()) return emptyList()
+        // One bad entry is skipped, not allowed to empty the list; a file that can't be read at
+        // all is set aside before the next save would replace it.
+        val arr = runCatching { JSONArray(file.readText()) }.getOrElse { SafeFile.setAside(file); return emptyList() }
+        return (0 until arr.length()).mapNotNull { i -> runCatching {
             val o = arr.getJSONObject(i)
             Waypoint(
                 id = o.getString("id"), name = o.getString("name"),
@@ -67,8 +70,8 @@ class WaypointStore(context: Context) {
                 createdAt = o.optLong("created", System.currentTimeMillis()),
                 photos = (o.optJSONArray("photos") ?: JSONArray()).let { a -> (0 until a.length()).map { a.getString(it) } },
             )
-        }
-    }.getOrDefault(emptyList())
+        }.getOrNull() }
+    }
 
     private fun save() {
         val arr = JSONArray()

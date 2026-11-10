@@ -61,11 +61,11 @@ class TrackStore(context: Context) {
             arr.put(JSONArray().put(p.lat).put(p.lon).put(p.eleM ?: JSONObject.NULL).put(p.time))
         }
         o.put("points", arr)
-        val tmp = File(dir, "$id.json.tmp")
-        tmp.writeText(o.toString())
-        tmp.renameTo(File(dir, "$id.json"))
+        // Throws if the file can't be written (a full phone), so the caller keeps its copy of the points.
+        SafeFile.write(File(dir, "$id.json"), o.toString())
         _summaries.value = scan()
-        return _summaries.value.first { it.id == id }
+        return _summaries.value.firstOrNull { it.id == id }
+            ?: TrackSummary(id, name, points.firstOrNull()?.time ?: System.currentTimeMillis(), TrackStats.of(points), points.size)
     }
 
     fun load(id: String): Pair<String, List<TrackPoint>>? = runCatching {

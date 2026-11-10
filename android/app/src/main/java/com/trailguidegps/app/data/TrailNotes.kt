@@ -42,15 +42,17 @@ class TrailNoteStore(context: Context) {
 
     fun reload() { _items.value = load() }
 
-    private fun load(): List<TrailNote> = runCatching {
-        val arr = JSONArray(file.readText())
-        (0 until arr.length()).map { i ->
+    private fun load(): List<TrailNote> {
+        if (!file.exists()) return emptyList()
+        // Bad entries are skipped; an unreadable file is set aside before a save could replace it.
+        val arr = runCatching { JSONArray(file.readText()) }.getOrElse { SafeFile.setAside(file); return emptyList() }
+        return (0 until arr.length()).mapNotNull { i -> runCatching {
             val o = arr.getJSONObject(i)
             val ph = o.optJSONArray("photos") ?: JSONArray()
             TrailNote(o.getString("id"), o.getString("text"), o.getDouble("lat"), o.getDouble("lon"),
                 o.optLong("created", System.currentTimeMillis()), (0 until ph.length()).map { ph.getString(it) })
-        }
-    }.getOrDefault(emptyList())
+        }.getOrNull() }
+    }
 
     private fun save() {
         val arr = JSONArray()

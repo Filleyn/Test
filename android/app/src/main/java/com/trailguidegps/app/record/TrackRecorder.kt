@@ -66,13 +66,30 @@ object TrackRecorder {
         file?.appendText(JSONArray().put(p.lat).put(p.lon).put(p.eleM ?: org.json.JSONObject.NULL).put(p.time).toString() + "\n")
     }
 
-    /** Ends the recording and returns its points. */
-    fun finish(context: Context): List<TrackPoint> {
+    /**
+     * Ends the recording and returns its points. The on-disk copy stays until [discardRecoverable]
+     * is called, so the caller deletes it only once the track is safely saved.
+     */
+    @Synchronized
+    fun stop(): List<TrackPoint> {
         val pts = _state.value?.points.orEmpty()
         _state.value = null
-        journal(context).delete()
         file = null
         return pts
+    }
+
+    /**
+     * Picks a recording back up from its on-disk copy after Android killed the app mid-hike, so the
+     * rest of the hike is recorded too. Returns false when there's nothing to resume.
+     */
+    @Synchronized
+    fun resume(context: Context): Boolean {
+        if (_state.value != null) return true
+        val pts = recoverable(context)
+        if (pts.isEmpty()) return false
+        file = journal(context)
+        _state.value = Recording(pts.first().time, pts, false, TrackStats.of(pts))
+        return true
     }
 
     /** Points left over from a recording that never finished (app killed), if any. */

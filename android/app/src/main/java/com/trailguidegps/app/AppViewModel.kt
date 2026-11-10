@@ -387,12 +387,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         // A recording that was cut off (phone restart, app killed) is saved, not lost.
-        val leftover = TrackRecorder.recoverable(app)
-        if (leftover.size >= 2) {
-            tracks.save("Recovered track ${dateLabel(leftover.first().time)}", leftover)
-            _message.value = "A track that was still recording was saved as \"Recovered track\"."
+        // If saving it fails (a full phone), the on-disk copy is kept for the next launch.
+        runCatching {
+            val leftover = TrackRecorder.recoverable(app)
+            if (leftover.size >= 2) {
+                tracks.save("Recovered track ${dateLabel(leftover.first().time)}", leftover)
+                _message.value = "A track that was still recording was saved as \"Recovered track\"."
+            }
+            TrackRecorder.discardRecoverable(app)
+        }.onFailure {
+            _message.value = "A track that was still recording couldn't be saved (is the phone full?). It's kept and will be tried again next time."
         }
-        TrackRecorder.discardRecoverable(app)
     }
 
     fun focusOn(points: List<Pair<Double, Double>>) { if (points.isNotEmpty()) _focus.value = Focus(points) }
@@ -487,6 +492,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startRecording() {
         val app = getApplication<Application>()
+        // A track that couldn't be saved earlier is still on disk; starting a new one would erase it.
+        val leftover = TrackRecorder.recoverable(app)
+        if (leftover.size >= 2) {
+            val saved = runCatching { tracks.save("Recovered track ${dateLabel(leftover.first().time)}", leftover) }.isSuccess
+            if (!saved) {
+                _message.value = "An earlier track still couldn't be saved (is the phone full?). Free some space, then start recording."
+                return
+            }
+        }
         TrackRecorder.start(app)
         TrackRecordingService.start(app)
     }
@@ -753,15 +767,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun stopRecording(name: String?, save: Boolean, folderId: String? = null) {
         val app = getApplication<Application>()
-        val pts = TrackRecorder.finish(app)
+        // The recorder's on-disk copy is deleted only after the track is safely saved.
+        val pts = TrackRecorder.stop()
         TrackRecordingService.stop(app)
         if (save && pts.size >= 2) {
-            val summary = tracks.save(name?.takeIf { it.isNotBlank() } ?: defaultTrackName(pts.first().time), pts)
+            val summary = runCatching { tracks.save(name?.takeIf { it.isNotBlank() } ?: defaultTrackName(pts.first().time), pts) }.getOrElse {
+                _message.value = "The track couldn't be saved (is the phone full?). It's kept, and will be saved as a recovered track next time the app opens."
+                return
+            }
+            TrackRecorder.discardRecoverable(app)
             folderId?.let { folders.put(com.trailguidegps.app.data.FolderStore.trackKey(summary.id), it); rememberFolder(it) }
             _shownTrack.value = summary.id to pts
             _message.value = "Saved \"${summary.name}\"."
-        } else if (save) {
-            _message.value = "The track was too short to save."
+        } else {
+            TrackRecorder.discardRecoverable(app)
+            if (save) _message.value = "The track was too short to save."
         }
     }
 
