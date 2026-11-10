@@ -525,6 +525,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val r = _shownRoute.value ?: return
         val app = getApplication<Application>()
         com.trailguidegps.app.route.RouteFollower.start(r)
+        com.trailguidegps.app.route.RouteFollower.remember(app, r.id)
         TrackRecordingService.start(app)
         _message.value = if (settings.value.value.offRouteAlerts)
             "Following \"${r.name}\". You'll get a buzz if you're more than ${settings.value.value.offRouteFt} ft off it."
@@ -1056,6 +1057,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setPace(p: Pace) { Pace.save(getApplication(), p); _pace.value = p }
 
     init { loadRouting() }
+
+    init {
+        // The app was killed while following a route: pick it back up (the service does the same if
+        // Android restarts it first).
+        if (com.trailguidegps.app.route.RouteFollower.resume(app) { routes.load(it) }) TrackRecordingService.start(app)
+    }
 
     // ---- Where each saved item is ("Mt. Hood National Forest · 12 mi SE of Estacada") ----
     val areaStore = com.trailguidegps.app.data.AreaStore(app)

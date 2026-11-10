@@ -85,4 +85,18 @@ class RouteFollowerTest {
         // A one-way walk past the spring counts it once.
         assertEquals(1, RouteNear.project(out, listOf(spring), 400.0) { true }.size)
     }
+
+    @Test fun followingCarriesOnAfterTheAppIsKilled() {
+        RouteFollower.start(route)
+        RouteFollower.remember(app, route.id)
+        // As if the app was killed: nothing in memory, the note of what was being followed still on disk.
+        val state = RouteFollower::class.java.getDeclaredField("_state").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        (state.get(RouteFollower) as kotlinx.coroutines.flow.MutableStateFlow<Following?>).value = null
+        assertTrue(RouteFollower.resume(app) { id -> route.takeIf { it.id == id } })
+        assertEquals(8_000.0, at(2.0), 60.0)
+        // Stopping forgets it, so it doesn't come back by itself later.
+        RouteFollower.stop(app)
+        assertFalse(RouteFollower.resume(app) { route })
+    }
 }

@@ -58,6 +58,7 @@ object RouteFollower {
     private const val NOTIFY_ID = 11
     private const val REPEAT_MS = 5 * 60_000L
     private const val QUIET_MS = 3 * 60_000L
+    private const val RESUME_WITHIN_MS = 24 * 3_600_000L
     private var lastGoodAt = 0L
     private var quietAlerted = false
 
@@ -77,6 +78,31 @@ object RouteFollower {
         lastGoodAt = System.currentTimeMillis()
         quietAlerted = false
         _state.value = Following(route)
+    }
+
+    // ---- Carrying on after Android kills the app mid-hike ----
+
+    private fun prefs(context: Context) = context.getSharedPreferences("follow", Context.MODE_PRIVATE)
+
+    /** Notes which route is being followed, so [resume] can pick it back up. */
+    fun remember(context: Context, routeId: String) {
+        prefs(context).edit().putString("id", routeId).putLong("at", System.currentTimeMillis()).apply()
+    }
+
+    private fun forget(context: Context) { prefs(context).edit().clear().apply() }
+
+    /**
+     * Follows the remembered route again if the app was killed while following it (within the last
+     * day). Progress is found afresh from the next GPS fix. Returns true when following.
+     */
+    fun resume(context: Context, load: (String) -> SavedRoute?): Boolean {
+        if (_state.value != null) return true
+        val p = prefs(context)
+        val id = p.getString("id", null) ?: return false
+        if (System.currentTimeMillis() - p.getLong("at", 0) > RESUME_WITHIN_MS) { forget(context); return false }
+        val route = runCatching { load(id) }.getOrNull() ?: run { forget(context); return false }
+        start(route)
+        return true
     }
 
     /**
@@ -99,6 +125,7 @@ object RouteFollower {
     }
 
     fun stop(context: Context) {
+        forget(context)
         _state.value = null
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFY_ID)
     }

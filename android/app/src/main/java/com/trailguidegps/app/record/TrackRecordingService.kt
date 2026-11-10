@@ -141,6 +141,10 @@ class TrackRecordingService : Service() {
         // is gone; its points are on disk and get saved as a recovered track on next launch.
         // Restarted by Android with a recording cut off on disk: carry on recording it.
         if (intent == null && !TrackRecorder.isRecording()) runCatching { TrackRecorder.resume(this) }
+        // The same for a route that was being followed: alerts carry on.
+        if (intent == null && !RouteFollower.isFollowing()) runCatching {
+            RouteFollower.resume(this) { id -> com.trailguidegps.app.data.RouteStore(this).load(id) }
+        }
         if (intent?.action == ACTION_STOP || (!TrackRecorder.isRecording() && !RouteFollower.isFollowing())) {
             stopSelf()
             return START_NOT_STICKY

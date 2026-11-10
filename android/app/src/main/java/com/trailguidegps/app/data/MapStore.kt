@@ -129,6 +129,15 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
     }
 
     /** File name → SHA-256 from a manifest, so unchanged files can be reused. */
+    private fun sha256(f: File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        f.inputStream().use { input ->
+            val buf = ByteArray(1 shl 16)
+            while (true) { val n = input.read(buf); if (n < 0) break; md.update(buf, 0, n) }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
     private fun checksums(manifest: File): Map<String, String> = runCatching {
         val files = JSONObject(manifest.readText()).getJSONArray("files")
         (0 until files.length()).associate { i ->
@@ -190,6 +199,12 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
                 val target = File(tmp, asset.name)
                 done = fetch(asset, target, done) { d -> onProgress(asset.name, d, total) }
                 if (target.length() != asset.size) error("${asset.name} didn't finish downloading. Try again to resume.")
+                // The right size isn't proof it arrived intact: check it against the build's checksum.
+                val want = newSums[asset.name]
+                if (want != null && !sha256(target).equals(want, ignoreCase = true)) {
+                    target.delete()
+                    error("${asset.name} was damaged in the download. Try again and it will be fetched fresh.")
+                }
             }
             val missing = REQUIRED.filter { !File(tmp, it).exists() }
             if (missing.isNotEmpty()) error("Release is missing ${missing.joinToString()}")
@@ -300,7 +315,7 @@ class MapStore(context: Context, val region: String = BuildConfig.MAPS_REGION) {
         }
 
         /** GitHub lists 100 releases a page; read a few pages so older states don't drop off. */
-        fun allReleases(maxPages: Int = 4): List<JSONObject> {
+        fun allReleases(maxPages: Int = 10): List<JSONObject> {
             val out = mutableListOf<JSONObject>()
             for (page in 1..maxPages) {
                 val conn = (URL("https://api.github.com/repos/${BuildConfig.MAPS_REPO}/releases?per_page=100&page=$page").openConnection() as HttpURLConnection).apply {
