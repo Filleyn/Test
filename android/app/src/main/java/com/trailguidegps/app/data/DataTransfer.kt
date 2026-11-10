@@ -31,7 +31,7 @@ class DataTransfer(
     private val focusOn: (List<Pair<Double, Double>>) -> Unit,
 ) {
     private val backupPrefs = app.getSharedPreferences("backup", android.content.Context.MODE_PRIVATE)
-    private val _lastBackup = MutableStateFlow(backupPrefs.getLong("last", 0L).takeIf { it > 0) }
+    private val _lastBackup = MutableStateFlow(backupPrefs.getLong("last", 0L).takeIf { it > 0 })
     /** When you last made a backup, or null. */
     val lastBackup: StateFlow<Long?> = _lastBackup.asStateFlow()
 
@@ -45,7 +45,7 @@ class DataTransfer(
                     val trk = tracks.summaries.value.mapNotNull { tracks.load(it.id) }
                     val loaded = routes.summaries.value.mapNotNull { routes.load(it.id) }
                     val rte = loaded.map { it.name to it.coords }
-                    val gpx = Gpx.write(waypoints.items.value, trk, rte, loaded.map { it.notes) }
+                    val gpx = Gpx.write(waypoints.items.value, trk, rte, loaded.map { it.notes })
                     app.contentResolver.openOutputStream(uri, "wt")!!.use { Backup.write(app, it, gpx) }
                 }
             }
