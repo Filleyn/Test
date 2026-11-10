@@ -299,6 +299,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         com.trailguidegps.app.data.MapRegion.names = _installed.value.map { MapStore.displayName(it) }
         loadFeatures()
         cleanOldMaps(delayMs = 5_000)
+        // Trip plans, GPX files and backups made for sharing don't linger: clear ones over a day old.
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                java.io.File(app.cacheDir, "exports").listFiles()?.forEach { f ->
+                    if (System.currentTimeMillis() - f.lastModified() > 86_400_000L) f.delete()
+                }
+            }
+        }
     }
 
     private fun loadFeatures() {
@@ -815,12 +823,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
                         val f = java.io.File(dir, "Trip plan - $safe.pdf")
                         com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line, water)
-                        com.trailguidegps.app.data.Exports.publish(app, f, "application/pdf")
-                            ?: androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
+                        // Shared straight from the app's own folder: no copy is left in Downloads.
+                        androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
                     }
                 }
                 r.onSuccess { uri ->
-                    if (uri.authority == android.provider.MediaStore.AUTHORITY) _message.value = "Trip plan saved to Downloads › TrailGuide"
                     onReady(uri, com.trailguidegps.app.data.TripPlan.subject(route, form),
                         com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value, areaStore.areas.value["r:${route.id}"]?.line, water))
                 }.onFailure { _message.value = "Couldn't make the trip plan: ${it.message}" }
@@ -1029,8 +1036,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val safe = fileName.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "TrailGuide" }
             val file = java.io.File(dir, "$safe.gpx")
             file.writeText(Gpx.write(wps, trk, rte, loaded.map { it.notes }))
-            com.trailguidegps.app.data.Exports.publish(app, file, "application/gpx+xml")
-                ?: androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", file)
+            androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", file)
         }.getOrNull()
     }
 
