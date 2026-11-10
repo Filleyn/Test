@@ -113,6 +113,7 @@ class TrackRecordingService : Service() {
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification("TrailGuide GPS", "Starting GPS…"), type)
         requestUpdates()
+        quietHandler.postDelayed(quietCheck, 30_000)
         // Battery saver switched on or off in Settings takes effect straight away.
         scope.launch { SettingsStore.get(this@TrackRecordingService).value.collectLatest { requestUpdates() } }
         scope.launch {
@@ -147,7 +148,17 @@ class TrackRecordingService : Service() {
         return START_STICKY
     }
 
+    /** Every half minute: has GPS gone quiet while following a route? */
+    private val quietHandler = android.os.Handler(Looper.getMainLooper())
+    private val quietCheck = object : Runnable {
+        override fun run() {
+            runCatching { RouteFollower.checkQuiet(this@TrackRecordingService) }
+            quietHandler.postDelayed(this, 30_000)
+        }
+    }
+
     override fun onDestroy() {
+        quietHandler.removeCallbacks(quietCheck)
         lm.removeUpdates(listener)
         scope.cancel()
         super.onDestroy()

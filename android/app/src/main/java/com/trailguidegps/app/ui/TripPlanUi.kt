@@ -90,7 +90,8 @@ fun TripPlanDialog(vm: AppViewModel, route: SavedRoute, onDismiss: () -> Unit) {
                     startAt = v; backBy += shift; alarmAt += shift
                 }
                 TimeRow("Expected back", backBy) { v -> alarmAt += v - backBy; backBy = v }
-                TimeRow("Call for help if no word by", alarmAt) { alarmAt = it }
+                TimeRow("Call for help if no word by", alarmAt) { alarmAt = maxOf(it, backBy) }
+                if (alarmAt <= backBy) Text("Set this later than expected back, to allow for a slow day.", fontSize = 12.sp, color = TG.Warn)
                 OutlinedTextField(vehicle, { vehicle = it }, label = { Text("Vehicle (color, make, plate)") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(parkedAt, { parkedAt = it }, label = { Text("Parked at (trailhead)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes: camp plans, gear, alternate route") },

@@ -306,8 +306,14 @@ fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: ()
             )
             TextButton(onClick = onStop) { Text("Stop", color = TG.Danger, fontWeight = FontWeight.SemiBold) }
         }
+        if (f.gpsQuiet) {
+            Text(if (f.lastFixAt == 0L) "Still no GPS fix. Off-route alerts can't work until there is one."
+                else "No good GPS fix since ${java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(f.lastFixAt))}. " +
+                    "The numbers below are from then, and off-route alerts are paused.",
+                fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Danger, lineHeight = 17.sp)
+        }
         if (f.lastFixAt == 0L) {
-            Text("Waiting for GPS…", fontSize = 13.sp, color = TG.Muted)
+            if (!f.gpsQuiet) Text("Waiting for GPS…", fontSize = 13.sp, color = TG.Muted)
         } else {
             val mins = pace.minutes(f.remainingM, f.climbLeftM)
             val arrive = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(System.currentTimeMillis() + mins * 60_000L))

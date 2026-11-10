@@ -50,7 +50,8 @@ data class TripForm(
  * be back, when to call for help, the route on a map, and its numbers.
  */
 object TripPlan {
-    private val dateTime = SimpleDateFormat("EEE, MMM d 'at' h:mm a", Locale.US)
+    // With the time zone ("PST"), so the plan reads the same to someone in another one.
+    private val dateTime = SimpleDateFormat("EEE, MMM d 'at' h:mm a z", Locale.US)
 
     fun subject(route: SavedRoute, form: TripForm) =
         "Trip plan: ${route.name} (${SimpleDateFormat("EEE, MMM d", Locale.US).format(Date(form.startAt))})"
@@ -113,11 +114,13 @@ object TripPlan {
     fun write(out: File, route: SavedRoute, form: TripForm, pace: Pace, map: Bitmap?, area: String? = null,
               water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null) {
         val doc = PdfDocument()
-        val page = doc.startPage(PdfDocument.PageInfo.Builder(612, 792, 1).create())
-        val c = page.canvas
+        var pageNo = 1
+        var page = doc.startPage(PdfDocument.PageInfo.Builder(612, 792, pageNo).create())
+        var c = page.canvas
         val left = 40f
         val width = 532f
         var y = 40f
+        val bottom = 752f
 
         val title = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 20f; typeface = Typeface.DEFAULT_BOLD; color = Color.rgb(35, 39, 31) }
         val label = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 9f; color = Color.rgb(107, 113, 106) }
@@ -129,6 +132,30 @@ object TripPlan {
             c.save(); c.translate(x, top); l.draw(c); c.restore()
             return top + l.height
         }
+
+        val made = "Made with TrailGuide GPS on ${SimpleDateFormat("MMM d, yyyy h:mm a z", Locale.US).format(Date())}. " +
+            "Coordinates are latitude, longitude (WGS84). Map © OpenStreetMap contributors, USGS."
+        val small = TextPaint(label).apply { textSize = 8f }
+        fun footer() { c.drawText("$made  Page $pageNo", left, 776f, small) }
+        /** Starts a new page when [h] more won't fit, so nothing is ever left off the plan. */
+        fun need(h: Float) {
+            if (y + h <= bottom) return
+            footer()
+            doc.finishPage(page)
+            pageNo++
+            page = doc.startPage(PdfDocument.PageInfo.Builder(612, 792, pageNo).create())
+            c = page.canvas
+            c.drawText("TRIP PLAN, CONTINUED · ${route.name}".take(90), left, 40f, label)
+            y = 56f
+        }
+        /** A paragraph in full, moved to the next page if it doesn't fit here. */
+        fun para(s: String, p: TextPaint, gap: Float = 2f) {
+            val l = StaticLayout.Builder.obtain(s, 0, s.length, p, width.toInt()).setAlignment(Layout.Alignment.ALIGN_NORMAL).build()
+            need(l.height.toFloat())
+            c.save(); c.translate(left, y); l.draw(c); c.restore()
+            y += l.height + gap
+        }
+        fun heading(s: String) { need(40f); c.drawText(s, left, y + 9, label); y += 12 }
 
         label.textSize = 10f
         c.drawText("TRIP PLAN", left, y, label)
@@ -198,8 +225,10 @@ object TripPlan {
 
         // Elevation profile.
         val prof = route.stats.profile
+        val tripDays = if (route.camps.isNotEmpty()) TripDays.days(route, route.camps, pace) else emptyList()
         if (prof.size >= 2) {
             val h = 60f
+            need(h + 16)
             val minE = prof.minOf { it.second }
             val range = (prof.maxOf { it.second } - minE).coerceAtLeast(30.0)
             val maxD = prof.last().first.coerceAtLeast(1.0)
@@ -220,46 +249,38 @@ object TripPlan {
             route.camps.sortedBy { it.alongM }.forEachIndexed { i, cp ->
                 val px = left + (cp.alongM / maxD * width).toFloat()
                 c.drawLine(px, y, px, y + h, campPaint)
-                c.drawText("Night ${i + 1}", px + 2, y + h + 10, label)
+                c.drawText(TripDays.nightsLabel(tripDays, i), px + 2, y + h + 10, label)
             }
             y += h + 16
         }
 
-        // Day by day, for a multi-day trip.
-        if (route.camps.isNotEmpty() && y < 700) {
-            c.drawText("DAY BY DAY", left, y + 9, label)
-            y += 12
-            TripDays.days(route, route.camps, pace).forEach { d ->
-                if (y < 735) y = block(dayLine(route, d, water.first[d.day]), text, left, y, width, 3) + 2
-            }
-            if (water.first.isNotEmpty() && y < 735) y = block(WATER_NOTE, label, left, y, width, 2) + 2
+        // Day by day, for a multi-day trip. Everything from here runs onto more pages as needed.
+        if (tripDays.isNotEmpty()) {
+            heading("DAY BY DAY")
+            tripDays.forEach { d -> para(dayLine(route, d, water.first[d.day]), text) }
+            if (water.first.isNotEmpty()) para(WATER_NOTE, label)
             y += 6
         }
 
         // Your notes on the route: road conditions, bugs, permits.
-        if (route.notes.isNotBlank() && y < 715) {
-            c.drawText("ROUTE NOTES", left, y + 9, label)
-            y = block(route.notes, text, left, y + 12, width, ((735 - y) / 14).toInt().coerceIn(1, 6)) + 6
+        if (route.notes.isNotBlank()) {
+            heading("ROUTE NOTES")
+            para(route.notes, text, 6f)
         }
 
         // Named points along the way.
         val named = route.points.filter { it.waypointName != null }
-        if (named.isNotEmpty() && y < 700) {
-            c.drawText("POINTS ON THE ROUTE", left, y + 9, label)
-            y += 12
-            named.take(6).forEach { p ->
-                y = block("${p.waypointName}: %.5f, %.5f".format(Locale.US, p.lat, p.lon), text, left, y, width, 1) + 2
-            }
+        if (named.isNotEmpty()) {
+            heading("POINTS ON THE ROUTE")
+            named.forEach { p -> para("${p.waypointName}: %.5f, %.5f".format(Locale.US, p.lat, p.lon), text) }
             y += 6
         }
-        if (form.notes.isNotBlank() && y < 730) {
-            c.drawText("NOTES", left, y + 9, label)
-            y = block(form.notes, text, left, y + 12, width, ((750 - y) / 14).toInt().coerceAtLeast(1)) + 4
+        if (form.notes.isNotBlank()) {
+            heading("NOTES")
+            para(form.notes, text, 4f)
         }
 
-        label.textSize = 8f
-        c.drawText("Made with TrailGuide GPS on ${SimpleDateFormat("MMM d, yyyy h:mm a", Locale.US).format(Date())}. " +
-            "Coordinates are latitude, longitude (WGS84). Map © OpenStreetMap contributors, USGS.", left, 776f, label)
+        footer()
         doc.finishPage(page)
         out.outputStream().use { doc.writeTo(it) }
         doc.close()

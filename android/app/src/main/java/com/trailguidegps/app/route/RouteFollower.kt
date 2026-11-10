@@ -35,6 +35,8 @@ data class Following(
     val nearest: DoubleArray? = null,
     val arrived: Boolean = false,
     val lastFixAt: Long = 0,
+    /** No usable GPS fix for a few minutes: the numbers are stale and off-route alerts can't fire. */
+    val gpsQuiet: Boolean = false,
 )
 
 /**
@@ -55,6 +57,9 @@ object RouteFollower {
     private const val CHANNEL = "route_alerts"
     private const val NOTIFY_ID = 11
     private const val REPEAT_MS = 5 * 60_000L
+    private const val QUIET_MS = 3 * 60_000L
+    private var lastGoodAt = 0L
+    private var quietAlerted = false
 
     fun isFollowing() = _state.value != null
 
@@ -69,7 +74,28 @@ object RouteFollower {
         lastSeg = -1
         offCount = 0
         lastAlertAt = 0
+        lastGoodAt = System.currentTimeMillis()
+        quietAlerted = false
         _state.value = Following(route)
+    }
+
+    /**
+     * Called every half minute by the GPS service. If no usable fix has come in for [QUIET_MS], says
+     * so once (buzz and notification) and marks the state, because until GPS is back the numbers
+     * are stale and an off-route alert can't happen.
+     */
+    fun checkQuiet(context: Context, now: Long = System.currentTimeMillis()) {
+        val st = _state.value ?: return
+        if (now - lastGoodAt < QUIET_MS) return
+        if (!st.gpsQuiet) _state.value = st.copy(gpsQuiet = true)
+        if (!quietAlerted) {
+            quietAlerted = true
+            if (SettingsStore.get(context).value.value.offRouteAlerts) {
+                buzz(context, longArrayOf(0, 250, 150, 250))
+                notify(context, "GPS signal lost", "No good GPS fix for ${(now - lastGoodAt) / 60_000} minutes while following ${st.route.name}. " +
+                    "Off-route alerts are paused until it's back.", true)
+            }
+        }
     }
 
     fun stop(context: Context) {
@@ -111,8 +137,16 @@ object RouteFollower {
     }
 
     fun update(context: Context, location: Location) {
-        val st = _state.value ?: return
+        var st = _state.value ?: return
         if (location.hasAccuracy() && location.accuracy > 60f) return
+        lastGoodAt = System.currentTimeMillis()
+        if (st.gpsQuiet || quietAlerted) {
+            if (quietAlerted && SettingsStore.get(context).value.value.offRouteAlerts) {
+                notify(context, "GPS is back", "Following ${st.route.name} again.", false)
+            }
+            quietAlerted = false
+            st = st.copy(gpsQuiet = false)
+        }
         val c = st.route.coords
         if (c.size < 2) return
         val lat = location.latitude
@@ -123,7 +157,9 @@ object RouteFollower {
         var hit = if (lastSeg < 0) nearestOn(c, lat, lon, 0, segs)
         else nearestOn(c, lat, lon, (lastSeg - 20).coerceAtLeast(0), (lastSeg + 400).coerceAtMost(segs), preferFrom = lastSeg)
         if (lastSeg >= 0 && hit.third > 150) {
-            val all = nearestOn(c, lat, lon, 0, segs)
+            // Rejoining after wandering off: still prefer the part at or after where you were, so on an
+            // out-and-back you come back onto the way back, not the way in.
+            val all = nearestOn(c, lat, lon, 0, segs, preferFrom = lastSeg)
             if (all.third < hit.third - 50) hit = all
         }
         val (seg, t, dist) = hit

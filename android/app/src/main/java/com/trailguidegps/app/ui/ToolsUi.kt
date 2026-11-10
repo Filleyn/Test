@@ -142,7 +142,7 @@ fun WaterAlongRouteDialog(
                 if (plan.stops.isEmpty()) {
                     Text("No mapped water this close to the route.", fontSize = 14.sp, color = TG.Ink, modifier = Modifier.padding(top = 10.dp))
                 } else LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                    items(plan.stops, key = { "${it.point.lat},${it.point.lon},${it.point.kind}" }) { s ->
+                    items(plan.stops, key = { "${it.point.lat},${it.point.lon},${it.point.kind},${it.alongM.toInt()}" }) { s ->
                         val p = s.point
                         Row(Modifier.fillMaxWidth().clickable { onPick(p.lat, p.lon) }.padding(vertical = 8.dp), verticalAlignment = Alignment.Top) {
                             Text("Mile %.1f".format(s.alongM / Geo.M_PER_MI), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,

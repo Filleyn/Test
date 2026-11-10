@@ -36,6 +36,9 @@ object WaterPlanner {
 
 /** Places near a line, and how far along and off it they are; also simplifying a line. */
 object RouteNear {
+    /** How far along the line you must be away from a point before coming near it again counts as another pass. */
+    private const val PASS_GAP_M = 600.0
+
     /** Fewer points, keeping the shape to within [tolM] metres (Douglas-Peucker). */
     fun simplify(coords: List<DoubleArray>, tolM: Double): List<DoubleArray> {
         if (coords.size < 3) return coords
@@ -83,7 +86,10 @@ object RouteNear {
         return t
     }
 
-    /** Points kept by [keep] within [maxOffM] of the line, as (point, metres along, metres off), in order along it. */
+    /**
+     * Points kept by [keep] within [maxOffM] of the line, as (point, metres along, metres off), in
+     * order along it. A point the line passes more than once (the way in and the way back of an
+     * out-and-back, a stretch of trail walked twice) is listed once for each pass.
     fun project(
         coords: List<DoubleArray>, points: List<Features.Point>, maxOffM: Double, keep: (Features.Point) -> Boolean,
     ): List<Triple<Features.Point, Double, Double>> {
@@ -101,8 +107,17 @@ object RouteNear {
         for (p in points) {
             if (!keep(p)) continue
             if (p.lat < minLat || p.lat > maxLat || p.lon < minLon || p.lon > maxLon) continue
+            // A lake's point is its middle; take off its rough radius to get to the shore.
+            val radius = p.acres?.let { sqrt(it * 4046.86 / PI) } ?: 0.0
+            val limit = maxOffM + radius
+            // Each run of the line that stays within reach is one pass; keep the closest spot of each.
             var best = Double.MAX_VALUE
             var along = 0.0
+            var lastWithin = -1.0
+            fun flush() {
+                if (best <= limit) out += Triple(p, along, (best - radius).coerceAtLeast(0.0))
+                best = Double.MAX_VALUE
+            }
             for (i in 0 until coords.size - 1) {
                 val ax = (coords[i][1] - p.lon) * kx
                 val ay = (coords[i][0] - p.lat) * ky
@@ -111,12 +126,15 @@ object RouteNear {
                 val l2 = dx * dx + dy * dy
                 val t = if (l2 == 0.0) 0.0 else (-(ax * dx + ay * dy) / l2).coerceIn(0.0, 1.0)
                 val d = hypot(ax + t * dx, ay + t * dy)
-                if (d < best) { best = d; along = cum[i] + t * (cum[i + 1] - cum[i]) }
+                val here = cum[i] + t * (cum[i + 1] - cum[i])
+                if (d <= limit) {
+                    // Back within reach after a real stretch away (not just a switchback): a new pass.
+                    if (lastWithin >= 0 && here - lastWithin > PASS_GAP_M) flush()
+                    if (d < best) { best = d; along = here }
+                    lastWithin = cum[i + 1]
+                }
             }
-            // A lake's point is its middle; take off its rough radius to get to the shore.
-            val radius = p.acres?.let { sqrt(it * 4046.86 / PI) } ?: 0.0
-            val off = (best - radius).coerceAtLeast(0.0)
-            if (off <= maxOffM) out += Triple(p, along, off)
+            flush()
         }
         out.sortBy { it.second }
         return out
