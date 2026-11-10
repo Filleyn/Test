@@ -62,4 +62,12 @@ class WaterCarryTest {
         assertEquals(3_000.0, wet[1].walk!!.lengthM, 0.1); assertEquals(5_000.0, wet[1].walk!!.fromM, 0.1)
         assertEquals(null, wet[0].campFill)
     }
+
+    @Test fun whichWaterCountsAsReliable() {
+        assertEquals(false, WaterTools.unreliable(Features.Point("Minnie Scott Spring", "spring", 44.0, -121.0)))
+        assertEquals(false, WaterTools.unreliable(Features.Point("White Branch", "stream", 44.0, -121.0)))
+        assertEquals(true, WaterTools.unreliable(Features.Point("White Branch", "stream", 44.0, -121.0, seasonal = true)))
+        assertEquals(true, WaterTools.unreliable(Features.Point(null, "stream", 44.0, -121.0)))   // small unnamed crossing
+        assertEquals(false, WaterTools.unreliable(Features.Point(null, "spring", 44.0, -121.0)))
+    }
 }

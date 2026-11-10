@@ -673,92 +673,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Water sources along a line, by mile, with the longest dry stretches. */
-    fun waterPlan(coords: List<DoubleArray>, maxOffM: Double): com.trailguidegps.app.data.WaterPlan =
-        com.trailguidegps.app.data.WaterPlanner.plan(coords, features.value?.allPoints.orEmpty(), maxOffM)
+    // ---- Water along a route and what to carry (the logic lives in WaterTools) ----
 
-    // ---- Water to carry (a planning estimate) ----
-
-    private val waterPrefs = app.getSharedPreferences("water", android.content.Context.MODE_PRIVATE)
-    private val _waterRate = MutableStateFlow(runCatching { com.trailguidegps.app.data.WaterCarry.Rate.valueOf(waterPrefs.getString("rate", "NORMAL")!!) }
-        .getOrDefault(com.trailguidegps.app.data.WaterCarry.Rate.NORMAL))
-    val waterRate: StateFlow<com.trailguidegps.app.data.WaterCarry.Rate> = _waterRate.asStateFlow()
-    fun setWaterRate(r: com.trailguidegps.app.data.WaterCarry.Rate) { _waterRate.value = r; waterPrefs.edit().putString("rate", r.name).apply() }
-    private val _waterHidden = MutableStateFlow(waterPrefs.getBoolean("hidden", false))
-    /** Water estimates can be turned off; they're then left off the Days screen and the trip plan. */
-    val waterHidden: StateFlow<Boolean> = _waterHidden.asStateFlow()
-    fun setWaterHidden(v: Boolean) { _waterHidden.value = v; waterPrefs.edit().putBoolean("hidden", v).apply() }
-
-    /** The heat to plan for and why: your choice for this route, the saved forecast, or a guess from the month and elevation. */
-    fun waterHeat(route: SavedRoute): Pair<com.trailguidegps.app.data.WaterCarry.Heat, String> {
-        val wc = com.trailguidegps.app.data.WaterCarry
-        waterPrefs.getString("heat_${route.id}", null)?.let { n ->
-            runCatching { com.trailguidegps.app.data.WaterCarry.Heat.valueOf(n) }.getOrNull()?.let { return it to "your choice" }
-        }
-        val fresh = savedWeather("route:${route.id}").filter { System.currentTimeMillis() - it.fetchedAt < 7 * 86_400_000L }
-        val dayMs = 86_400_000L
-        // Temperatures shifted for the route's height against the forecast grid's, as the Weather screen shows them.
-        val periods = fresh.flatMap { f -> f.periods.filter { it.isDay && it.tempF != null }.map { p -> p.copy(tempF = p.tempF!! + (f.tempAdjustF ?: 0)) } }
-        // With trip dates, only the forecast for those days counts (when it reaches that far).
-        val forTrip = if (route.tripStart > 0) periods.filter { it.start > 0 && it.start >= route.tripStart - dayMs / 2 &&
-            it.start <= maxOf(route.tripEnd, route.tripStart) + dayMs / 2 } else periods
-        forTrip.mapNotNull { it.tempF }.maxOrNull()?.let { t ->
-            return com.trailguidegps.app.data.WaterCarry.Heat.of(t) to (if (route.tripStart > 0) "the forecast for your dates" else "saved forecast") +
-                ", highs up to $t°F"
-        }
-        val month = java.util.Calendar.getInstance().apply { if (route.tripStart > 0) timeInMillis = route.tripStart }.get(java.util.Calendar.MONTH) + 1
-        val highFt = (route.stats.profile.maxOfOrNull { it.second } ?: 0.0) * com.trailguidegps.app.geo.Geo.FT_PER_M
-        val monthName = java.text.DateFormatSymbols.getInstance().months[month - 1]
-        return wc.guess(month, highFt) to "a guess for $monthName up to %,d ft; open Weather for a forecast".format(highFt.toInt())
-    }
-    fun setWaterHeat(routeId: String, heat: com.trailguidegps.app.data.WaterCarry.Heat?) {
-        waterPrefs.edit().apply { if (heat == null) remove("heat_$routeId") else putString("heat_$routeId", heat.name) }.apply()
-    }
-
-    /**
-     * Water day by day along [route] with [camps] (one day for a day hike). With [reliableOnly],
-     * seasonal sources (intermittent creeks, seasonal springs) don't count, at camp or on the way.
-     */
-    fun waterDays(route: SavedRoute, camps: List<com.trailguidegps.app.data.Camp>, heat: com.trailguidegps.app.data.WaterCarry.Heat,
-                  reliableOnly: Boolean): List<com.trailguidegps.app.data.WaterCarry.Day> {
-        val stops = waterPlan(route.coords, 0.25 * com.trailguidegps.app.geo.Geo.M_PER_MI).stops
-            .filter { !reliableOnly || !unreliableWater(it.point) }.map { it.alongM }
-        val f = features.value
-        val days = com.trailguidegps.app.data.TripDays.days(route, camps, _pace.value)
-        val campWater = days.dropLast(1).map { d ->
-            val p = RouteStore.pointAt(route.coords, d.toM)
-            val w = p?.let { f?.waterNear(it[0], it[1], com.trailguidegps.app.data.Search.CAMP_WATER_M) }
-            w != null && (!reliableOnly || !unreliableWater(w.first))
-        }
-        return com.trailguidegps.app.data.WaterCarry.days(route.stats, stops, days.map { it.fromM to it.toM }, campWater,
-            _pace.value, heat, _waterRate.value)
-    }
-
-    /**
-     * Water not to count on when working out what to carry: anything marked seasonal, and small
-     * unnamed stream crossings, which the map often doesn't mark either way and which are often dry
-     * by late summer.
-     */
-    private fun unreliableWater(p: com.trailguidegps.app.data.Features.Point) = p.seasonal || (p.kind == "stream" && p.name.isNullOrBlank())
-
-    /** For the trip plan: a water line per day (or one for a day hike), or nothing when turned off. */
-    private fun tripWater(route: SavedRoute): Pair<Map<Int, String>, String?> {
-        if (_waterHidden.value) return emptyMap<Int, String>() to null
-        val wc = com.trailguidegps.app.data.WaterCarry
-        val (heat, _) = waterHeat(route)
-        val days = waterDays(route, route.camps, heat, reliableOnly = true)
-        val mi = com.trailguidegps.app.geo.Geo.M_PER_MI
-        fun line(d: com.trailguidegps.app.data.WaterCarry.Day): String? {
-            val parts = listOfNotNull(
-                d.walk?.let { g -> "Water: longest stretch without mapped water %.1f mi (miles %.1f–%.1f), carry about ${wc.liters(g.carryL)}"
-                    .format(g.lengthM / mi, g.fromM / mi, g.toM / mi) },
-                d.campFill?.let { g -> "No reliable water at camp: fill up with about ${wc.liters(g.carryL)} at mile %.1f".format(g.fromM / mi) +
-                    " (to camp, the night and on to water at mile %.1f)".format(g.toM / mi) },
-            )
-            return if (parts.isEmpty()) null else parts.joinToString("; ") + " (${heat.label.lowercase()} weather)."
-        }
-        if (route.camps.isEmpty()) return emptyMap<Int, String>() to days.firstOrNull()?.let(::line)
-        return days.mapNotNull { d -> line(d)?.let { d.day to it } }.toMap() to null
-    }
+    private val water = com.trailguidegps.app.data.WaterTools(app, { features.value }, { _pace.value }, { savedWeather(it) })
+    fun waterPlan(coords: List<DoubleArray>, maxOffM: Double) = water.plan(coords, maxOffM)
+    val waterRate get() = water.rate
+    fun setWaterRate(r: com.trailguidegps.app.data.WaterCarry.Rate) = water.setRate(r)
+    val waterHidden get() = water.hidden
+    fun setWaterHidden(v: Boolean) = water.setHidden(v)
+    fun waterHeat(route: SavedRoute) = water.heat(route)
+    fun setWaterHeat(routeId: String, heat: com.trailguidegps.app.data.WaterCarry.Heat?) = water.setHeat(routeId, heat)
+    fun waterDays(route: SavedRoute, camps: List<com.trailguidegps.app.data.Camp>, heat: com.trailguidegps.app.data.WaterCarry.Heat, reliableOnly: Boolean) =
+        water.days(route, camps, heat, reliableOnly)
+    private fun tripWater(route: SavedRoute) = water.forTripPlan(route)
 
     // ---- Trip folders ----
 
@@ -1072,65 +999,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (com.trailguidegps.app.route.RouteFollower.resume(app) { routes.load(it) }) TrackRecordingService.start(app)
     }
 
-    // ---- Where each saved item is ("Mt. Hood National Forest · 12 mi SE of Estacada") ----
-    val areaStore = com.trailguidegps.app.data.AreaStore(app)
-    val areas: StateFlow<Map<String, com.trailguidegps.app.data.AreaStore.Info>> get() = areaStore.areas
-    private val landLookups = HashMap<String, com.trailguidegps.app.data.LandLookup>()
-
-    /** Public land at a spot, from whichever downloaded state covers it (null if none does). */
-    private fun landAt(lat: Double, lon: Double): com.trailguidegps.app.data.LandLookup.Hit? {
-        var empty: com.trailguidegps.app.data.LandLookup.Hit? = null
-        for (st in stores) {
-            val b = st.bbox() ?: continue
-            if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue
-            val f = java.io.File(st.dir, "publiclands.pmtiles")
-            if (!f.exists()) continue
-            val hit = runCatching { synchronized(landLookups) { landLookups.getOrPut(f.path) { com.trailguidegps.app.data.LandLookup(f) } }.at(lat, lon) }.getOrNull()
-                ?: continue
-            if (hit.special != null || hit.boundary != null || hit.land != null) return hit
-            empty = hit
-        }
-        return empty
-    }
-
-    private fun areaInfo(points: List<DoubleArray>, sig: String): com.trailguidegps.app.data.AreaStore.Info? {
-        val start = points.firstOrNull() ?: return null
-        val hits = com.trailguidegps.app.data.AreaStore.samples(points).map { landAt(it[0], it[1]) }
-        val near = _features.value?.nearTown(start[0], start[1])
-        return com.trailguidegps.app.data.AreaStore.describe(hits, near, start[0], start[1], sig)
-    }
+    // ---- Where each saved item is ("Mt. Hood National Forest · 12 mi SE of Estacada"); the work is in AreaLabeler ----
+    private val areaLabeler = com.trailguidegps.app.data.AreaLabeler(com.trailguidegps.app.data.AreaStore(app), { stores }, { _features.value })
+    val areaStore get() = areaLabeler.store
+    val areas get() = areaLabeler.areas
 
     init {
-        // Fill in (and keep up to date) the area line for every saved item, in the background.
-        viewModelScope.launch {
-            kotlinx.coroutines.flow.combine(
-                routes.summaries, tracks.summaries, waypoints.items, trailNotes.items,
-                kotlinx.coroutines.flow.combine(_installed, _features) { i, f -> i.sorted().joinToString(",") + "|" + (f != null) },
-            ) { r, t, w, n, maps -> listOf(r, t, w, n, maps) }.collectLatest { list ->
-                kotlinx.coroutines.delay(1500)
-                @Suppress("UNCHECKED_CAST") val r = list[0] as List<RouteSummary>
-                @Suppress("UNCHECKED_CAST") val t = list[1] as List<com.trailguidegps.app.data.TrackSummary>
-                @Suppress("UNCHECKED_CAST") val w = list[2] as List<Waypoint>
-                @Suppress("UNCHECKED_CAST") val n = list[3] as List<com.trailguidegps.app.data.TrailNote>
-                val maps = list[4] as String
-                withContext(Dispatchers.IO) {
-                    val have = areaStore.areas.value
-                    val changes = HashMap<String, com.trailguidegps.app.data.AreaStore.Info>()
-                    val keep = HashSet<String>()
-                    fun want(key: String, sig: String, points: () -> List<DoubleArray>) {
-                        keep += key
-                        val full = "$sig|$maps"
-                        if (have[key]?.sig == full) return
-                        runCatching { areaInfo(points(), full) }.getOrNull()?.let { changes[key] = it }
-                    }
-                    r.forEach { s -> want("r:${s.id}", "%.0f".format(s.distanceM)) { routes.load(s.id)?.coords.orEmpty() } }
-                    t.forEach { s -> want("t:${s.id}", "${s.pointCount}") { tracks.load(s.id)?.second.orEmpty().map { doubleArrayOf(it.lat, it.lon) } } }
-                    w.forEach { p -> want("w:${p.id}", "${p.lat},${p.lon}") { listOf(doubleArrayOf(p.lat, p.lon)) } }
-                    n.forEach { p -> want("n:${p.id}", "${p.lat},${p.lon}") { listOf(doubleArrayOf(p.lat, p.lon)) } }
-                    areaStore.update(changes, keep)
-                }
-            }
-        }
+        areaLabeler.start(viewModelScope, routes, tracks, waypoints, trailNotes,
+            kotlinx.coroutines.flow.combine(_installed, _features) { i, f -> i.sorted().joinToString(",") + "|" + (f != null) })
     }
 
     /** Opens the trail network and elevation tiles (unpacking the network the first time). */
