@@ -82,4 +82,35 @@ class DataSafetyTest {
         assertEquals(5, store.load(s.id)!!.second.size)
         store.delete(s.id)
     }
+
+    @Test fun trackListSurvivesARestartAndFollowsChanges() {
+        val pts = (0..4).map { TrackPoint(44.0 + it * 0.001, -121.0, 1000.0, 1_700_000_000_000L + it * 10_000L) }
+        val first = TrackStore(app)
+        val s = first.save("Morning walk", pts)
+        // A fresh store (the next launch) lists the same track with the same totals, from the index.
+        val second = TrackStore(app)
+        val again = second.summaries.value.single { it.id == s.id }
+        assertEquals("Morning walk", again.name)
+        assertEquals(s.stats.distanceM, again.stats.distanceM, 0.001)
+        assertEquals(5, again.pointCount)
+        // A rename, more points and a delete all show up, in this store and after another restart.
+        second.rename(s.id, "Evening walk")
+        assertEquals("Evening walk", TrackStore(app).summaries.value.single { it.id == s.id }.name)
+        second.save("Evening walk", pts + TrackPoint(44.01, -121.0, 1000.0, 1_700_000_100_000L), s.id)
+        assertEquals(6, TrackStore(app).summaries.value.single { it.id == s.id }.pointCount)
+        second.delete(s.id)
+        assertEquals(0, TrackStore(app).summaries.value.count { it.id == s.id })
+    }
+
+    @Test fun aFileChangedBehindTheIndexIsReadAgain() {
+        val pts = (0..4).map { TrackPoint(44.0 + it * 0.001, -121.0, 1000.0, 1_700_000_000_000L + it * 10_000L) }
+        val store = TrackStore(app)
+        val s = store.save("Before", pts)
+        // As a restored backup does: the file is replaced without the store knowing.
+        val f = File(File(app.filesDir, "tracks"), "${s.id}.json")
+        f.writeText(f.readText().replace("\"Before\"", "\"After restore\""))
+        store.reload()
+        assertEquals("After restore", store.summaries.value.single { it.id == s.id }.name)
+        store.delete(s.id)
+    }
 }

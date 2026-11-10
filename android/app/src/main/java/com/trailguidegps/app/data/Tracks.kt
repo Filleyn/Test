@@ -51,6 +51,13 @@ data class TrackSummary(val id: String, val name: String, val startedAt: Long, v
 /** Saved tracks, one JSON file each in the app's private storage. */
 class TrackStore(context: Context) {
     private val dir = File(context.filesDir, "tracks").apply { mkdirs() }
+    // Totals for each track are remembered, so a long list of tracks isn't re-read in full at
+    // every launch and after every save.
+    private val index = SummaryIndex<TrackSummary>(File(context.cacheDir, "tracks-index.json"), 1,
+        write = { s -> JSONObject().put("id", s.id).put("name", s.name).put("started", s.startedAt).put("n", s.pointCount)
+            .put("d", s.stats.distanceM).put("g", s.stats.gainM).put("l", s.stats.lossM).put("mv", s.stats.movingMs).put("t", s.stats.totalMs) },
+        read = { o -> TrackSummary(o.getString("id"), o.getString("name"), o.getLong("started"),
+            TrackStats(o.getDouble("d"), o.getDouble("g"), o.getDouble("l"), o.getLong("mv"), o.getLong("t")), o.getInt("n")) })
     private val _summaries = MutableStateFlow(scan())
     val summaries: StateFlow<List<TrackSummary>> = _summaries.asStateFlow()
 
@@ -63,6 +70,7 @@ class TrackStore(context: Context) {
         o.put("points", arr)
         // Throws if the file can't be written (a full phone), so the caller keeps its copy of the points.
         SafeFile.write(File(dir, "$id.json"), o.toString())
+        index.drop("$id.json")
         _summaries.value = scan()
         return _summaries.value.firstOrNull { it.id == id }
             ?: TrackSummary(id, name, points.firstOrNull()?.time ?: System.currentTimeMillis(), TrackStats.of(points), points.size)
@@ -84,14 +92,14 @@ class TrackStore(context: Context) {
 
     fun delete(id: String) {
         File(dir, "$id.json").delete()
+        index.drop("$id.json")
         _summaries.value = scan()
     }
 
     /** Re-reads the folder (after restoring a backup). */
     fun reload() { _summaries.value = scan() }
 
-    private fun scan(): List<TrackSummary> = (dir.listFiles { f -> f.name.endsWith(".json") } ?: emptyArray())
-        .mapNotNull { f ->
+    private fun scan(): List<TrackSummary> = index.scan(dir.listFiles { f -> f.name.endsWith(".json") } ?: emptyArray()) { f ->
             runCatching {
                 val o = JSONObject(f.readText())
                 val arr = o.getJSONArray("points")

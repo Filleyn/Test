@@ -305,6 +305,14 @@ object RouteColors {
 /** Saved routes, one JSON file each in the app's private storage. */
 class RouteStore(context: Context) {
     private val dir = File(context.filesDir, "routes").apply { mkdirs() }
+    // Each route's list row is remembered, so routes aren't all re-read at every launch and save.
+    private val index = SummaryIndex<RouteSummary>(File(context.cacheDir, "routes-index.json"), 1,
+        write = { s -> JSONObject().put("id", s.id).put("name", s.name).put("created", s.createdAt).put("d", s.distanceM).put("g", s.gainM)
+            .put("l", s.lossM).put("color", s.color).put("notes", s.notes).put("days", s.days).put("hard", s.hardestLevel ?: JSONObject.NULL)
+            .put("ts", s.tripStart).put("te", s.tripEnd).put("ob", s.outAndBack) },
+        read = { o -> RouteSummary(o.getString("id"), o.getString("name"), o.getLong("created"), o.getDouble("d"), o.getDouble("g"),
+            o.getDouble("l"), o.getString("color"), o.optString("notes"), o.getInt("days"), if (o.isNull("hard")) null else o.getInt("hard"),
+            o.getLong("ts"), o.getLong("te"), o.getBoolean("ob")) })
     private val _summaries = MutableStateFlow(scan())
     val summaries: StateFlow<List<RouteSummary>> = _summaries.asStateFlow()
 
@@ -331,6 +339,7 @@ class RouteStore(context: Context) {
         val tmp = File(dir, "${r.id}.json.tmp")
         tmp.writeText(o.toString())
         tmp.renameTo(File(dir, "${r.id}.json"))
+        index.drop("${r.id}.json")
         _summaries.value = scan()
     }
 
@@ -385,14 +394,14 @@ class RouteStore(context: Context) {
 
     fun delete(id: String) {
         File(dir, "$id.json").delete()
+        index.drop("$id.json")
         _summaries.value = scan()
     }
 
     /** Re-reads the folder (after restoring a backup). */
     fun reload() { _summaries.value = scan() }
 
-    private fun scan(): List<RouteSummary> = (dir.listFiles { f -> f.name.endsWith(".json") } ?: emptyArray())
-        .mapNotNull { f ->
+    private fun scan(): List<RouteSummary> = index.scan(dir.listFiles { f -> f.name.endsWith(".json") } ?: emptyArray()) { f ->
             runCatching {
                 // Read only the small fields; the line itself can be large.
                 val o = JSONObject(f.readText())
