@@ -530,6 +530,16 @@ fun MapScreen(
     LaunchedEffect(style, trailNotes) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_NOTES)?.setGeoJson(com.trailguidegps.app.data.TrailNoteStore.geoJson(trailNotes))
     }
+    // Small pictures on the map for waypoints and notes that have a photo (zoomed in).
+    val thumbDensity = androidx.compose.ui.platform.LocalDensity.current.density
+    LaunchedEffect(style, waypoints, trailNotes) {
+        val s = style ?: return@LaunchedEffect
+        val names = (waypoints.mapNotNull { it.photos.firstOrNull() } + trailNotes.mapNotNull { it.photos.firstOrNull() }).distinct().take(200)
+        val made = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            names.mapNotNull { n -> com.trailguidegps.app.map.MapIcons.photoThumb(vm.photos.file(n), thumbDensity)?.let { "ph-$n" to it } }
+        }
+        made.forEach { (id, bmp) -> runCatching { s.addImage(id, bmp) } }
+    }
     LaunchedEffect(style, recording?.points?.size) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_RECORDING)
             ?.setGeoJson(TrackStore.lineGeoJson(recording?.points.orEmpty()))
@@ -1526,6 +1536,7 @@ private fun BottomPanel(
                 }
                 var editingNotes by remember(r.id) { mutableStateOf(false) }
                 var showChecklist by remember(r.id) { mutableStateOf(false) }
+                var showTurns by remember(r.id) { mutableStateOf(false) }
                 if (r.notes.isNotBlank()) {
                     Text("Notes: ${r.notes}", fontSize = 12.sp, color = TG.Ink, lineHeight = 16.sp, maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -1552,13 +1563,15 @@ private fun BottomPanel(
                     Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
                     Action(Icons.Filled.StickyNote2, "Notes") { editingNotes = true },
                     Action(Icons.Filled.CheckCircle, "Checklist") { showChecklist = true },
-                ), Modifier.padding(top = 4.dp), columns = 5)
+                    Action(Icons.Filled.Navigation, "Turns") { showTurns = true },
+                ), Modifier.padding(top = 4.dp), columns = 6)
                 if (routeOnly) Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show less") { setRouteCompact(true) }.padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center) {
                     Text("Less ▼ (more map)", fontSize = 12.sp, color = TG.Accent)
                 }
                 if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
                 if (showChecklist) ChecklistDialog(tripVm, r) { showChecklist = false }
+                if (showTurns) TurnsDialog(tripVm, r, onPick = { la, lo -> showTurns = false; tripVm.focusOn(listOf(la to lo)) }, onDismiss = { showTurns = false })
             }
             shownTrackName?.let { name ->
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {

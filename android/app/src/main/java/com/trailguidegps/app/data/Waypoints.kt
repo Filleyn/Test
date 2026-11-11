@@ -92,7 +92,8 @@ class WaypointStore(context: Context) {
         _items.value.forEach { w ->
             features.put(JSONObject().put("type", "Feature")
                 .put("geometry", JSONObject().put("type", "Point").put("coordinates", JSONArray().put(w.lon).put(w.lat)))
-                .put("properties", JSONObject().put("id", w.id).put("name", w.name).put("color", w.color).put("wp", true).put("photo", w.photos.isNotEmpty())))
+                .put("properties", JSONObject().put("id", w.id).put("name", w.name).put("color", w.color).put("wp", true).put("photo", w.photos.isNotEmpty())
+                    .apply { w.photos.firstOrNull()?.let { put("thumb", "ph-$it") } }))
         }
         return JSONObject().put("type", "FeatureCollection").put("features", features).toString()
     }

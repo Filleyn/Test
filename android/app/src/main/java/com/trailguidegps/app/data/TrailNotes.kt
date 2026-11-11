@@ -72,7 +72,8 @@ class TrailNoteStore(context: Context) {
             val f = JSONArray()
             notes.forEach { n ->
                 f.put(JSONObject().put("type", "Feature")
-                    .put("properties", JSONObject().put("id", n.id).put("title", n.title).put("photo", n.photos.isNotEmpty()))
+                    .put("properties", JSONObject().put("id", n.id).put("title", n.title).put("photo", n.photos.isNotEmpty())
+                        .apply { n.photos.firstOrNull()?.let { put("thumb", "ph-$it") } })
                     .put("geometry", JSONObject().put("type", "Point").put("coordinates", JSONArray().put(n.lon).put(n.lat))))
             }
             return JSONObject().put("type", "FeatureCollection").put("features", f).toString()

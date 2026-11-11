@@ -114,7 +114,8 @@ object TripPlan {
 
     /** Writes the PDF. [map] is a snapshot of the route area with the route drawn on it, or null. */
     fun write(out: File, route: SavedRoute, form: TripForm, pace: Pace, map: Bitmap?, area: String? = null,
-              water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null, gear: String? = null) {
+              water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null, gear: String? = null,
+              turns: List<String> = emptyList()) {
         val doc = PdfDocument()
         var pageNo = 1
         var page = doc.startPage(PdfDocument.PageInfo.Builder(612, 792, pageNo).create())
@@ -261,6 +262,13 @@ object TripPlan {
             heading("DAY BY DAY")
             tripDays.forEach { d -> para(dayLine(route, d, water.first[d.day]), text) }
             if (water.first.isNotEmpty()) para(WATER_NOTE, label)
+            y += 6
+        }
+
+        // Each change of trail along the way, by mile.
+        if (turns.isNotEmpty()) {
+            heading("TRAIL BY TRAIL")
+            turns.forEach { para(it, text) }
             y += 6
         }
 

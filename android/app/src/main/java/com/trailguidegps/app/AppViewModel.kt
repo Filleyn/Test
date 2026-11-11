@@ -408,6 +408,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** A route trail by trail: each change of trail, with its mile and which way to turn. */
+    suspend fun turnSheet(route: SavedRoute): List<com.trailguidegps.app.route.TurnSheet.Step> = withContext(Dispatchers.Default) {
+        runCatching { com.trailguidegps.app.route.TurnSheet.build(route.coords, graphs) }.getOrDefault(emptyList())
+    }
+
     /** The quickest ways out from a spot by trail: nearest trailheads and the nearest road. */
     suspend fun waysOut(lat: Double, lon: Double): com.trailguidegps.app.route.WaysOut.Result = withContext(Dispatchers.Default) {
         com.trailguidegps.app.route.WaysOut.find(graphs, features.value, terrain, _pace.value, lat, lon)
@@ -514,13 +519,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val water = withContext(Dispatchers.Default) {
                     runCatching { tripWater(route) }.getOrDefault(emptyMap<Int, String>() to null)
                 }
+                val turns = turnSheet(route).takeIf { it.size >= 2 }?.map { it.line() }.orEmpty()
                 val gear = runCatching { com.trailguidegps.app.data.Checklist.packedLine(checklistItems(route), checklists.get(route.id)) }.getOrNull()
                 val r = withContext(Dispatchers.IO) {
                     runCatching {
                         val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
                         val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
                         val f = java.io.File(dir, "Trip plan - $safe.pdf")
-                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line, water, gear)
+                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line, water, gear, turns)
                         // Shared straight from the app's own folder: no copy is left in Downloads.
                         androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
                     }

@@ -618,6 +618,12 @@ object MapStyle {
         layer("waypoint-labels", "symbol", SRC_WAYPOINTS, paint = halo("#FFFFFF", "#23271F"),
             layout = JSONObject().put("text-font", arr(MEDIUM)).put("text-size", 12).put("text-offset", arr(0, 1.2))
                 .put("text-anchor", "top").put("text-field", arr("get", "name")).put("text-optional", true))
+        // The first photo of a waypoint or note, as a small picture above it once you're zoomed in.
+        listOf("user-notes-thumb" to SRC_NOTES, "waypoint-thumb" to SRC_WAYPOINTS).forEach { (id, src) ->
+            layer(id, "symbol", src, filter = arr("has", "thumb"),
+                layout = JSONObject().put("icon-image", arr("get", "thumb")).put("icon-anchor", "bottom").put("icon-offset", arr(0, -14))
+                    .put("icon-allow-overlap", true), minzoom = 13.0)
+        }
 
         return JSONObject()
             .put("version", 8)

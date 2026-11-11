@@ -93,6 +93,35 @@ object MapIcons {
     }
 
     /** A small dark circle with a white camera. */
+    /** A small square picture with a white border, for a waypoint or note that has a photo. Null if the file can't be read. */
+    fun photoThumb(file: java.io.File, density: Float): Bitmap? {
+        return runCatching {
+            val size = (46 * density).toInt()
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            var sample = 1
+            while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= size) sample *= 2
+            val raw = android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+                ?: return null
+            val side = minOf(raw.width, raw.height)
+            val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(out)
+            val r = 6f * density
+            val inset = 2.5f * density
+            c.drawRoundRect(android.graphics.RectF(0f, 0f, size.toFloat(), size.toFloat()), r, r,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() })
+            val inner = android.graphics.RectF(inset, inset, size - inset, size - inset)
+            val src = android.graphics.Rect((raw.width - side) / 2, (raw.height - side) / 2, (raw.width + side) / 2, (raw.height + side) / 2)
+            c.save()
+            c.clipPath(Path().apply { addRoundRect(inner, r - inset, r - inset, Path.Direction.CW) })
+            c.drawBitmap(raw, src, inner, Paint(Paint.FILTER_BITMAP_FLAG))
+            c.restore()
+            raw.recycle()
+            out
+        }.getOrNull()
+    }
+
     private fun photoBadge(density: Float): Bitmap {
         val s = 14f * density
         val bmp = Bitmap.createBitmap(s.toInt(), s.toInt(), Bitmap.Config.ARGB_8888)
