@@ -83,6 +83,8 @@ class WaterTools(
                     .format(g.lengthM / mi, g.fromM / mi, g.toM / mi) },
                 d.campFill?.let { g -> "No reliable water at camp: fill up with about ${WaterCarry.liters(g.carryL)} at mile %.1f".format(g.fromM / mi) +
                     " (to camp, the night and on to water at mile %.1f)".format(g.toM / mi) },
+                d.total?.takeIf { t -> d.walk == null || t.lengthM > d.walk.lengthM + 1 }
+                    ?.let { t -> "about ${WaterCarry.liters(t.carryL)} to drink over the whole day's walk" },
             )
             return if (parts.isEmpty()) null else parts.joinToString("; ") + " (${heat.label.lowercase()} weather)."
         }

@@ -27,6 +27,12 @@ object WaterCarry {
     const val CAMP_L = 3.0
     /** Always a little extra. */
     const val EXTRA_L = 0.5
+    /** You drink more going uphill: the time climbing adds counts this many times over. */
+    const val CLIMB_FACTOR = 1.5
+
+    /** Litres drunk over [minutes] of hiking, [climbMin] of which climbing added. */
+    fun drink(minutes: Int, climbMin: Int, heat: Heat, rate: Rate): Double =
+        (minutes + (CLIMB_FACTOR - 1) * climbMin.coerceIn(0, minutes)) / 60.0 * heat.litersPerHour * rate.factor
 
     /** A first guess when there's no forecast: from the month and how high the route goes. */
     fun guess(month: Int, highFt: Double): Heat {
@@ -39,6 +45,8 @@ object WaterCarry {
     data class Gap(
         val fromM: Double, val toM: Double, val gainM: Double, val minutes: Int,
         val dryCamps: Int, val walkL: Double, val carryL: Double,
+        /** The part of [minutes] that climbing added; it counts [CLIMB_FACTOR] times in [walkL]. */
+        val climbMin: Int = 0,
     ) {
         val lengthM get() = toM - fromM
     }
@@ -59,8 +67,9 @@ object WaterCarry {
             val gain = TripDays.gainLoss(stats.profile, a, b).first * scale
             val minutes = pace.minutes(b - a, gain)
             val dry = camps.count { !it.second && it.first > a && it.first < b }
-            val walk = minutes / 60.0 * heat.litersPerHour * rate.factor
-            Gap(a, b, gain, minutes, dry, walk, roundUp(walk + dry * CAMP_L + EXTRA_L))
+            val climb = pace.climbMinutes(gain)
+            val walk = drink(minutes, climb, heat, rate)
+            Gap(a, b, gain, minutes, dry, walk, roundUp(walk + dry * CAMP_L + EXTRA_L), climb)
         }
     }
 
@@ -68,9 +77,11 @@ object WaterCarry {
      * One day's water. [walk] is the longest stretch without water inside the day's own miles,
      * leaving out the part to or from a dry camp (that's in [campFill]). [campFill], when the day
      * ends at a camp with no water, is what to fill up with at the last water before camp: the
-     * rest of the way in, the night, and the morning walk to the next water.
+     * rest of the way in, the night, and the morning walk to the next water. [total] is what
+     * you'd drink over all of the day's walking, refilling along the way (its carryL is just
+     * that, rounded up; null on a rest day).
      */
-    data class Day(val day: Int, val walk: Gap?, val campFill: Gap?)
+    data class Day(val day: Int, val walk: Gap?, val campFill: Gap?, val total: Gap? = null)
 
     /**
      * Water day by day. [days] are each day's (from, to) along the route, in order; the camps sit
@@ -89,8 +100,9 @@ object WaterCarry {
         fun gap(a: Double, b: Double): Gap {
             val gain = TripDays.gainLoss(stats.profile, a, b).first * scale
             val minutes = pace.minutes(b - a, gain)
-            val walk = minutes / 60.0 * heat.litersPerHour * rate.factor
-            return Gap(a, b, gain, minutes, 0, walk, roundUp(walk + EXTRA_L))
+            val climb = pace.climbMinutes(gain)
+            val walk = drink(minutes, climb, heat, rate)
+            return Gap(a, b, gain, minutes, 0, walk, roundUp(walk + EXTRA_L), climb)
         }
         return days.mapIndexed { i, (from, to) ->
             val cuts = listOf(from) + marks.filter { it > from + 1 && it < to - 1 } + listOf(to)
@@ -102,7 +114,8 @@ object WaterCarry {
             val walk = pieces.filter { (a, b) -> b - a > 1 }.map { (a, b) -> gap(a, b) }.maxByOrNull { it.minutes }
             // The fill-up goes with the day you walk in; rest days at the same camp are covered by it.
             val fill = if (endsDry && to - from > 1) whole.firstOrNull { it.fromM < to && it.toM > to } else null
-            Day(i + 1, walk, fill)
+            val all = if (to - from > 1) gap(from, to).let { it.copy(carryL = roundUp(it.walkL)) } else null
+            Day(i + 1, walk, fill, all)
         }
     }
 

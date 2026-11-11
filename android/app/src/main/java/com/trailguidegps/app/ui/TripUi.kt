@@ -840,7 +840,8 @@ private fun WaterSection(w: WaterUi) {
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = WaterBlue, selectedLabelColor = Color.White))
             }
         }
-        Text("A planning estimate: about ${rateText(w.heat.litersPerHour * w.rate.factor)} L per hour of walking at this heat, plus " +
+        Text("A planning estimate: about ${rateText(w.heat.litersPerHour * w.rate.factor)} L per hour of walking at this heat " +
+            "(the time climbing adds counts ${rateText(WaterCarry.CLIMB_FACTOR)} times), plus " +
             "${WaterCarry.liters(WaterCarry.CAMP_L)} for a night at a dry camp and ${WaterCarry.liters(WaterCarry.EXTRA_L)} extra, rounded up. " +
             "Seasonal water and small unnamed streams aren't counted as reliable. Mapped water can be missing or dry, so carry extra and check recent reports.",
             fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
@@ -856,8 +857,11 @@ private fun DayWater(w: WaterUi, day: Int) {
     var open by remember(day) { mutableStateOf(false) }
     if (g == null) {
         if (d.campFill == null && w.days.getOrNull(day - 2)?.campFill == null) return
-        Text("No stretch without water today beyond the walk to or from a dry camp (see the camp).", fontSize = 12.sp, color = TG.Muted,
-            modifier = Modifier.padding(top = 4.dp))
+        Column(Modifier.fillMaxWidth()) {
+            Text("No stretch without water today beyond the walk to or from a dry camp (see the camp).", fontSize = 12.sp, color = TG.Muted,
+                modifier = Modifier.padding(top = 4.dp))
+            DayTotal(d)
+        }
         return
     }
     Column(Modifier.fillMaxWidth().clickable { open = !open }.padding(top = 4.dp)) {
@@ -868,7 +872,17 @@ private fun DayWater(w: WaterUi, day: Int) {
             Text("About ${WaterCarry.liters(gs.carryL)} if seasonal water and small unnamed streams are flowing", fontSize = 12.sp, color = TG.Muted)
         }
         if (open) WaterMath(w, g) else Text("How this is worked out ▸", fontSize = 12.sp, color = TG.Accent)
+        DayTotal(d)
     }
+}
+
+/** What you'd drink over the whole day's walking, when that's more than the longest dry stretch. */
+@Composable
+private fun DayTotal(d: WaterCarry.Day) {
+    val t = d.total ?: return
+    if (d.walk != null && t.lengthM <= d.walk.lengthM + 1) return
+    Text("Whole day: about ${WaterCarry.liters(t.carryL)} to drink over ${Pace.format(t.minutes)} of walking, refilling along the way",
+        fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp)
 }
 
 /** At a camp with no reliable water: what to fill up with at the last water before it. */
@@ -890,7 +904,8 @@ private fun CampFill(w: WaterUi, day: Int, seasonalCamp: Boolean) {
 private fun WaterMath(w: WaterUi, g: WaterCarry.Gap) {
     val rate = w.heat.litersPerHour * w.rate.factor
     Text(
-        "${mi(g.lengthM)} of walking with +${ft(g.gainM)} is about ${Pace.format(g.minutes)} at your pace. " +
+        "${mi(g.lengthM)} of walking with +${ft(g.gainM)} is about ${Pace.format(g.minutes)} at your pace" +
+            (if (g.climbMin > 0) ", ${Pace.format(g.climbMin)} of it added by the climbing and counted ${rateText(WaterCarry.CLIMB_FACTOR)} times" else "") + ". " +
             "× ${rateText(rate)} L an hour (${w.heat.label.lowercase()}) = " + "%.1f L".format(g.walkL) +
             (if (g.dryCamps > 0) ", + ${WaterCarry.liters(g.dryCamps * WaterCarry.CAMP_L)} for the night" + (if (g.dryCamps > 1) "s" else "") else "") +
             ", + ${WaterCarry.liters(WaterCarry.EXTRA_L)} extra, rounded up to ${WaterCarry.liters(g.carryL)}.",

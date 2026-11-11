@@ -30,6 +30,8 @@ object TrackRecorder {
     val state: StateFlow<Recording?> = _state.asStateFlow()
 
     private var file: File? = null
+    /** The recording's totals so far, added to at each point. */
+    private var running = TrackStats.Running()
     private const val MAX_ACCURACY_M = 35f
     private const val MIN_STEP_M = 4.0
 
@@ -40,6 +42,7 @@ object TrackRecorder {
     fun start(context: Context) {
         if (_state.value != null) return
         file = journal(context).apply { delete() }
+        running = TrackStats.Running()
         _state.value = Recording(System.currentTimeMillis(), emptyList(), false, TrackStats.of(emptyList()))
     }
 
@@ -61,8 +64,8 @@ object TrackRecorder {
         val last = rec.points.lastOrNull()
         // Skip GPS jitter while standing still, but keep a point at least once a minute.
         if (last != null && Geo.distanceM(last.lat, last.lon, p.lat, p.lon) < MIN_STEP_M && p.time - last.time < 60_000) return
-        val pts = rec.points + p
-        _state.value = rec.copy(points = pts, stats = TrackStats.of(pts))
+        running.add(p)
+        _state.value = rec.copy(points = rec.points + p, stats = running.stats())
         file?.appendText(JSONArray().put(p.lat).put(p.lon).put(p.eleM ?: org.json.JSONObject.NULL).put(p.time).toString() + "\n")
     }
 
@@ -88,7 +91,8 @@ object TrackRecorder {
         val pts = recoverable(context)
         if (pts.isEmpty()) return false
         file = journal(context)
-        _state.value = Recording(pts.first().time, pts, false, TrackStats.of(pts))
+        running = TrackStats.Running().apply { pts.forEach { add(it) } }
+        _state.value = Recording(pts.first().time, pts, false, running.stats())
         return true
     }
 

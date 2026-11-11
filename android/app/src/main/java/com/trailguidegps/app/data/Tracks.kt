@@ -21,27 +21,45 @@ data class TrackStats(val distanceM: Double, val gainM: Double, val lossM: Doubl
         /** Ignore elevation wiggles under about 10 ft so GPS noise doesn't inflate climb. */
         private const val ELE_HYSTERESIS_M = 3.0
 
-        fun of(points: List<TrackPoint>): TrackStats {
-            if (points.size < 2) return TrackStats(0.0, 0.0, 0.0, 0, 0)
-            var dist = 0.0
-            var moving = 0L
-            var gain = 0.0
-            var loss = 0.0
-            var ref: Double? = points.firstOrNull { it.eleM != null }?.eleM
-            for (i in 1 until points.size) {
-                val a = points[i - 1]
-                val b = points[i]
+        fun of(points: List<TrackPoint>): TrackStats = Running().apply { points.forEach { add(it) } }.stats()
+    }
+
+    /**
+     * Totals kept up one point at a time, so a recording doesn't re-walk the whole track at
+     * every GPS fix. [of] uses the same sums, so live and saved totals always agree.
+     */
+    class Running {
+        private var first: TrackPoint? = null
+        private var last: TrackPoint? = null
+        private var dist = 0.0
+        private var moving = 0L
+        private var gain = 0.0
+        private var loss = 0.0
+        private var ref: Double? = null
+
+        fun add(b: TrackPoint) {
+            val a = last
+            val e = b.eleM
+            if (a != null) {
                 val d = Geo.distanceM(a.lat, a.lon, b.lat, b.lon)
                 val dt = (b.time - a.time).coerceAtLeast(0)
                 dist += d
                 if (dt in 1..120_000 && d / (dt / 1000.0) > MOVING_MPS) moving += dt
-                val e = b.eleM
-                if (e != null && ref != null) {
-                    if (e - ref > ELE_HYSTERESIS_M) { gain += e - ref; ref = e }
-                    else if (ref - e > ELE_HYSTERESIS_M) { loss += ref - e; ref = e }
+                val r = ref
+                if (e != null && r != null) {
+                    if (e - r > ELE_HYSTERESIS_M) { gain += e - r; ref = e }
+                    else if (r - e > ELE_HYSTERESIS_M) { loss += r - e; ref = e }
                 }
-            }
-            return TrackStats(dist, gain, loss, moving, points.last().time - points.first().time)
+            } else first = b
+            // Climb is measured from the first point that has an elevation.
+            if (ref == null && e != null) ref = e
+            last = b
+        }
+
+        fun stats(): TrackStats {
+            val f = first ?: return TrackStats(0.0, 0.0, 0.0, 0, 0)
+            val l = last ?: f
+            return TrackStats(dist, gain, loss, moving, l.time - f.time)
         }
     }
 }

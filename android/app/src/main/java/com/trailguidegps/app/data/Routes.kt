@@ -179,6 +179,12 @@ data class Pace(val mph: Double = 2.0, val climbMinPer1000Ft: Int = 30, val brea
         return (moving + moving / 60.0 * breakMinPerHour).roundToInt()
     }
 
+    /** The part of [minutes] that climbing adds (with its share of breaks). */
+    fun climbMinutes(gainM: Double): Int {
+        val climb = gainM * Geo.FT_PER_M / 1000.0 * climbMinPer1000Ft
+        return (climb + climb / 60.0 * breakMinPerHour).roundToInt()
+    }
+
     companion object {
         /** One recorded hike, as the pace fit sees it. Distance m, climb m, times in minutes. */
         data class Hike(val distanceM: Double, val gainM: Double, val movingMin: Double, val totalMin: Double)

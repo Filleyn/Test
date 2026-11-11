@@ -36,6 +36,20 @@ class WaterCarryTest {
         assertEquals(5.5, hot.carryL, 1e-9)
     }
 
+    @Test fun climbingCountsOneAndAHalfTimes() {
+        // 10 km with 1,000 ft of climb: 186 min of walking + 30 min for the climb, plus breaks = 252 min,
+        // 35 of them from the climb. (252 + 0.5 × 35) / 60 × 0.5 L = 2.25 L.
+        val hill = RouteStats(10_000.0, 304.8, 0.0, listOf(0.0 to 100.0, 10_000.0 to 404.8))
+        val g = WaterCarry.worst(WaterCarry.gaps(hill, emptyList(), emptyList(), pace, WaterCarry.Heat.MILD, WaterCarry.Rate.NORMAL))!!
+        assertEquals(252, g.minutes)
+        assertEquals(35, g.climbMin)
+        assertEquals(2.2458, g.walkL, 0.001)
+        // Flat ground is unchanged.
+        val f = WaterCarry.worst(WaterCarry.gaps(flat, emptyList(), emptyList(), pace, WaterCarry.Heat.MILD, WaterCarry.Rate.NORMAL))!!
+        assertEquals(0, f.climbMin)
+        assertEquals(f.minutes / 60.0 * 0.5, f.walkL, 1e-9)
+    }
+
     @Test fun guesses() {
         assertEquals(WaterCarry.Heat.HOT, WaterCarry.guess(8, 2_000.0))
         assertEquals(WaterCarry.Heat.WARM, WaterCarry.guess(8, 5_000.0))
@@ -61,6 +75,10 @@ class WaterCarryTest {
         assertEquals(3_000.0, wet[0].walk!!.lengthM, 0.1); assertEquals(5_000.0, wet[0].walk!!.toM, 0.1)
         assertEquals(3_000.0, wet[1].walk!!.lengthM, 0.1); assertEquals(5_000.0, wet[1].walk!!.fromM, 0.1)
         assertEquals(null, wet[0].campFill)
+        // The whole day: 5 km is 109 minutes, × 0.5 L an hour = 0.9 L, rounded up.
+        assertEquals(5_000.0, wet[0].total!!.lengthM, 0.1)
+        assertEquals(109, wet[0].total!!.minutes)
+        assertEquals(1.0, wet[0].total!!.carryL, 1e-9)
     }
 
     @Test fun whichWaterCountsAsReliable() {
