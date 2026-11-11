@@ -88,14 +88,14 @@ The app declares two foreground service types. Each needs a description, the use
 ### Location (`FOREGROUND_SERVICE_LOCATION`)
 
 - **Use case:** Background location updates: navigation
-- **Description:** TrailGuide GPS is a hiking navigation app. When the user taps Record to record a track, or Follow to be guided along a route, the app starts a foreground service that keeps receiving GPS positions with the screen off, so the track is recorded and the user is alerted if they leave the route. A notification is shown the whole time with the distance so far and a Stop action. The service starts only from these two buttons and stops as soon as the user stops recording or following.
+- **Description:** TrailGuide GPS is a hiking navigation app. When the user taps Record to record a track, or Follow to be guided along a route, the app starts a foreground service that keeps receiving GPS positions with the screen off, so the track is recorded and the user is alerted if they leave the route. A notification is shown the whole time; tapping it opens the app, where Stop is one tap. The service starts only from these two buttons and stops as soon as the user stops recording or following.
 - **User impact if deferred or interrupted:** Hikers keep the phone in a pocket with the screen off for hours. If the service were deferred or stopped, the recorded track would have gaps or end early, and off-route alerts would not fire, which can leave a hiker on the wrong trail without knowing it.
 - **Video (about 30 seconds):** open the app → tap Record → show the notification → lock the screen for a few seconds → unlock and show the track growing → tap Stop and save. Then open a saved route → tap Follow → show the Follow panel and notification → tap Stop.
 
 ### Data sync (`FOREGROUND_SERVICE_DATA_SYNC`)
 
 - **Use case:** Network transfer: upload or download
-- **Description:** The user chooses a state to download in the Maps screen (or an area of satellite imagery) so the map works offline. A state's map files are several hundred megabytes to a few gigabytes. The app starts a foreground service for the download so it can finish if the user switches apps or the screen turns off, with a notification showing progress and a Cancel action. The service starts only when the user taps Download or Update and stops when the download finishes, fails or is cancelled.
+- **Description:** The user chooses a state to download in the Maps screen (or an area of satellite imagery) so the map works offline. A state's map files are several hundred megabytes to a few gigabytes. The app starts a foreground service for the download so it can finish if the user switches apps or the screen turns off, with a notification showing progress. The service starts only when the user taps Download or Update and stops when the download finishes, fails or is cancelled.
 - **User impact if deferred or interrupted:** The download would stop whenever the user left the app, and large map files would not finish. Users download maps at home on Wi-Fi shortly before a trip; an unfinished download means no map where there is no signal.
 - **Video (about 20 seconds):** Settings → Maps → pick a state → tap Download → show the progress notification → leave the app and come back to show it still running.
 
