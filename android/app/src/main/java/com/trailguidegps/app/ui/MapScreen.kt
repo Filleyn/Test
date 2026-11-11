@@ -1397,8 +1397,9 @@ private fun BottomPanel(
                 Spacer(Modifier.height(4.dp))
                 Text("Keeps recording with the screen off.", fontSize = 12.sp, color = TG.Muted)
                 // Re-read whenever a point comes in: how long the battery lasts at the rate it's been dropping.
+                val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
                 remember(recording.points.size) {
-                    com.trailguidegps.app.data.BatteryEstimate.line(recording.batteryPct, com.trailguidegps.app.data.BatteryEstimate.now(context),
+                    com.trailguidegps.app.data.BatteryEstimate.line(recording.batteryPct, com.trailguidegps.app.data.BatteryEstimate.now(appContext),
                         System.currentTimeMillis() - recording.batteryAtMs)
                 }?.let { Text(it, fontSize = 12.sp, color = TG.Muted) }
                 Spacer(Modifier.height(12.dp))
