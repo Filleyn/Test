@@ -444,6 +444,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         water.days(route, camps, heat, reliableOnly)
     private fun tripWater(route: SavedRoute) = water.forTripPlan(route)
 
+    // ---- Packing checklist for a route ----
+
+    val checklists = com.trailguidegps.app.data.ChecklistStore(app)
+
+    /** The packing list suggested for a route, from its days, nights, heat, water and climbing. */
+    suspend fun checklistItems(route: SavedRoute): List<com.trailguidegps.app.data.Checklist.Item> = withContext(Dispatchers.Default) {
+        val (heat, _) = water.heat(route)
+        val days = com.trailguidegps.app.data.TripDays.days(route, route.camps, _pace.value)
+        val w = runCatching { water.days(route, route.camps, heat, reliableOnly = true) }.getOrDefault(emptyList())
+        val cal = java.util.Calendar.getInstance().apply { if (route.tripStart > 0) timeInMillis = route.tripStart }
+        val ft = com.trailguidegps.app.geo.Geo.FT_PER_M
+        com.trailguidegps.app.data.Checklist.suggest(com.trailguidegps.app.data.Checklist.Trip(
+            days = com.trailguidegps.app.data.TripDays.totalDays(route.camps),
+            nights = route.camps.sumOf { it.nights.coerceAtLeast(1) },
+            heat = heat,
+            carryL = w.flatMap { listOfNotNull(it.walk?.carryL, it.campFill?.carryL) }.maxOrNull(),
+            dryCamp = w.any { it.campFill != null },
+            month = cal.get(java.util.Calendar.MONTH) + 1,
+            highFt = (route.stats.profile.maxOfOrNull { it.second } ?: 0.0) * ft,
+            steepestDayFt = (if (days.isEmpty()) maxOf(route.stats.gainM, route.stats.lossM)
+                else days.maxOf { d -> maxOf(d.gainM, d.lossM) }) * ft,
+        ))
+    }
+
     // ---- Trip folders ----
 
     val folders = com.trailguidegps.app.data.FolderStore(app)
@@ -490,19 +514,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val water = withContext(Dispatchers.Default) {
                     runCatching { tripWater(route) }.getOrDefault(emptyMap<Int, String>() to null)
                 }
+                val gear = runCatching { com.trailguidegps.app.data.Checklist.packedLine(checklistItems(route), checklists.get(route.id)) }.getOrNull()
                 val r = withContext(Dispatchers.IO) {
                     runCatching {
                         val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
                         val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
                         val f = java.io.File(dir, "Trip plan - $safe.pdf")
-                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line, water)
+                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line, water, gear)
                         // Shared straight from the app's own folder: no copy is left in Downloads.
                         androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
                     }
                 }
                 r.onSuccess { uri ->
                     onReady(uri, com.trailguidegps.app.data.TripPlan.subject(route, form),
-                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value, areaStore.areas.value["r:${route.id}"]?.line, water))
+                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value, areaStore.areas.value["r:${route.id}"]?.line, water, gear))
                 }.onFailure { _message.value = "Couldn't make the trip plan: ${it.message}" }
             }
         }
@@ -700,6 +725,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteRoute(id: String) {
         routes.delete(id)
+        checklists.drop(id)
         hideRoute(id)
     }
 

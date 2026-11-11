@@ -58,7 +58,7 @@ object TripPlan {
 
     /** A short plain-text version for the email body, so the essentials show without opening the PDF. */
     fun body(route: SavedRoute, form: TripForm, pace: Pace, area: String? = null,
-             water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null): String {
+             water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null, gear: String? = null): String {
         val start = route.coords.firstOrNull()
         return buildString {
             appendLine("Here's my trip plan. The PDF attached has the map.")
@@ -85,6 +85,7 @@ object TripPlan {
             }
             if (water.first.isNotEmpty() || water.second != null) appendLine(WATER_NOTE)
             if (route.notes.isNotBlank()) { appendLine(); appendLine("Route notes: ${route.notes}") }
+            gear?.let { appendLine(); appendLine("Gear packed: $it") }
             if (form.notes.isNotBlank()) { appendLine(); appendLine("Notes: ${form.notes}") }
         }
     }
@@ -112,7 +113,7 @@ object TripPlan {
 
     /** Writes the PDF. [map] is a snapshot of the route area with the route drawn on it, or null. */
     fun write(out: File, route: SavedRoute, form: TripForm, pace: Pace, map: Bitmap?, area: String? = null,
-              water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null) {
+              water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null, gear: String? = null) {
         val doc = PdfDocument()
         var pageNo = 1
         var page = doc.startPage(PdfDocument.PageInfo.Builder(612, 792, pageNo).create())
@@ -266,6 +267,12 @@ object TripPlan {
         if (route.notes.isNotBlank()) {
             heading("ROUTE NOTES")
             para(route.notes, text, 6f)
+        }
+
+        // What's ticked on the packing checklist: useful to whoever comes looking.
+        if (gear != null) {
+            heading("GEAR PACKED")
+            para(gear, text, 6f)
         }
 
         // Named points along the way.

@@ -73,6 +73,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Landscape
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.OpenInNew
@@ -1518,6 +1519,7 @@ private fun BottomPanel(
                     Text(it, fontSize = 12.sp, color = TG.Muted, maxLines = 2, lineHeight = 15.sp)
                 }
                 var editingNotes by remember(r.id) { mutableStateOf(false) }
+                var showChecklist by remember(r.id) { mutableStateOf(false) }
                 if (r.notes.isNotBlank()) {
                     Text("Notes: ${r.notes}", fontSize = 12.sp, color = TG.Ink, lineHeight = 16.sp, maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -1538,12 +1540,14 @@ private fun BottomPanel(
                     Action(Icons.Filled.SwapHoriz, "Reverse") { onReverse(r.id) },
                     Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
                     Action(Icons.Filled.StickyNote2, "Notes") { editingNotes = true },
+                    Action(Icons.Filled.CheckCircle, "Checklist") { showChecklist = true },
                 ), Modifier.padding(top = 4.dp), columns = 4)
                 if (routeOnly) Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show less") { setRouteCompact(true) }.padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center) {
                     Text("Less ▼ (more map)", fontSize = 12.sp, color = TG.Accent)
                 }
                 if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
+                if (showChecklist) ChecklistDialog(tripVm, r) { showChecklist = false }
             }
             shownTrackName?.let { name ->
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
