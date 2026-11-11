@@ -284,7 +284,8 @@ private fun DetailRow(label: String, value: String) {
 
 /** Progress along a route you're following, what's left, and an off-route warning. */
 @Composable
-fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: () -> Unit, modifier: Modifier = Modifier) {
+fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: () -> Unit, modifier: Modifier = Modifier,
+                onWaysOut: (() -> Unit)? = null) {
     val color = routeColor(f.route.color)
     Column(modifier) {
         if (f.offRoute && f.offByM != null) {
@@ -304,6 +305,7 @@ fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: ()
                 fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
+            if (onWaysOut != null) TextButton(onClick = onWaysOut) { Text("Ways out", color = TG.Accent, fontWeight = FontWeight.SemiBold) }
             TextButton(onClick = onStop) { Text("Stop", color = TG.Danger, fontWeight = FontWeight.SemiBold) }
         }
         if (f.gpsQuiet) {

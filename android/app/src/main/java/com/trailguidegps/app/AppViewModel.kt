@@ -408,6 +408,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** The quickest ways out from a spot by trail: nearest trailheads and the nearest road. */
+    suspend fun waysOut(lat: Double, lon: Double): com.trailguidegps.app.route.WaysOut.Result = withContext(Dispatchers.Default) {
+        com.trailguidegps.app.route.WaysOut.find(graphs, features.value, terrain, _pace.value, lat, lon)
+    }
+
+    /** Saves a way out as a route and shows it, so it can be followed. */
+    fun showWayOut(w: com.trailguidegps.app.route.WayOut) {
+        viewModelScope.launch {
+            val c = w.coords
+            val leg = com.trailguidegps.app.data.RouteLeg(c, w.stats.distanceM, w.leg.names, true, w.leg.kindM, w.leg.sacMax, w.leg.sacRatedM)
+            val r = SavedRoute(RouteStore.newId(), "Way out to ${w.name}", System.currentTimeMillis(),
+                listOf(com.trailguidegps.app.data.RoutePoint(c.first()[0], c.first()[1], true), com.trailguidegps.app.data.RoutePoint(c.last()[0], c.last()[1], true)),
+                c, w.stats, w.leg.names, terrain = com.trailguidegps.app.data.RouteTerrain.of(listOf(leg)))
+            withContext(Dispatchers.IO) { routes.save(r) }
+            select(null)
+            setShown(_shownRoutes.value + r, r)
+            focusOn(c.map { it[0] to it[1] })
+            _message.value = "Saved \"${r.name}\". Tap Follow to be guided along it."
+        }
+    }
+
     /** Water sources along a line, by mile, with the longest dry stretches. */
     // ---- Water along a route and what to carry (the logic lives in WaterTools) ----
 

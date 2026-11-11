@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.OpenInNew
@@ -169,6 +170,7 @@ fun MapScreen(
     val heading by vm.compass.heading.collectAsStateWithLifecycle()
     var waterFor by remember { mutableStateOf<Pair<String, List<DoubleArray>>?>(null) }
     var peaksFor by remember { mutableStateOf<Triple<String, Double, Double>?>(null) }
+    var waysOutFor by remember { mutableStateOf<Triple<String, Double, Double>?>(null) }
     // Weather: (saved-forecast key, title, spots).
     var weatherFor by remember { mutableStateOf<Triple<String, String, List<Triple<String, Double, Double>>>?>(null) }
     var daysFor by remember { mutableStateOf<SavedRoute?>(null) }
@@ -923,6 +925,7 @@ fun MapScreen(
                 onWater = { name, coords -> waterFor = name to coords },
                 onReverse = { id -> vm.reverseRoute(id) },
                 onPeaks = { name, la, lo -> peaksFor = Triple(name, la, lo) },
+                onWaysOut = { name, la, lo -> waysOutFor = Triple(name, la, lo) },
                 onWeather = { name, la, lo ->
                     weatherFor = Triple("place:%.3f,%.3f".format(java.util.Locale.US, la, lo), name, listOf(Triple(name, la, lo)))
                 },
@@ -988,6 +991,9 @@ fun MapScreen(
             onPick = { la, lo -> waterFor = null; vm.focusOn(listOf(la to lo)) },
             onDismiss = { waterFor = null },
         )
+    }
+    waysOutFor?.let { (name, la, lo) ->
+        WaysOutDialog(vm, name, la, lo, onShow = { w -> waysOutFor = null; vm.showWayOut(w) }, onDismiss = { waysOutFor = null })
     }
     peaksFor?.let { (name, la, lo) ->
         PeaksDialog(vm, name, la, lo, onPick = { pla, plo -> peaksFor = null; vm.focusOn(listOf(pla to plo)) }, onDismiss = { peaksFor = null })
@@ -1207,6 +1213,7 @@ private fun BottomPanel(
     onReverse: (String) -> Unit,
     onPeaks: (String, Double, Double) -> Unit,
     onWeather: (String, Double, Double) -> Unit,
+    onWaysOut: (String, Double, Double) -> Unit = { _, _, _ -> },
     onDays: (SavedRoute) -> Unit,
     onRouteWeather: (SavedRoute) -> Unit,
     tripVm: AppViewModel,
@@ -1321,6 +1328,7 @@ private fun BottomPanel(
                 val more = listOfNotNull(
                     Action(Icons.Filled.Landscape, "Peaks in view") { onPeaks(title, lat, lon) },
                     Action(Icons.Filled.WbSunny, "Weather") { onWeather(title, lat, lon) },
+                    Action(Icons.Filled.Flag, "Ways out") { onWaysOut(title, lat, lon) },
                     if (selected?.isWater == true && selected.osmId != null) Action(Icons.Filled.EditNote, if (waterNote == null) "Water note" else "Edit water note") { onEditNote() } else null,
                     if (selected?.noteId == null) Action(Icons.Filled.StickyNote2, "Trail note") { onNoteAt(lat, lon) } else null,
                 )
@@ -1439,7 +1447,10 @@ private fun BottomPanel(
                 GoToPanel(t, fix, heading, pace, elevationAt = { la, lo -> tripVm.elevationAt(la, lo) }, onStop = onStopGoTo)
             }
             following?.let { f ->
-                FollowPanel(f, pace, onStop = onStopFollowing, modifier = Modifier.padding(top = 8.dp))
+                // From where you are now, or failing a fix, from the nearest point on the route.
+                val here = fix?.let { it.lat to it.lon } ?: f.nearest?.let { it[0] to it[1] }
+                FollowPanel(f, pace, onStop = onStopFollowing, modifier = Modifier.padding(top = 8.dp),
+                    onWaysOut = here?.let { (la, lo) -> { onWaysOut("where you are", la, lo) } })
             }
             shownRoute?.takeIf { following == null }?.let { r ->
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {

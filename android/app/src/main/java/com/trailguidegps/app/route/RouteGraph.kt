@@ -186,6 +186,40 @@ class RouteGraph private constructor(private val buf: ByteBuffer) {
         return best
     }
 
+    /**
+     * The nearest place by walking where a stretch of [kind] (0 trail, 1 track, 2 road) begins:
+     * a snap at that junction and the stretch's name. Null when [a] is already on one, or none
+     * is within [maxM] metres of walking.
+     */
+    fun nearestOfKind(a: Snap, kind: Int, maxM: Double = 40_000.0, maxSettled: Int = 600_000): Pair<Snap, String?>? {
+        if (kindOf(a.edge) == kind) return null
+        val g = HashMap<Int, Double>()
+        val closed = HashSet<Int>()
+        val heap = MinHeap()
+        val la = eLen.get(a.edge).toDouble()
+        for ((v, cost) in listOf(eFrom.get(a.edge) to a.frac * la, eTo.get(a.edge) to (1 - a.frac) * la)) {
+            if (cost < (g[v] ?: Double.POSITIVE_INFINITY)) { g[v] = cost; heap.push(cost, v) }
+        }
+        var settled = 0
+        while (heap.size > 0) {
+            val v = heap.pop()
+            if (!closed.add(v)) continue
+            val cost = g[v] ?: continue
+            if (cost > maxM || ++settled > maxSettled) return null
+            for (i in adjStart.get(v) until adjStart.get(v + 1)) {
+                val e = adjEdges.get(i)
+                if (kindOf(e) == kind) {
+                    return Snap(e, if (eFrom.get(e) == v) 0.0 else 1.0, vertexLat(v), vertexLon(v), 0.0) to nameOf(e)
+                }
+                val u = other(e, v)
+                if (u in closed) continue
+                val nc = cost + eLen.get(e)
+                if (nc < (g[u] ?: Double.POSITIVE_INFINITY)) { g[u] = nc; heap.push(nc, u) }
+            }
+        }
+        return null
+    }
+
     /** Adds up terrain for a leg made of these (edge, metres used) pieces. */
     private fun terrain(pieces: List<Pair<Int, Double>>): Triple<DoubleArray, Int, Double> {
         val kindM = DoubleArray(3)
