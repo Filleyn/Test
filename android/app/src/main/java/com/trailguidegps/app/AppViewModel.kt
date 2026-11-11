@@ -166,20 +166,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val message: StateFlow<String?> = _message.asStateFlow()
     fun messageShown() { _message.value = null }
 
-    init {
-        // A recording that was cut off (phone restart, app killed) is saved, not lost.
-        // If saving it fails (a full phone), the on-disk copy is kept for the next launch.
-        runCatching {
-            val leftover = TrackRecorder.recoverable(app)
-            if (leftover.size >= 2) {
-                tracks.save("Recovered track ${dateLabel(leftover.first().time)}", leftover)
-                _message.value = "A track that was still recording was saved as \"Recovered track\"."
-            }
-            TrackRecorder.discardRecoverable(app)
-        }.onFailure {
-            _message.value = "A track that was still recording couldn't be saved (is the phone full?). It's kept and will be tried again next time."
-        }
+    // Recording a track and following a route: the work is in RecordingTools.
+    private val recorder = com.trailguidegps.app.record.RecordingTools(app, tracks, com.trailguidegps.app.data.SettingsStore.get(app), { _message.value = it }) { id, pts, folderId ->
+        folderId?.let { folders.put(com.trailguidegps.app.data.FolderStore.trackKey(id), it); rememberFolder(it) }
+        _shownTrack.value = id to pts
     }
+
+    init { recorder.recoverAtLaunch() }
 
     fun focusOn(points: List<Pair<Double, Double>>) { if (points.isNotEmpty()) _focus.value = Focus(points) }
 
@@ -267,22 +260,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun hideTrack() { _shownTrack.value = null }
 
-    fun startRecording() {
-        val app = getApplication<Application>()
-        // A track that couldn't be saved earlier is still on disk; starting a new one would erase it.
-        val leftover = TrackRecorder.recoverable(app)
-        if (leftover.size >= 2) {
-            val saved = runCatching { tracks.save("Recovered track ${dateLabel(leftover.first().time)}", leftover) }.isSuccess
-            if (!saved) {
-                _message.value = "An earlier track still couldn't be saved (is the phone full?). Free some space, then start recording."
-                return
-            }
-        }
-        TrackRecorder.start(app)
-        TrackRecordingService.start(app)
-    }
+    fun startRecording() = recorder.start()
 
-    fun setPaused(paused: Boolean) = TrackRecorder.setPaused(paused)
+    fun setPaused(paused: Boolean) = recorder.setPaused(paused)
 
     // ---- Settings and following a route (phase 6) ----
 
@@ -290,16 +270,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val following: StateFlow<com.trailguidegps.app.route.Following?> = com.trailguidegps.app.route.RouteFollower.state
 
     /** Follow the route in the bottom panel: progress, what's left, and off-route alerts. */
-    fun startFollowing() {
-        val r = _shownRoute.value ?: return
-        val app = getApplication<Application>()
-        com.trailguidegps.app.route.RouteFollower.start(r)
-        com.trailguidegps.app.route.RouteFollower.remember(app, r.id)
-        TrackRecordingService.start(app)
-        _message.value = if (settings.value.value.offRouteAlerts)
-            "Following \"${r.name}\". You'll get a buzz if you're more than ${settings.value.value.offRouteFt} ft off it."
-        else "Following \"${r.name}\". Off-route alerts are off in Settings."
-    }
+    fun startFollowing() { _shownRoute.value?.let { recorder.startFollowing(it) } }
 
     /** A pace worked out from your recorded hikes, and how many hikes it used. */
     data class PaceSuggestion(val pace: Pace?, val hikes: Int)
@@ -384,11 +355,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         com.trailguidegps.app.record.SatelliteDownloadService.start(getApplication())
     }
 
-    fun stopFollowing() {
-        val app = getApplication<Application>()
-        com.trailguidegps.app.route.RouteFollower.stop(app)
-        TrackRecordingService.stop(app)
-    }
+    fun stopFollowing() = recorder.stopFollowing()
 
     /** Stops recording; saves it unless [save] is false. */
     // ---- Quick tools: measure, go to, reverse, water along a route ----
@@ -478,29 +445,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun stopRecording(name: String?, save: Boolean, folderId: String? = null) {
-        val app = getApplication<Application>()
-        // The recorder's on-disk copy is deleted only after the track is safely saved.
-        val pts = TrackRecorder.stop()
-        TrackRecordingService.stop(app)
-        if (save && pts.size >= 2) {
-            val summary = runCatching { tracks.save(name?.takeIf { it.isNotBlank() } ?: defaultTrackName(pts.first().time), pts) }.getOrElse {
-                _message.value = "The track couldn't be saved (is the phone full?). It's kept, and will be saved as a recovered track next time the app opens."
-                return
-            }
-            TrackRecorder.discardRecoverable(app)
-            folderId?.let { folders.put(com.trailguidegps.app.data.FolderStore.trackKey(summary.id), it); rememberFolder(it) }
-            _shownTrack.value = summary.id to pts
-            _message.value = "Saved \"${summary.name}\"."
-        } else {
-            TrackRecorder.discardRecoverable(app)
-            if (save) _message.value = "The track was too short to save."
-        }
-    }
+    fun stopRecording(name: String?, save: Boolean, folderId: String? = null) = recorder.stop(name, save, folderId)
 
-    fun defaultTrackName(startMs: Long = System.currentTimeMillis()) = "Track ${dateLabel(startMs)}"
-
-    private fun dateLabel(ms: Long) = java.text.SimpleDateFormat("MMM d, yyyy h:mm a", java.util.Locale.US).format(java.util.Date(ms))
+    fun defaultTrackName(startMs: Long = System.currentTimeMillis()) = recorder.defaultTrackName(startMs)
 
     fun deleteTrack(id: String) {
         tracks.delete(id)
@@ -576,7 +523,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // The app was killed while following a route: pick it back up (the service does the same if
         // Android restarts it first).
-        if (com.trailguidegps.app.route.RouteFollower.resume(app) { routes.load(it) }) TrackRecordingService.start(app)
+        recorder.resumeFollowing { routes.load(it) }
     }
 
     // ---- Where each saved item is ("Mt. Hood National Forest · 12 mi SE of Estacada"); the work is in AreaLabeler ----
