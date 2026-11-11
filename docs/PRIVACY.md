@@ -18,7 +18,7 @@ The app contacts other services only for the things below. Each of these service
 |---|---|---|
 | Downloading or updating maps, and checking for map updates | Which map files are requested | GitHub (github.com, api.github.com) |
 | Getting a weather forecast | The coordinates of the place or route points you asked about, rounded to about 35 ft | U.S. National Weather Service (api.weather.gov) |
-| Turning on the wildfire layer | A request for current fire perimeters in the states you have downloaded | National Interagency Fire Center data on ArcGIS (services3.arcgis.com) |
+| Opening the map with a connection (at most now and then), or tapping Update on the wildfire layer | A request for current fire perimeters in the states you have downloaded | National Interagency Fire Center data on ArcGIS (services3.arcgis.com) |
 | Viewing or saving satellite imagery | Which map tiles are requested, which shows the area you are looking at | USGS (basemap.nationalmap.gov) and, in Oregon, Oregon Explorer (imagery.oregonexplorer.info) |
 | Tapping Drive, a web link or an agency page | The place or page you tapped opens in your browser or maps app | Google Maps or the linked website |
 
