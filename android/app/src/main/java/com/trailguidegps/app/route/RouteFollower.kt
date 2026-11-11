@@ -37,6 +37,9 @@ data class Following(
     val lastFixAt: Long = 0,
     /** No usable GPS fix for a few minutes: the numbers are stale and off-route alerts can't fire. */
     val gpsQuiet: Boolean = false,
+    /** When and where along the route the first fix on it came in, for "ahead of / behind your pace". */
+    val startedAtMs: Long = 0,
+    val startAlongM: Double = 0.0,
 )
 
 /**
@@ -63,6 +66,18 @@ object RouteFollower {
     private var quietAlerted = false
 
     fun isFollowing() = _state.value != null
+
+    /**
+     * "About 12m ahead of your pace" (or behind), from the minutes your pace allows for the ground
+     * covered and the minutes it took. Null in the first 20 minutes or when within 5 minutes.
+     */
+    fun paceCheck(plannedMin: Int, elapsedMin: Int): String? {
+        if (elapsedMin < 20) return null
+        val diff = plannedMin - elapsedMin
+        if (kotlin.math.abs(diff) < 5) return "On your pace so far"
+        val by = if (kotlin.math.abs(diff) >= 60) "${kotlin.math.abs(diff) / 60}h ${kotlin.math.abs(diff) % 60}m" else "${kotlin.math.abs(diff)}m"
+        return if (diff > 0) "About $by ahead of your pace so far" else "About $by behind your pace so far"
+    }
 
     fun start(route: SavedRoute) {
         val c = route.coords
@@ -214,6 +229,8 @@ object RouteFollower {
         _state.value = st.copy(
             alongM = along, remainingM = remaining, climbLeftM = climbLeft, offByM = dist, offRoute = off,
             nearest = nearest, arrived = arrived || st.arrived, lastFixAt = location.time,
+            startedAtMs = if (st.startedAtMs == 0L && !off) System.currentTimeMillis() else st.startedAtMs,
+            startAlongM = if (st.startedAtMs == 0L && !off) along else st.startAlongM,
         )
 
         if (!settings.offRouteAlerts) return

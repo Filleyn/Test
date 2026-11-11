@@ -346,6 +346,18 @@ fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: ()
                     camp.second / Geo.M_PER_MI, (camp.third * Geo.FT_PER_M).roundToInt(), Pace.format(campMins), at),
                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, lineHeight = 17.sp, modifier = Modifier.padding(top = 2.dp))
             }
+            // How the walk so far compares with what your pace allows for the same ground.
+            if (f.startedAtMs > 0 && !f.arrived && f.alongM - f.startAlongM > 400) {
+                val line = remember(f.route.id, (f.alongM / 100).toInt()) {
+                    val prof = f.route.stats.profile
+                    val raw = com.trailguidegps.app.data.TripDays.gainLoss(prof, 0.0, f.route.stats.distanceM).first
+                    val scale = if (raw > 0) f.route.stats.gainM / raw else 0.0
+                    val gain = com.trailguidegps.app.data.TripDays.gainLoss(prof, f.startAlongM, f.alongM).first * scale
+                    com.trailguidegps.app.route.RouteFollower.paceCheck(pace.minutes(f.alongM - f.startAlongM, gain),
+                        ((System.currentTimeMillis() - f.startedAtMs) / 60_000).toInt())
+                }
+                line?.let { Text(it, fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp) }
+            }
             f.nearest?.let { n ->
                 val late = afterDarkWarning(n[0], n[1], System.currentTimeMillis(), campMins ?: mins)
                 if (late != null) {

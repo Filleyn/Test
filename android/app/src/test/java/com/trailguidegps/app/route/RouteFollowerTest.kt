@@ -10,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Assert.assertEquals as eq
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -98,5 +99,12 @@ class RouteFollowerTest {
         // Stopping forgets it, so it doesn't come back by itself later.
         RouteFollower.stop(app)
         assertFalse(RouteFollower.resume(app) { route })
+    }
+
+    @Test fun paceCheckWording() {
+        eq(null, RouteFollower.paceCheck(30, 15))                                  // too soon to say
+        eq("On your pace so far", RouteFollower.paceCheck(62, 60))
+        eq("About 15m ahead of your pace so far", RouteFollower.paceCheck(75, 60))
+        eq("About 1h 10m behind your pace so far", RouteFollower.paceCheck(120, 190))
     }
 }

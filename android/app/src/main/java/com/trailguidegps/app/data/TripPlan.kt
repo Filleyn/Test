@@ -85,6 +85,7 @@ object TripPlan {
             }
             if (water.first.isNotEmpty() || water.second != null) appendLine(WATER_NOTE)
             if (route.notes.isNotBlank()) { appendLine(); appendLine("Route notes: ${route.notes}") }
+            if (route.permits.isNotBlank()) { appendLine(); appendLine("Permits and rules: ${route.permits}") }
             gear?.let { appendLine(); appendLine("Gear packed: $it") }
             if (form.notes.isNotBlank()) { appendLine(); appendLine("Notes: ${form.notes}") }
         }
@@ -267,6 +268,11 @@ object TripPlan {
         if (route.notes.isNotBlank()) {
             heading("ROUTE NOTES")
             para(route.notes, text, 6f)
+        }
+
+        if (route.permits.isNotBlank()) {
+            heading("PERMITS AND RULES")
+            para(route.permits, text, 6f)
         }
 
         // What's ticked on the packing checklist: useful to whoever comes looking.

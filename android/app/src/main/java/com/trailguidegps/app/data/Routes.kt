@@ -268,6 +268,8 @@ data class SavedRoute(
      */
     val outAndBack: Boolean = false,
     val outCount: Int = 0,
+    /** Permits and rules for this trip, in your words: permit dates and numbers, fire restrictions, bear canister rules. */
+    val permits: String = "",
 ) {
     /** Where an out-and-back turns around, in metres along the route; null for a one-way route or loop. */
     val turnM: Double? get() {
@@ -325,7 +327,7 @@ class RouteStore(context: Context) {
     fun save(r: SavedRoute) {
         val o = JSONObject().put("id", r.id).put("name", r.name).put("created", r.createdAt)
             .put("distance", r.stats.distanceM).put("gain", r.stats.gainM).put("loss", r.stats.lossM)
-            .put("via", JSONArray(r.via)).put("color", r.color).put("notes", r.notes)
+            .put("via", JSONArray(r.via)).put("color", r.color).put("notes", r.notes).put("permits", r.permits)
             .put("trip_start", r.tripStart).put("trip_end", r.tripEnd)
             .put("out_back", r.outAndBack).put("out_count", r.outCount)
             .put("terrain", r.terrain?.let { t ->
@@ -379,6 +381,7 @@ class RouteStore(context: Context) {
             notes = o.optString("notes", ""),
             tripStart = o.optLong("trip_start", 0), tripEnd = o.optLong("trip_end", 0),
             outAndBack = o.optBoolean("out_back", false), outCount = o.optInt("out_count", 0),
+            permits = o.optString("permits", ""),
         )
     }.getOrNull()
 
@@ -394,8 +397,8 @@ class RouteStore(context: Context) {
         load(id)?.let { save(it.copy(tripStart = start, tripEnd = end)) }
     }
 
-    fun setNotes(id: String, notes: String) {
-        load(id)?.let { save(it.copy(notes = notes)) }
+    fun setNotes(id: String, notes: String, permits: String) {
+        load(id)?.let { save(it.copy(notes = notes, permits = permits)) }
     }
 
     fun delete(id: String) {
@@ -417,7 +420,8 @@ class RouteStore(context: Context) {
                 } else null
                 RouteSummary(o.getString("id"), o.getString("name"), o.getLong("created"),
                     o.getDouble("distance"), o.getDouble("gain"), o.getDouble("loss"),
-                    o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT }, o.optString("notes", ""),
+                    o.optString("color", RouteColors.DEFAULT).ifBlank { RouteColors.DEFAULT },
+                    (o.optString("notes", "") + "\n" + o.optString("permits", "")).trim(),
                     trip?.first ?: 1, trip?.second, o.optLong("trip_start", 0), o.optLong("trip_end", 0), o.optBoolean("out_back", false))
             }.getOrNull()
         }

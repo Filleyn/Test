@@ -1531,7 +1531,12 @@ private fun BottomPanel(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth().clickable { editingNotes = true }.padding(top = 2.dp))
                 }
-                if (editingNotes) RouteNotesDialog(r.name, r.notes, onSave = { tripVm.setRouteNotes(r.id, it); editingNotes = false },
+                if (r.permits.isNotBlank()) {
+                    Text("Permits and rules: ${r.permits}", fontSize = 12.sp, color = TG.Ink, lineHeight = 16.sp, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().clickable { editingNotes = true }.padding(top = 2.dp))
+                }
+                if (editingNotes) RouteNotesDialog(r.name, r.notes, r.permits, onSave = { n, p -> tripVm.setRouteNotes(r.id, n, p); editingNotes = false },
                     onDismiss = { editingNotes = false })
                 if (shownRouteCount > 1) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("$shownRouteCount routes on the map · tap a line to switch", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f))

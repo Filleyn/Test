@@ -497,7 +497,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         TripDatesDialog(r, pace, onSave = { a, b -> vm.setTripDates(r.id, a, b); datesFor = null }, onDismiss = { datesFor = null })
     }
     notesFor?.let { r ->
-        RouteNotesDialog(r.name, r.notes, onSave = { vm.setRouteNotes(r.id, it); notesFor = null }, onDismiss = { notesFor = null })
+        RouteNotesDialog(r.name, r.notes, r.permits, onSave = { n, p -> vm.setRouteNotes(r.id, n, p); notesFor = null }, onDismiss = { notesFor = null })
     }
     waterFor?.let { r ->
         WaterAlongRouteDialog(vm, r.name, r.coords, waterNotes,

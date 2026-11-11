@@ -740,11 +740,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setRouteNotes(id: String, notes: String) {
+    fun setRouteNotes(id: String, notes: String, permits: String) {
         val t = notes.trim()
+        val p = permits.trim()
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { routes.setNotes(id, t) }
-            updateShown(id) { it.copy(notes = t) }
+            withContext(Dispatchers.IO) { routes.setNotes(id, t, p) }
+            updateShown(id) { it.copy(notes = t, permits = p) }
         }
     }
 

@@ -335,7 +335,7 @@ class RoutePlanner(
                     outAndBack = st.outAndBack, outCount = if (st.outAndBack) join(st.legs).size else 0,
                     // Camps stay if they're still on the route.
                     camps = old?.camps.orEmpty().filter { it.alongM < st.stats.distanceM - 200 },
-                    notes = old?.notes.orEmpty(), tripStart = old?.tripStart ?: 0, tripEnd = old?.tripEnd ?: 0)
+                    notes = old?.notes.orEmpty(), permits = old?.permits.orEmpty(), tripStart = old?.tripStart ?: 0, tripEnd = old?.tripEnd ?: 0)
                     .also { routes.save(it) }
             }
             _plan.value = PlanState()
