@@ -2,9 +2,9 @@
 
 Drafted November 11, 2026 from what the app does at version 1.5.104 and Google's help pages on that date. Google changes these forms; where a form shows options that differ from what is written here, pick the closest and keep the meaning.
 
-## Before anything else: one blocker
+## Status of the technical requirements
 
-**The app targets Android 15 (API 35). Since August 31, 2026, Google Play only accepts new apps that target Android 16 (API 36).** The app must be moved to API 36 and tested on a phone before it can be submitted. See "Work still needed in the app" at the end.
+As of version 1.5.105 the app targets Android 16 (API 36), which Google Play has required for new apps since August 31, 2026. Each release also includes a signed app bundle (the `.aab` file, "for Google Play"), and the native libraries are laid out for 16 KB memory pages, which Play also requires. Version 1.5.105 needs a check on a phone before it is submitted.
 
 ## Store listing
 
@@ -116,8 +116,8 @@ The app declares two foreground service types. Each needs a description, the use
 
 | Item | Why | Size |
 |---|---|---|
-| Target Android 16 (API 36) | Required for any new app since August 31, 2026 | Medium: a build setting change plus testing on the phone, since Android 16 changes edge-to-edge display and the back gesture |
-| App bundle (.aab) build for Play | Play takes bundles, not APKs, for new apps | Small: one more build step |
+| Target Android 16 (API 36) | Required for any new app since August 31, 2026 | Done in 1.5.105; check on the phone |
+| App bundle (.aab) build for Play | Play takes bundles, not APKs, for new apps | Done in 1.5.105 |
 | Play App Signing | Google holds the release key for new apps; the current key becomes the upload key | Done in the console when creating the app |
 | Oregon 2024 imagery | No stated license; ask Oregon GEO, or leave Sharp/Sharpest out of the public build | A decision, then small |
 | Map hosting | GitHub release downloads are fine for a few users, not for many | Larger; only matters once there are users |
