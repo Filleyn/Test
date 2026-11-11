@@ -77,6 +77,21 @@ jobs:
           exec > >(tee -a "$LOG") 2>&1
           gradle --no-daemon assembleRelease
           gradle --no-daemon -q :app:dependencies --configuration releaseRuntimeClasspath | grep -m1 "org.maplibre.gl:android-sdk" || true
+          # Google Play takes an app bundle, not an APK.
+          gradle --no-daemon bundleRelease
+          # Play needs native code laid out for 16 KB memory pages: print each library's alignment.
+          python3 - <<'PY'
+          import glob, struct, zipfile
+          z = zipfile.ZipFile(glob.glob("app/build/outputs/apk/release/*.apk")[0])
+          for n in z.namelist():
+              if n.endswith(".so") and "arm64" in n:
+                  d = z.read(n)
+                  phoff = struct.unpack_from("<Q", d, 0x20)[0]
+                  size, count = struct.unpack_from("<HH", d, 0x36)
+                  al = {struct.unpack_from("<Q", d, phoff + i * size + 0x30)[0] for i in range(count)
+                        if struct.unpack_from("<I", d, phoff + i * size)[0] == 1}
+                  print("PAGE-ALIGN", n, sorted(al), "ok for 16 KB" if min(al) >= 16384 else "NOT 16 KB")
+          PY
 
       - name: Publish release
         run: |
@@ -91,7 +106,9 @@ jobs:
             echo
             echo "Built from commit ${GITHUB_SHA::7}. ${MAPLIBRE}"
           } > "$RUNNER_TEMP/notes.md"
-          gh release create "app-v$VERSION" "$APK" --title "TrailGuide GPS $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          AAB="$RUNNER_TEMP/TrailGuideGPS-$VERSION-for-Google-Play.aab"
+          cp android/app/build/outputs/bundle/release/app-release.aab "$AAB"
+          gh release create "app-v$VERSION" "$APK" "$AAB" --title "TrailGuide GPS $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
           echo "::notice::Published app-v$VERSION ($MAPLIBRE)"
 
       # Pictures of the main screens, drawn without a phone, attached to the "ui-screenshots" pre-release

@@ -12,12 +12,13 @@ val keystorePassword: String? = System.getenv("TRAILGUIDE_KEYSTORE_PASSWORD")
 
 android {
     namespace = "com.trailguidegps.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.trailguidegps.app"
         minSdk = 29
-        targetSdk = 35
+        // Google Play requires new apps to target Android 16 (API 36) since August 31, 2026.
+        targetSdk = 36
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         // version.txt holds the phase (e.g. 0.3); the build number is added on GitHub.
         versionName = rootProject.file("version.txt").readText().trim() + "." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
