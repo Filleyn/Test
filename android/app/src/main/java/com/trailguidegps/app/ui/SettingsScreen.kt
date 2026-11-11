@@ -268,7 +268,31 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit, onOpenMaps: () -> Unit
                 }
             }
             Text("Maps © OpenStreetMap contributors. Elevation and public land from USGS.", fontSize = 12.sp, color = TG.Muted,
-                modifier = Modifier.padding(top = 2.dp, bottom = 24.dp))
+                modifier = Modifier.padding(top = 2.dp))
+            var showPrivacy by remember { mutableStateOf(false) }
+            TextButton(onClick = { showPrivacy = true }) { Text("Privacy and safety", color = TG.Accent) }
+            if (showPrivacy) androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showPrivacy = false },
+                title = { Text("Privacy and safety") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text("No accounts, ads or analytics. Your location, routes, tracks, waypoints, notes and photos stay on this phone " +
+                            "unless you send them: a trip plan, a GPX file, a shared route or a backup goes only to the app or person you pick.",
+                            fontSize = 14.sp, color = TG.Ink, lineHeight = 19.sp)
+                        Text("The app goes online only to download maps (GitHub), get a forecast you ask for (National Weather Service, which is " +
+                            "sent the coordinates), show wildfires, and show or save satellite imagery (USGS and Oregon Explorer). " +
+                            "Those services see your internet address, as any website does.",
+                            fontSize = 14.sp, color = TG.Ink, lineHeight = 19.sp, modifier = Modifier.padding(top = 8.dp))
+                        Text("Not a safety device: maps, trails, water, times and ways out come from public map data and can be wrong or out of date. " +
+                            "Carry a paper map and compass and tell someone your plan.",
+                            fontSize = 14.sp, color = TG.Ink, lineHeight = 19.sp, modifier = Modifier.padding(top = 8.dp))
+                        Text("The full policy is in the app's repository under docs/PRIVACY.md.", fontSize = 12.sp, color = TG.Muted,
+                            modifier = Modifier.padding(top = 8.dp))
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showPrivacy = false }) { Text("Close", color = TG.Accent) } },
+            )
+            Spacer(Modifier.height(24.dp))
         }
     }
     if (showPace) PaceDialog(pace, onSave = { vm.setPace(it); showPace = false }, onDismiss = { showPace = false })

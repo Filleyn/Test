@@ -11,4 +11,7 @@
     <exclude domain="file" path="fires" />
     <exclude domain="file" path="maps" />
     <exclude domain="file" path="weather.json" />
+    <exclude domain="file" path="search" />
+    <exclude domain="file" path="last-crash.txt" />
+    <exclude domain="file" path="last-exit-seen.txt" />
 </full-backup-content>

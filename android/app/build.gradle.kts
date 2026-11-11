@@ -83,8 +83,9 @@ dependencies {
     // Reads a photo's orientation so it's saved upright.
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // MapLibre 11.7+ reads PMTiles files directly.
-    implementation("org.maplibre.gl:android-sdk:[11.7.0,12.0.0)")
+    // MapLibre 11.7+ reads PMTiles files directly. An exact version, so a build can be repeated;
+    // raise it deliberately and test the map afterwards.
+    implementation("org.maplibre.gl:android-sdk:11.13.5")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Screenshot tests (Robolectric + Roborazzi); not part of the app.
