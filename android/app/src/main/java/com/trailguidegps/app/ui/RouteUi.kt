@@ -408,7 +408,7 @@ private fun StatBox(value: String, label: String, modifier: Modifier) {
 /** Bottom panel while planning a route. */
 @Composable
 fun RoutePlannerPanel(
-    plan: AppViewModel.PlanState,
+    plan: com.trailguidegps.app.route.PlanState,
     pace: Pace,
     routingReady: Boolean?,
     onAddWaypoint: () -> Unit,
