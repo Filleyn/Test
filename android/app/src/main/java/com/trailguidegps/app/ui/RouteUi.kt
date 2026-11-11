@@ -345,9 +345,13 @@ fun FollowPanel(f: com.trailguidegps.app.route.Following, pace: Pace, onStop: ()
                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, lineHeight = 17.sp, modifier = Modifier.padding(top = 2.dp))
             }
             f.nearest?.let { n ->
-                afterDarkWarning(n[0], n[1], System.currentTimeMillis(), campMins ?: mins)?.let {
-                    Text((if (campMins != null) "Camp: " else "") + it.replaceFirst("Back about", if (campMins != null) "there about" else "Back about"),
+                val late = afterDarkWarning(n[0], n[1], System.currentTimeMillis(), campMins ?: mins)
+                if (late != null) {
+                    Text((if (campMins != null) "Camp: " else "") + late.replaceFirst("Back about", if (campMins != null) "there about" else "Back about"),
                         fontSize = 12.sp, color = TG.Warn, lineHeight = 16.sp)
+                } else if (!f.arrived) {
+                    // Getting there in daylight: how much light is left and how much of it is spare.
+                    daylightToSpare(n[0], n[1], campMins ?: mins)?.let { Text(it, fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp) }
                 }
             }
         }

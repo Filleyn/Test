@@ -86,6 +86,20 @@ fun daylightLine(lat: Double, lon: Double, now: Long = System.currentTimeMillis(
     }
 }
 
+/**
+ * For Follow: "Sunset 5:58 PM · 2h 14m of daylight left, 45m to spare" when the [minutes] still to
+ * walk fit before sunset. Before sunrise and after sunset it's the plain daylight line.
+ */
+fun daylightToSpare(lat: Double, lon: Double, minutes: Int, now: Long = System.currentTimeMillis()): String? {
+    val d = Sun.day(lat, lon, now)
+    val rise = d.sunrise ?: return null
+    val set = d.sunset ?: return null
+    if (now < rise || now >= set) return daylightLine(lat, lon, now)
+    val left = ((set - now) / 60_000).toInt()
+    val spare = left - minutes
+    return "Sunset ${clock.format(Date(set))} · ${Pace.format(left)} of daylight left" + (if (spare >= 0) ", ${Pace.format(spare)} to spare" else "")
+}
+
 /** Water sources along a route by mile, and the longest stretches without water. */
 @Composable
 fun WaterAlongRouteDialog(
