@@ -99,7 +99,7 @@ class ScreenshotTest {
     fun routePlanner() {
         val prof = (0..40).map { i -> i * 140.0 to 1440.0 + 360.0 * (i / 40.0) + 15 * kotlin.math.sin(i / 3.0) }
         val pts = listOf(com.trailguidegps.app.data.RoutePoint(44.1, -121.7, true), com.trailguidegps.app.data.RoutePoint(44.12, -121.74, true))
-        val plan = AppViewModel.PlanState(
+        val plan = com.trailguidegps.app.route.PlanState(
             active = true, points = pts,
             legs = listOf(com.trailguidegps.app.data.RouteLeg(listOf(doubleArrayOf(44.1, -121.7), doubleArrayOf(44.12, -121.74)), 5600.0,
                 listOf("Obsidian Trail #3528"), true, doubleArrayOf(5600.0, 0.0, 0.0))),
