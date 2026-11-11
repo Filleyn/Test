@@ -52,6 +52,12 @@ class ChecklistTest {
         // Only ticked things that are on this list: no tent on a day hike.
         assertEquals("Headlamp and spare batteries; Camera.", Checklist.packedLine(Checklist.suggest(dayHike), state))
         assertEquals(null, Checklist.packedLine(Checklist.suggest(dayHike), ChecklistStore.State()))
+        // A restore changes the file underneath: reload picks it up.
+        val other = ChecklistStore(app)
+        other.put("r2", ChecklistStore.State(checked = setOf("map")))
+        store.reload()
+        assertEquals(setOf("map"), store.get("r2").checked)
+        store.drop("r2")
         store.drop("r1")
         assertEquals(ChecklistStore.State(), ChecklistStore(app).get("r1"))
     }

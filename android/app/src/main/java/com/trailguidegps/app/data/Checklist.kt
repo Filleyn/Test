@@ -109,8 +109,11 @@ class ChecklistStore(context: Context) {
         val added: List<Pair<String, String>> = emptyList(),
     )
 
-    private val file = File(context.filesDir, "checklists.json")
+    private val file = File(context.filesDir, FILE)
     private val all: MutableMap<String, State> = load()
+
+    /** Reads the file again, after a restore. */
+    @Synchronized fun reload() { val fresh = load(); all.clear(); all.putAll(fresh) }
 
     @Synchronized fun get(routeId: String): State = all[routeId] ?: State()
 
@@ -143,4 +146,8 @@ class ChecklistStore(context: Context) {
         }
         out
     }.getOrDefault(HashMap())
+
+    companion object {
+        const val FILE = "checklists.json"
+    }
 }

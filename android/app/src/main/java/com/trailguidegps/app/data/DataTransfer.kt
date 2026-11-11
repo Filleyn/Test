@@ -84,6 +84,25 @@ class DataTransfer(
         }
     }
 
+    /**
+     * One route with its camps, notes, dates and checklist as a small backup file, for another
+     * phone with the app ("Restore from a backup" there adds it).
+     */
+    fun shareRoute(id: String, name: String, onReady: (android.net.Uri) -> Unit) {
+        scope.launch {
+            val r = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
+                    val safe = name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
+                    val f = java.io.File(dir, "TrailGuide route - $safe.zip")
+                    f.outputStream().use { Backup.writeRoute(app, it, id) }
+                    androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
+                }
+            }
+            r.onSuccess(onReady).onFailure { message("Couldn't share the route: ${it.message ?: "couldn't write the file"}") }
+        }
+    }
+
     /** Restores a backup file, adding to what's already on the phone. */
     fun restore(uri: android.net.Uri) {
         scope.launch {

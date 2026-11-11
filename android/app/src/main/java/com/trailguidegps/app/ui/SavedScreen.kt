@@ -181,6 +181,13 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 onNotes = { notesFor = vm.routes.load(r.id) },
                 onDates = { datesFor = vm.routes.load(r.id) },
                 onOutBack = { vm.setRouteOutAndBack(r.id, !r.outAndBack) },
+                onShareApp = {
+                    vm.shareRoute(r.id, r.name) { uri ->
+                        ShareFile.send(context, uri, "application/zip", "Share route", "TrailGuide route: ${r.name}",
+                            "A route from TrailGuide GPS, with its camps, notes, dates and checklist. To add it: open TrailGuide GPS, " +
+                                "go to Settings, choose \"Restore from a backup\" and pick this file.")
+                    }
+                },
                 onTripPlan = { tripPlanFor = vm.routes.load(r.id) },
                 onWater = { waterFor = vm.routes.load(r.id) },
                 onReverse = { vm.reverseRoute(r.id) },
@@ -633,7 +640,7 @@ private fun TrackRow(t: TrackSummary, folderName: String?, area: String?, onShow
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?, area: String?,
     onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onDates: () -> Unit, onOutBack: () -> Unit, onTripPlan: () -> Unit,
-    onWater: () -> Unit, onReverse: () -> Unit,
+    onWater: () -> Unit, onReverse: () -> Unit, onShareApp: () -> Unit,
     onMove: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -676,7 +683,8 @@ private fun RouteRow(
             (if (r.outAndBack) "Make one way (drop the way back)" else "Make out & back (same way back)") to onOutBack,
             "Trip plan (PDF)" to onTripPlan,
             "Move to folder" to onMove,
-            "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport, "Delete" to onDelete,
+            "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport,
+            "Share with another TrailGuide phone" to onShareApp, "Delete" to onDelete,
         ))
     }
 }

@@ -37,6 +37,7 @@ object Backup {
             File(dir, "water-notes.json").takeIf { it.exists() }?.let { put("water-notes.json", it.readBytes()) }
             File(dir, FolderStore.FILE).takeIf { it.exists() }?.let { put(FolderStore.FILE, it.readBytes()) }
             File(dir, TrailNoteStore.FILE).takeIf { it.exists() }?.let { put(TrailNoteStore.FILE, it.readBytes()) }
+            File(dir, ChecklistStore.FILE).takeIf { it.exists() }?.let { put(ChecklistStore.FILE, it.readBytes()) }
             File(dir, "photos").listFiles { f -> PhotoStore.SAFE.matches(f.name) }?.forEach { put("photos/${it.name}", it.readBytes()) }
             PREFS.forEach { name ->
                 val o = JSONObject()
@@ -52,6 +53,28 @@ object Backup {
                 .put("created", System.currentTimeMillis()).put("routes", routes).put("tracks", tracks)
                 .put("waypoints", waypoints).put("notes", notes).toString().toByteArray())
             return Counts(routes, tracks, waypoints, notes)
+        }
+    }
+
+    /**
+     * One route (with its camps, notes, dates and checklist) as a small backup file, to send to
+     * another phone with the app: restoring it there adds the route.
+     */
+    fun writeRoute(context: Context, out: OutputStream, routeId: String) {
+        require(SAFE_ID.matches(routeId)) { "That route can't be shared." }
+        val dir = context.filesDir
+        val route = File(dir, "routes/$routeId.json")
+        require(route.exists()) { "That route isn't saved yet." }
+        ZipOutputStream(out.buffered()).use { zip ->
+            fun put(name: String, bytes: ByteArray) {
+                zip.putNextEntry(ZipEntry(name)); zip.write(bytes); zip.closeEntry()
+            }
+            put("routes/$routeId.json", route.readBytes())
+            runCatching { JSONObject(File(dir, ChecklistStore.FILE).readText()).optJSONObject(routeId) }.getOrNull()
+                ?.let { put(ChecklistStore.FILE, JSONObject().put(routeId, it).toString().toByteArray()) }
+            put("backup.json", JSONObject().put("app", "TrailGuide GPS").put("format", 1)
+                .put("created", System.currentTimeMillis()).put("routes", 1).put("tracks", 0)
+                .put("waypoints", 0).put("notes", 0).toString().toByteArray())
         }
     }
 
@@ -112,6 +135,14 @@ object Backup {
                         val f = File(dir, "water-notes.json")
                         val current = runCatching { JSONObject(f.readText()) }.getOrDefault(JSONObject())
                         incoming.keys().forEach { k -> if (!current.has(k)) { current.put(k, incoming.get(k)); notes++ } }
+                        writeAtomically(f, current.toString())
+                    }
+                    name == ChecklistStore.FILE -> {
+                        // One checklist per route; the backup's copy of a route's list replaces the phone's.
+                        val incoming = JSONObject(String(bytes))
+                        val f = File(dir, ChecklistStore.FILE)
+                        val current = runCatching { JSONObject(f.readText()) }.getOrDefault(JSONObject())
+                        incoming.keys().forEach { k -> current.put(k, incoming.get(k)) }
                         writeAtomically(f, current.toString())
                     }
                     name == FolderStore.FILE -> {

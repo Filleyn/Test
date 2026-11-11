@@ -18,6 +18,9 @@ data class Recording(
     val points: List<TrackPoint>,
     val paused: Boolean,
     val stats: TrackStats,
+    /** The battery level when this recording started (or was picked back up), and when that was. */
+    val batteryPct: Int? = null,
+    val batteryAtMs: Long = startedAt,
 )
 
 /**
@@ -43,7 +46,8 @@ object TrackRecorder {
         if (_state.value != null) return
         file = journal(context).apply { delete() }
         running = TrackStats.Running()
-        _state.value = Recording(System.currentTimeMillis(), emptyList(), false, TrackStats.of(emptyList()))
+        _state.value = Recording(System.currentTimeMillis(), emptyList(), false, TrackStats.of(emptyList()),
+            com.trailguidegps.app.data.BatteryEstimate.now(context))
     }
 
     fun setPaused(paused: Boolean) {
@@ -92,7 +96,8 @@ object TrackRecorder {
         if (pts.isEmpty()) return false
         file = journal(context)
         running = TrackStats.Running().apply { pts.forEach { add(it) } }
-        _state.value = Recording(pts.first().time, pts, false, running.stats())
+        _state.value = Recording(pts.first().time, pts, false, running.stats(),
+            com.trailguidegps.app.data.BatteryEstimate.now(context), System.currentTimeMillis())
         return true
     }
 

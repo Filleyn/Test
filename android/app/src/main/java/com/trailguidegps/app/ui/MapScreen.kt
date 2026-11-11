@@ -1396,6 +1396,11 @@ private fun BottomPanel(
                 }
                 Spacer(Modifier.height(4.dp))
                 Text("Keeps recording with the screen off.", fontSize = 12.sp, color = TG.Muted)
+                // Re-read whenever a point comes in: how long the battery lasts at the rate it's been dropping.
+                remember(recording.points.size) {
+                    com.trailguidegps.app.data.BatteryEstimate.line(recording.batteryPct, com.trailguidegps.app.data.BatteryEstimate.now(context),
+                        System.currentTimeMillis() - recording.batteryAtMs)
+                }?.let { Text(it, fontSize = 12.sp, color = TG.Muted) }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = { onPause(!recording.paused) }, shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).height(48.dp)) {
@@ -1541,7 +1546,7 @@ private fun BottomPanel(
                     Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
                     Action(Icons.Filled.StickyNote2, "Notes") { editingNotes = true },
                     Action(Icons.Filled.CheckCircle, "Checklist") { showChecklist = true },
-                ), Modifier.padding(top = 4.dp), columns = 4)
+                ), Modifier.padding(top = 4.dp), columns = 5)
                 if (routeOnly) Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show less") { setRouteCompact(true) }.padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center) {
                     Text("Less ▼ (more map)", fontSize = 12.sp, color = TG.Accent)

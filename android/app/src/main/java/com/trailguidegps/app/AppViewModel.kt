@@ -537,13 +537,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val transfer by lazy {
         com.trailguidegps.app.data.DataTransfer(app, viewModelScope, waypoints, tracks, routes, waterNotes, folders, trailNotes,
-            message = { _message.value = it }, afterRestore = { _pace.value = Pace.load(app) }, terrain = { terrain }, focusOn = { focusOn(it) })
+            message = { _message.value = it }, afterRestore = { _pace.value = Pace.load(app); checklists.reload() }, terrain = { terrain }, focusOn = { focusOn(it) })
     }
     /** When you last made a backup, or null. */
     val lastBackup get() = transfer.lastBackup
     fun backupFileName() = transfer.backupFileName()
     fun backup(uri: android.net.Uri) = transfer.backup(uri)
     fun shareBackup(onReady: (android.net.Uri) -> Unit) = transfer.shareBackup(onReady)
+    /** One route as a small file another phone with the app can restore. */
+    fun shareRoute(id: String, name: String, onReady: (android.net.Uri) -> Unit) = transfer.shareRoute(id, name, onReady)
     fun restore(uri: android.net.Uri) = transfer.restore(uri)
     fun importGpx(uri: android.net.Uri) = transfer.importGpx(uri)
     fun exportGpx(fileName: String, wps0: List<Waypoint>, trackIds: List<String>, routeIds: List<String> = emptyList(),
