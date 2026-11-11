@@ -186,7 +186,7 @@ class ScreenshotTest {
 
     @Test fun mapsScreen() {
         fun rel(r: String, mb: Long) = MapStore.Release("maps-$r-2026-11-02-run1", listOf(MapStore.Asset("topo.pmtiles", "", mb * 1_000_000)))
-        fun info(r: String, mb: Long) = AppViewModel.RegionInfo(r, r, rel(r, mb), doubleArrayOf(0.0, 0.0, 1.0, 1.0), "2026-11-02")
+        fun info(r: String, mb: Long) = com.trailguidegps.app.data.RegionInfo(r, r, rel(r, mb), doubleArrayOf(0.0, 0.0, 1.0, 1.0), "2026-11-02")
         val catalog = listOf(info("oregon", 2100), info("washington", 1900), info("idaho", 1700), info("california", 4300), info("nevada", 1300),
             info("montana", 2400), info("wyoming", 1800), info("utah", 1900), info("colorado", 2600), info("arizona", 2100), info("new-mexico", 1900))
         compose.setContent {

@@ -71,7 +71,7 @@ fun MapsScreen(vm: AppViewModel, onClose: () -> Unit, onShow: (DoubleArray) -> U
 /** The list itself, without the view model (also used by the screenshot tests). */
 @Composable
 fun MapsContent(
-    catalog: List<AppViewModel.RegionInfo>, installed: Set<String>, updates: Set<String>,
+    catalog: List<com.trailguidegps.app.data.RegionInfo>, installed: Set<String>, updates: Set<String>,
     dl: DownloadState, error: String?, free: Long,
     onDownload: (String) -> Unit, onDelete: (String) -> Unit, onRetry: () -> Unit,
     onClose: () -> Unit, onShow: (DoubleArray) -> Unit,
@@ -122,7 +122,7 @@ fun MapsContent(
         // Downloaded states first, then the rest grouped by area (or just the matches while searching).
         val q = query.trim().lowercase()
         val shown = catalog.filter { q.isEmpty() || it.name.lowercase().contains(q) || com.trailguidegps.app.data.MapAreas.of(it.region).lowercase().contains(q) }
-        val sections: List<Pair<String?, List<AppViewModel.RegionInfo>>> = run {
+        val sections: List<Pair<String?, List<com.trailguidegps.app.data.RegionInfo>>> = run {
             val mine = shown.filter { it.region in installed }.sortedBy { it.name }
             val rest = shown.filter { it.region !in installed }
             val grouped = if (catalog.size > 8) {
