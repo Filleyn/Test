@@ -112,6 +112,18 @@ The app declares two foreground service types. Each needs a description, the use
 3. A personal account created after November 2023 must run a closed test with at least 12 testers opted in for 14 days in a row before applying for production.
 4. Fill in the forms above, upload screenshots (phone, at least two) and a 512 × 512 icon and 1024 × 500 feature graphic.
 
+## Pricing (decided November 11, 2026)
+
+- An annual subscription through Google Play, starting with a free trial (about 14 days) of the full app. No limited free tier at launch.
+- A small permanent free mode (online map, GPS position, one saved route) may be added later if installs suggest people want it. It would need the online map server turned back on.
+- No accounts and no server: the app asks Google Play on the phone whether the subscription is active. It must keep working with no signal.
+- Build the paywall once the app is in Play's internal testing track, because Play billing can only be tested on an app installed from Play. Builds installed from the GitHub release page stay unlocked for field testing.
+
+## Map hosting and updates (decided November 11, 2026)
+
+- Moving map downloads to Cloudflare waits until after more field testing.
+- Map rebuilds: quarterly, spread over several days, keeping the newest copy and the one before it for each state. Not scheduled yet; waiting for a go-ahead.
+
 ## Work still needed in the app
 
 | Item | Why | Size |
@@ -120,7 +132,8 @@ The app declares two foreground service types. Each needs a description, the use
 | App bundle (.aab) build for Play | Play takes bundles, not APKs, for new apps | Done in 1.5.105 |
 | Play App Signing | Google holds the release key for new apps; the current key becomes the upload key | Done in the console when creating the app |
 | Oregon 2024 imagery | No stated license; ask Oregon GEO, or leave Sharp/Sharpest out of the public build | A decision, then small |
-| Map hosting | GitHub release downloads are fine for a few users, not for many | Larger; only matters once there are users |
+| Map hosting | GitHub release downloads are fine for a few users, not for many | Larger; waiting until after field testing |
+| Subscription and free trial | The pricing above | Medium; after the app is in internal testing |
 | Code shrinking | Optional; smaller download | One test version |
 
 ## Sources
