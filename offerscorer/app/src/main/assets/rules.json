@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "packages": ["com.ubercab.driver"],
+  "pickupWords": ["away", "to pickup", "pickup"],
+  "tripWords": ["trip"],
+  "totalWords": ["total"],
+  "offerHintWords": ["Accept", "Match", "Tap to accept"],
+  "deliveryWords": ["Delivery", "Deliveries", "Uber Eats", "Order", "Orders"],
+  "acceptedWords": ["Picking up", "Pick up", "Arriving", "Arrived", "Start trip", "Swipe to start", "Head to"],
+  "pickupCountRegex": "(\\d+)\\s*(?:pickups|restaurants|stores)\\b",
+  "dropoffCountRegex": "(\\d+)\\s*(?:deliveries|orders|drop-?offs|stops)\\b",
+  "fareRegex": null,
+  "segmentRegex": null,
+  "maxFare": 500
+}

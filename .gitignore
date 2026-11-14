@@ -16,3 +16,10 @@ android/app/src/main/assets/fonts/
 
 # Small test fixture (real tiles around a few Oregon spots)
 !android/app/src/test/resources/*.pmtiles
+
+# Offer Scorer build outputs
+offerscorer/.gradle/
+offerscorer/build/
+offerscorer/app/build/
+offerscorer/local.properties
+offerscorer/.idea/
