@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Offer Scorer</string>
+    <string name="reader_label">Offer Scorer reader</string>
+    <string name="reader_description">Reads the text on Uber offer cards so Offer Scorer can show a score bubble. It never taps, swipes or types anything, and screen text stays on this phone.</string>
+</resources>
