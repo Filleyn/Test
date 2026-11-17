@@ -449,6 +449,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         water.days(route, camps, heat, reliableOnly)
     private fun tripWater(route: SavedRoute) = water.forTripPlan(route)
 
+    /** Where the Saved screen was left, so it reopens on the same tab, folder and item. */
+    val savedUi = com.trailguidegps.app.ui.SavedUiState()
+
     // ---- Packing checklist for a route ----
 
     val checklists = com.trailguidegps.app.data.ChecklistStore(app)

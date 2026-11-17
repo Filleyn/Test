@@ -1247,13 +1247,18 @@ private fun BottomPanel(
     val setRouteCompact: (Boolean) -> Unit = { routeCompact = it; panelPrefs.edit().putBoolean("route_compact", it).apply() }
     val routeOnly = shownRoute != null && following == null && goTo == null && !hasPlace && recording == null
     val compactRoute = routeOnly && routeCompact
+    // Record / Route / Pin / Saved stay at the bottom of the panel; what's above them scrolls when it's too tall.
+    // (A place card, a recording and the compact route card have their own buttons instead.)
+    val showButtons = recording == null && !(hasPlace && goTo == null && following == null) && !compactRoute
+    val panelScroll = androidx.compose.foundation.rememberScrollState()
+    val panelMaxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.86f).dp
     Surface(
         color = TG.Surface,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         shadowElevation = 12.dp,
         // Swipe down to hide the panel, up to bring it back.
         // With a place card open, swipe up for its details and down to shrink it again.
-        modifier = Modifier.fillMaxWidth().animateContentSize().pointerInput(hidden, hasPlace, placeExpanded, routeOnly, routeCompact) {
+        modifier = Modifier.fillMaxWidth().heightIn(max = panelMaxHeight).animateContentSize().pointerInput(hidden, hasPlace, placeExpanded, routeOnly, routeCompact) {
             detectVerticalDragGestures(
                 onDragStart = { drag = 0f },
                 onDragEnd = {
@@ -1293,6 +1298,8 @@ private fun BottomPanel(
                 return@Column
             }
 
+            // Scrolls only when there's more than fits, so swiping the panel still works on a short card.
+            Column(Modifier.weight(1f, fill = false).verticalScroll(panelScroll, enabled = panelScroll.canScrollForward || panelScroll.canScrollBackward)) {
             // Details for whatever was tapped on the map: a short card, pulled up for more.
             if (selectedWaypoint != null || selected != null) {
                 val context = LocalContext.current
@@ -1503,9 +1510,12 @@ private fun BottomPanel(
                         camps = r.camps.map { it.alongM }, dayLabels = walkDays.map { "${it.day}" })
                 }
                 if (compactRoute) {
-                    Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show route tools") { setRouteCompact(false) }.padding(top = 2.dp),
-                        horizontalArrangement = Arrangement.Center) {
-                        Text("More ▲", fontSize = 13.sp, color = TG.Accent)
+                    // Saved stays in reach with a route open; More opens the route's tools.
+                    Box(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                        Text("Saved", fontSize = 13.sp, color = TG.Accent, modifier = Modifier.align(Alignment.CenterStart)
+                            .clickable(onClickLabel = "Open saved items") { onSaved() }.padding(horizontal = 10.dp, vertical = 8.dp))
+                        Text("More ▲", fontSize = 13.sp, color = TG.Accent, modifier = Modifier.align(Alignment.Center)
+                            .clickable(onClickLabel = "Show route tools") { setRouteCompact(false) }.padding(horizontal = 16.dp, vertical = 8.dp))
                     }
                     return@Column
                 }
@@ -1582,6 +1592,8 @@ private fun BottomPanel(
                     TextButton(onClick = onHideTrack) { Text("Hide", color = TG.Accent) }
                 }
             }
+            }
+            if (showButtons) {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
@@ -1603,6 +1615,7 @@ private fun BottomPanel(
                 OutlinedButton(onClick = onSaved, shape = RoundedCornerShape(12.dp), contentPadding = pad, modifier = Modifier.weight(1f).height(48.dp)) {
                     Text("Saved", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink, maxLines = 1)
                 }
+            }
             }
         }
     }

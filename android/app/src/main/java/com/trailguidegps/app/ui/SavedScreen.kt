@@ -77,9 +77,25 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
+/**
+ * Where the Saved screen was left: its tab, open folder, search, area filter and how far each
+ * list was scrolled. Kept while the app is open, so coming back from "Show on map" lands on
+ * the same spot.
+ */
+class SavedUiState {
+    val tab = mutableIntStateOf(0)
+    val openFolder = mutableStateOf<String?>(null)
+    val query = mutableStateOf("")
+    val areaFilter = mutableStateOf<String?>(null)
+    private val lists = HashMap<String, androidx.compose.foundation.lazy.LazyListState>()
+    /** The scroll position of one list, by a name for it. */
+    fun list(key: String) = lists.getOrPut(key) { androidx.compose.foundation.lazy.LazyListState() }
+}
+
 /** Your waypoints and tracks, with show-on-map, rename, delete, and GPX import/export. */
 @Composable
 fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint) -> Unit) {
+    val ui = vm.savedUi
     val context = LocalContext.current
     val waypoints by vm.waypoints.items.collectAsStateWithLifecycle()
     val notes by vm.trailNotes.items.collectAsStateWithLifecycle()
@@ -96,18 +112,18 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     var waterFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     val waterNotes by vm.waterNotes.notes.collectAsStateWithLifecycle()
     val fix by vm.tracker.fix.collectAsStateWithLifecycle()
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by ui.tab
     var renaming by remember { mutableStateOf<TrackSummary?>(null) }
     var deleting by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
-    var openFolder by rememberSaveable { mutableStateOf<String?>(null) }
+    var openFolder by ui.openFolder
     var moving by remember { mutableStateOf<Pair<String, String>?>(null) } // item key, item name
     var adding by remember { mutableStateOf<String?>(null) } // folder id
     var naming by remember { mutableStateOf(false) }
     var renamingFolder by remember { mutableStateOf<com.trailguidegps.app.data.Folder?>(null) }
     // Search, sort and the area filter. The sort is remembered.
     val areas by vm.areas.collectAsStateWithLifecycle()
-    var query by rememberSaveable { mutableStateOf("") }
-    var areaFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var query by ui.query
+    var areaFilter by ui.areaFilter
     val savedPrefs = remember { context.getSharedPreferences("saved", android.content.Context.MODE_PRIVATE) }
     var sort by remember { mutableStateOf(runCatching { SavedSort.valueOf(savedPrefs.getString("sort", null) ?: "NEWEST") }.getOrDefault(SavedSort.NEWEST)) }
     val filtering = query.isNotBlank() || areaFilter != null
@@ -273,7 +289,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 Empty("Empty folder", "Tap ⋮ → Add items, or choose this folder when you save a route, track or waypoint.")
                 Spacer(Modifier.weight(1f))
             } else {
-                LazyColumn(Modifier.weight(1f)) {
+                LazyColumn(Modifier.weight(1f), state = ui.list("folder:$openFolder")) {
                     if (fRoutes.isNotEmpty()) { item { Section("Routes") }; items(fRoutes, key = { "r" + it.id }) { RouteItem(it, true) } }
                     if (fTracks.isNotEmpty()) { item { Section("Tracks") }; items(fTracks, key = { "t" + it.id }) { TrackItem(it, true) } }
                     if (fWps.isNotEmpty()) { item { Section("Waypoints") }; items(fWps, key = { "w" + it.id }) { WaypointItem(it, true) } }
@@ -355,7 +371,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
         }
 
         when (tab) {
-            0 -> LazyColumn(Modifier.weight(1f)) {
+            0 -> LazyColumn(Modifier.weight(1f), state = ui.list("list1")) {
                 item {
                     TextButton(onClick = { naming = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
                         Text("+ New folder", color = TG.Accent, fontWeight = FontWeight.SemiBold)
@@ -398,7 +414,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             1 -> if (routes.isEmpty()) {
                 Empty("No routes yet", "Tap Route on the map, then tap along the trails to plan one. It works offline.")
                 Spacer(Modifier.weight(1f))
-            } else LazyColumn(Modifier.weight(1f)) {
+            } else LazyColumn(Modifier.weight(1f), state = ui.list("list2")) {
                 item {
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${shownRoutes.size} of ${routes.size} on the map · tap the eye to choose", fontSize = 12.sp, color = TG.Muted,
@@ -413,18 +429,18 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
             2 -> if (tracks.isEmpty()) {
                 Empty("No tracks yet", "Tap Record on the map to record your hike. It keeps recording with the screen off.")
                 Spacer(Modifier.weight(1f))
-            } else LazyColumn(Modifier.weight(1f)) { items(shownT, key = { it.id }) { TrackItem(it, false) } }
+            } else LazyColumn(Modifier.weight(1f), state = ui.list("list3")) { items(shownT, key = { it.id }) { TrackItem(it, false) } }
             4 -> if (notes.isEmpty()) {
                 Empty("No trail notes yet", "Tap Note on the map panel to note conditions where you are, or Trail note on any place's card. " +
                     "Notes can have photos and go in trip folders.")
                 Spacer(Modifier.weight(1f))
-            } else LazyColumn(Modifier.weight(1f)) {
+            } else LazyColumn(Modifier.weight(1f), state = ui.list("list4")) {
                 items(shownN, key = { it.id }) { NoteItem(it, false) }
             }
             else -> if (waypoints.isEmpty()) {
                 Empty("No waypoints yet", "Tap Pin on the map to mark where you are, or long-press anywhere on the map.")
                 Spacer(Modifier.weight(1f))
-            } else LazyColumn(Modifier.weight(1f)) {
+            } else LazyColumn(Modifier.weight(1f), state = ui.list("list5")) {
                 items(shownW, key = { it.id }) { WaypointItem(it, false) }
             }
         }
