@@ -108,6 +108,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     var recoloring by remember { mutableStateOf<RouteSummary?>(null) }
     var tripPlanFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var watchFor by remember { mutableStateOf<String?>(null) }
+    var printFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var notesFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var datesFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var waterFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
@@ -211,6 +212,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 onMove = { moving = FolderStore.routeKey(r.id) to r.name },
                 onExport = { share(r.name, emptyList(), emptyList(), listOf(r.id)) },
                 onWatch = { watchFor = r.id },
+                onPrint = { printFor = vm.routes.load(r.id) },
                 onDelete = { deleting = r.name to { vm.deleteRoute(r.id); vm.folders.put(FolderStore.routeKey(r.id), null) } },
             )
             HorizontalDivider(color = TG.Line)
@@ -512,6 +514,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
 
     tripPlanFor?.let { r -> TripPlanDialog(vm, r) { tripPlanFor = null } }
     watchFor?.let { id -> SendToWatchDialog(vm, id) { watchFor = null } }
+    printFor?.let { r -> PrintMapDialog(vm, r) { printFor = null } }
     datesFor?.let { r ->
         TripDatesDialog(r, pace, onSave = { a, b -> vm.setTripDates(r.id, a, b); datesFor = null }, onDismiss = { datesFor = null })
     }
@@ -660,7 +663,7 @@ private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?, area: String?,
     onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onDates: () -> Unit, onOutBack: () -> Unit, onTripPlan: () -> Unit,
     onWater: () -> Unit, onReverse: () -> Unit, onShareApp: () -> Unit,
-    onMove: () -> Unit, onExport: () -> Unit, onWatch: () -> Unit, onDelete: () -> Unit,
+    onMove: () -> Unit, onExport: () -> Unit, onWatch: () -> Unit, onPrint: () -> Unit, onDelete: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 22.dp, height = 4.dp).background(routeColor(r.color), RoundedCornerShape(2.dp)))
@@ -701,6 +704,7 @@ private fun RouteRow(
             "Trip dates" to onDates,
             (if (r.outAndBack) "Make one way (drop the way back)" else "Make out & back (same way back)") to onOutBack,
             "Trip plan (PDF)" to onTripPlan,
+            "Print a map to scale" to onPrint,
             "Move to folder" to onMove,
             "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport,
             "Send to watch (Garmin, COROS…)" to onWatch,

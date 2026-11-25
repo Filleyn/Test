@@ -38,6 +38,8 @@ import java.util.Locale
 /** Fill in a trip plan for a route, then share it as a PDF by email or text. */
 @Composable
 fun TripPlanDialog(vm: AppViewModel, route: SavedRoute, onDismiss: () -> Unit) {
+    var printing by remember { mutableStateOf(false) }
+    if (printing) { PrintMapDialog(vm, route) { printing = false }; return }
     val context = LocalContext.current
     val saved = remember { TripForm.remembered(context) }
     val pace = vm.pace.value
@@ -97,6 +99,9 @@ fun TripPlanDialog(vm: AppViewModel, route: SavedRoute, onDismiss: () -> Unit) {
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes: camp plans, gear, alternate route") },
                     minLines = 2, modifier = Modifier.fillMaxWidth())
                 if (busy) Text("Making the PDF…", fontSize = 13.sp, color = TG.Muted, modifier = Modifier.padding(top = 4.dp))
+                TextButton(onClick = { printing = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                    Text("Also print a topo map of the route to scale", color = TG.Accent, fontSize = 14.sp)
+                }
             }
         },
         confirmButton = {

@@ -595,6 +595,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** A topo map of a route at a true scale, as a PDF; [done] gets the file and its share link, or an error. */
+    fun printMap(route: SavedRoute, scale: com.trailguidegps.app.data.PrintPlan.Scale, onProgress: (Int, Int) -> Unit,
+                 done: (Pair<java.io.File, android.net.Uri>?, String?) -> Unit) {
+        val app = getApplication<Application>()
+        val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
+        val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
+        val f = java.io.File(dir, "Map ${scale.label.replace(":", "-").replace(",", "")} - $safe.pdf")
+        com.trailguidegps.app.map.PrintMap.make(app, stores, route, scale, f, onProgress) { error ->
+            if (error != null) done(null, error)
+            else done(f to androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f), null)
+        }
+    }
+
     // ---- Backup, restore and GPX in and out (the work is in DataTransfer) ----
 
     private val transfer by lazy {
