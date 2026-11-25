@@ -40,7 +40,12 @@ object PrintMap {
     /** Map points per paper point: a little more than 1 so the map draws at a more detailed zoom with print-size labels. */
     private const val DETAIL = 1.35
     private const val RATIO = 1.7f
-    private var active: MapSnapshotter? = null
+    /**
+     * One map renderer for all printing, reused page after page. A new renderer per page piles up
+     * native memory until the garbage collector frees the old ones, which can crash the app.
+     */
+    private var shooter: MapSnapshotter? = null
+    private var shooterStyle: String? = null
 
     fun make(context: Context, stores: List<MapStore>, route: SavedRoute, scale: PrintPlan.Scale, out: File,
              progress: (Int, Int) -> Unit, done: (String?) -> Unit) {
@@ -77,7 +82,7 @@ object PrintMap {
             val hPx = PrintPlan.MAP_H * DETAIL
             fun render(zoom: Double, retried: Boolean) {
                 val center = LatLng(p.lat, p.lon)
-                snapshot(context, style, wPx.roundToInt(), hPx.roundToInt(), CameraPosition.Builder().target(center).zoom(zoom).build(), null, center) { snap ->
+                snapshot(context, style, wPx.roundToInt(), hPx.roundToInt(), CameraPosition.Builder().target(center).zoom(zoom).build(), center) { snap ->
                     if (snap == null) { finish("Couldn't draw page $i of the map."); return@snapshot }
                     // Check the scale: ground across the middle of the picture against what the page should cover.
                     val bw = snap.bitmap.width.toFloat(); val bh = snap.bitmap.height.toFloat()
@@ -85,9 +90,10 @@ object PrintMap {
                     val right = snap.toLL(bw, bh / 2)
                     val across = Geo.distanceM(left.latitude, left.longitude, right.latitude, right.longitude)
                     val off = across / p.widthM
-                    if (!retried && abs(off - 1) > 0.03 && off > 0) {
+                    if (!retried && abs(off - 1) > 0.03 && off in 0.4..2.5 && zoomFix == 0.0) {
                         zoomFix += ln(off) / ln(2.0)
-                        render(zoom + ln(off) / ln(2.0), true)
+                        // After this callback returns, so the renderer is free to start again.
+                        main.post { render(zoom + ln(off) / ln(2.0), true) }
                         return@snapshot
                     }
                     val bmp = snap.bitmap.copy(Bitmap.Config.ARGB_8888, true)
@@ -119,25 +125,27 @@ object PrintMap {
     /** A finished map picture, with lat/lon → bitmap pixel and bitmap pixel → lat/lon. */
     private class Shot(val bitmap: Bitmap, val toPx: (Double, Double) -> PointF, val toLL: (Float, Float) -> LatLng)
 
-    /** One map picture centred on [center], or null after a failure or 40 s. */
-    private fun snapshot(context: Context, style: String, w: Int, h: Int, camera: CameraPosition?, region: LatLngBounds?,
+    /** One map picture centred on [center], or null after a failure or 40 s. Must be called on the main thread. */
+    private fun snapshot(context: Context, style: String, w: Int, h: Int, camera: CameraPosition,
                          center: LatLng, done: (Shot?) -> Unit) {
-        val opts = MapSnapshotter.Options(w, h).withStyleBuilder(org.maplibre.android.maps.Style.Builder().fromJson(style))
-            .withPixelRatio(RATIO).withLogo(false)
-        if (camera != null) opts.withCameraPosition(camera)
-        if (region != null) opts.withRegion(region)
-        val snap = MapSnapshotter(context, opts)
-        active = snap
+        val reuse = shooter
+        val snap = if (reuse == null) {
+            MapSnapshotter(context.applicationContext, MapSnapshotter.Options(w, h)
+                .withStyleBuilder(org.maplibre.android.maps.Style.Builder().fromJson(style))
+                .withPixelRatio(RATIO).withLogo(false).withCameraPosition(camera)).also { shooter = it; shooterStyle = style }
+        } else reuse.apply {
+            if (shooterStyle != style) { setStyleJson(style); shooterStyle = style }
+            setSize(w, h)
+            setCameraPosition(camera)
+        }
         var finished = false
         Handler(Looper.getMainLooper()).postDelayed({ if (!finished) { finished = true; runCatching { snap.cancel() }; done(null) } }, 40_000)
         snap.start({ s ->
             if (finished) return@start
             finished = true
-            // pixelForLatLng may answer in map points rather than bitmap pixels; check against the known centre.
-            val mid = s.pixelForLatLng(center)
-            val k = if (abs(mid.x * RATIO - s.bitmap.width / 2f) < abs(mid.x - s.bitmap.width / 2f)) RATIO else 1f
-            done(Shot(s.bitmap, { lat, lon -> s.pixelForLatLng(LatLng(lat, lon)).let { PointF(it.x * k, it.y * k) } },
-                { x, y -> s.latLngForPixel(PointF(x / k, y / k)) }))
+            // MapLibre: pixelForLatLng answers in bitmap pixels; latLngForPixel takes map points (pixels / pixel ratio).
+            done(Shot(s.bitmap, { lat, lon -> s.pixelForLatLng(LatLng(lat, lon)) },
+                { x, y -> s.latLngForPixel(PointF(x / RATIO, y / RATIO)) }))
         }, { _ -> if (!finished) { finished = true; done(null) } })
     }
 
@@ -270,7 +278,11 @@ object PrintMap {
         val raw = runCatching { b.build() }.getOrNull() ?: run { done(null); return }
         val padLat = (raw.latitudeNorth - raw.latitudeSouth) * 0.04; val padLon = (raw.longitudeEast - raw.longitudeWest) * 0.04
         val region = LatLngBounds.from(raw.latitudeNorth + padLat, raw.longitudeEast + padLon, raw.latitudeSouth - padLat, raw.longitudeWest - padLon)
-        snapshot(context, style, PrintPlan.MAP_W, 520, null, region, region.center) { snap ->
+        val c = region.center
+        val wideM = (region.longitudeEast - region.longitudeWest) * 111_320.0 * kotlin.math.cos(Math.toRadians(c.latitude))
+        val tallM = (region.latitudeNorth - region.latitudeSouth) * 110_574.0
+        val zoom = minOf(PrintPlan.zoomFor(c.latitude, wideM, PrintPlan.MAP_W.toDouble()), PrintPlan.zoomFor(c.latitude, tallM, 520.0))
+        snapshot(context, style, PrintPlan.MAP_W, 520, CameraPosition.Builder().target(c).zoom(zoom).build(), c) { snap ->
             if (snap == null) { done(null); return@snapshot }
             val px = snap.toPx
             val bmp = snap.bitmap.copy(Bitmap.Config.ARGB_8888, true)
