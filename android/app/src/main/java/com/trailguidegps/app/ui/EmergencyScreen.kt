@@ -174,6 +174,13 @@ fun EmergencyScreen(vm: AppViewModel, onClose: () -> Unit) {
                 modifier = Modifier.weight(1f).height(48.dp),
             ) { Text("Copy", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
         }
+        OutlinedButton(
+            onClick = { vm.openCheckIn() },
+            border = BorderStroke(1.dp, Color(0xFF4A514D)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) { Text("Check in with my contacts", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
         Text(
             "No bars? 911 can connect through any carrier's tower. Try higher ground. Some phones can text 911 by satellite with no signal; not all can, so check yours before a trip.",
             fontSize = 13.sp, color = TG.NightMuted, lineHeight = 18.sp,

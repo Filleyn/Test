@@ -37,9 +37,16 @@ import org.maplibre.android.MapLibre
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
 
+    /** The check-in reminder was tapped while the app was already open. */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(com.trailguidegps.app.record.CheckInReminder.EXTRA_OPEN, false)) vm.openCheckIn()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.trailguidegps.app.data.CrashLog.install(this)
+        if (intent?.getBooleanExtra(com.trailguidegps.app.record.CheckInReminder.EXTRA_OPEN, false) == true) vm.openCheckIn()
         com.trailguidegps.app.data.CrashLog.checkLastExit(this)
         MapLibre.getInstance(this)
         runCatching { com.trailguidegps.app.map.MapHttp.install() }
@@ -170,6 +177,8 @@ class MainActivity : ComponentActivity() {
                     })
                     if (showSatellite) com.trailguidegps.app.ui.SatelliteScreen(vm, onClose = { showSatellite = false })
                     if (showEmergency) EmergencyScreen(vm, onClose = { showEmergency = false })
+                    val checkInOpen by vm.checkInOpen.collectAsStateWithLifecycle()
+                    if (checkInOpen) com.trailguidegps.app.ui.CheckInDialog(vm) { vm.closeCheckIn() }
                     afterBatteryAsk?.let { then ->
                         androidx.compose.material3.AlertDialog(
                             onDismissRequest = {},

@@ -33,6 +33,9 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".record.CheckInReminder"
+            android:exported="false" />
         <service
             android:name=".record.TrackRecordingService"
             android:exported="false"

@@ -105,6 +105,7 @@ fun TripPlanDialog(vm: AppViewModel, route: SavedRoute, onDismiss: () -> Unit) {
                 val form = TripForm(party.trim(), phones.trim(), startAt, backBy, alarmAt, vehicle.trim(), parkedAt.trim(), notes.trim())
                 // The times you settle on here become the route's trip dates.
                 if (startAt != route.tripStart || backBy != route.tripEnd) vm.setTripDates(route.id, startAt, backBy)
+                vm.setCheckInPlan(backBy, alarmAt)
                 vm.makeTripPlan(route, form) { uri, subject, body ->
                     ShareFile.send(context, uri, "application/pdf", "Send trip plan", subject, body)
                     busy = false

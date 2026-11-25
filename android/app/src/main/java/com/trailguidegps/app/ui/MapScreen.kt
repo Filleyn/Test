@@ -938,6 +938,7 @@ fun MapScreen(
                 onReverse = { id -> vm.reverseRoute(id) },
                 onPeaks = { name, la, lo -> peaksFor = Triple(name, la, lo) },
                 onWaysOut = { name, la, lo -> waysOutFor = Triple(name, la, lo) },
+                onCheckIn = { vm.openCheckIn() },
                 onWeather = { name, la, lo ->
                     weatherFor = Triple("place:%.3f,%.3f".format(java.util.Locale.US, la, lo), name, listOf(Triple(name, la, lo)))
                 },
@@ -1226,6 +1227,7 @@ private fun BottomPanel(
     onPeaks: (String, Double, Double) -> Unit,
     onWeather: (String, Double, Double) -> Unit,
     onWaysOut: (String, Double, Double) -> Unit = { _, _, _ -> },
+    onCheckIn: () -> Unit = {},
     onDays: (SavedRoute) -> Unit,
     onRouteWeather: (SavedRoute) -> Unit,
     tripVm: AppViewModel,
@@ -1420,7 +1422,10 @@ private fun BottomPanel(
                     com.trailguidegps.app.data.BatteryEstimate.line(recording.batteryPct, com.trailguidegps.app.data.BatteryEstimate.now(appContext),
                         System.currentTimeMillis() - recording.batteryAtMs)
                 }?.let { Text(it, fontSize = 12.sp, color = TG.Muted) }
-                Spacer(Modifier.height(12.dp))
+                TextButton(onClick = onCheckIn, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                    Text("Check in with someone at home", color = TG.Accent, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = { onPause(!recording.paused) }, shape = RoundedCornerShape(12.dp), modifier = Modifier.weight(1f).height(48.dp)) {
                         Text(if (recording.paused) "Resume" else "Pause", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TG.Ink)
@@ -1475,7 +1480,7 @@ private fun BottomPanel(
                 // From where you are now, or failing a fix, from the nearest point on the route.
                 val here = fix?.let { it.lat to it.lon } ?: f.nearest?.let { it[0] to it[1] }
                 FollowPanel(f, pace, onStop = onStopFollowing, modifier = Modifier.padding(top = 8.dp),
-                    onWaysOut = here?.let { (la, lo) -> { onWaysOut("where you are", la, lo) } })
+                    onWaysOut = here?.let { (la, lo) -> { onWaysOut("where you are", la, lo) } }, onCheckIn = onCheckIn)
             }
             shownRoute?.takeIf { following == null }?.let { r ->
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {

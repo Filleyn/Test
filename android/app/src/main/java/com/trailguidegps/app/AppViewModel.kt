@@ -165,6 +165,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
     fun messageShown() { _message.value = null }
+    // ---- Check-ins ----
+    val checkIns = com.trailguidegps.app.data.CheckInStore(app)
+    private val _checkInOpen = MutableStateFlow(false)
+    val checkInOpen: StateFlow<Boolean> = _checkInOpen.asStateFlow()
+    fun openCheckIn() { _checkInOpen.value = true }
+    fun closeCheckIn() { _checkInOpen.value = false }
+
+    /** A trip plan was made: remember its times and remind at the planned out time. */
+    fun setCheckInPlan(backBy: Long, callBy: Long) {
+        checkIns.setPlan(backBy, callBy)
+        com.trailguidegps.app.record.CheckInReminder.schedule(getApplication<Application>(), backBy)
+    }
+
+    /** "Out safely" was sent: no more reminder. */
+    fun tripFinished() {
+        checkIns.clearPlan()
+        com.trailguidegps.app.record.CheckInReminder.cancel(getApplication<Application>())
+    }
+
+    init {
+        // Alarms don't survive a phone restart: set the reminder again if the trip's still ahead.
+        com.trailguidegps.app.record.CheckInReminder.schedule(app, checkIns.backBy)
+    }
+
     /** A short message at the bottom of the map. */
     fun showMessage(text: String) { _message.value = text }
 
