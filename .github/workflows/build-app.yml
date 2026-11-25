@@ -69,7 +69,18 @@ jobs:
         run: |
           exec > >(tee -a "$LOG") 2>&1
           # Every test in these packages runs, so a new test file is picked up without listing it here.
-          gradle --no-daemon :app:testDebugUnitTest --tests 'com.trailguidegps.app.geo.*' --tests 'com.trailguidegps.app.data.*' --tests 'com.trailguidegps.app.route.*' --tests 'com.trailguidegps.app.record.*'
+          TESTS="--tests com.trailguidegps.app.geo.* --tests com.trailguidegps.app.data.* --tests com.trailguidegps.app.route.* --tests com.trailguidegps.app.record.*"
+          # Robolectric downloads its Android library from Maven on first use; when that download
+          # drops, every Robolectric test fails at once. Retry once in that case only.
+          if ! gradle --no-daemon :app:testDebugUnitTest $TESTS; then
+            if grep -q "MavenArtifactFetcher" "$LOG"; then
+              echo "Robolectric's download failed; trying the tests once more."
+              sleep 20
+              gradle --no-daemon :app:testDebugUnitTest $TESTS
+            else
+              exit 1
+            fi
+          fi
 
       - name: Build APK
         working-directory: android
