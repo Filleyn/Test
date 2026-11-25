@@ -103,6 +103,31 @@ class DataTransfer(
         }
     }
 
+    /** A route as a GPX course file for a watch app, with elevations from the route's profile. Null if it can't be written. */
+    fun watchCourse(routeId: String): Pair<String, android.net.Uri>? = runCatching {
+        val r = routes.load(routeId) ?: return null
+        val prof = r.stats.profile
+        // Elevation at each point, by its distance along the route.
+        var along = 0.0
+        val eles = r.coords.mapIndexed { i, c ->
+            if (i > 0) { val p = r.coords[i - 1]; along += com.trailguidegps.app.geo.Geo.distanceM(p[0], p[1], c[0], c[1]) }
+            eleAt(prof, along)
+        }
+        val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
+        val safe = r.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
+        val file = java.io.File(dir, "$safe.gpx")
+        file.writeText(Gpx.course(r.name, r.coords, eles, r.notes))
+        r.name to androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", file)
+    }.getOrNull()
+
+    private fun eleAt(profile: List<Pair<Double, Double>>, m: Double): Double? {
+        if (profile.isEmpty()) return null
+        val i = profile.indexOfFirst { it.first >= m }
+        if (i <= 0) return if (i == 0) profile[0].second else profile.last().second
+        val (d0, e0) = profile[i - 1]; val (d1, e1) = profile[i]
+        return if (d1 > d0) e0 + (e1 - e0) * (m - d0) / (d1 - d0) else e1
+    }
+
     /** Restores a backup file, adding to what's already on the phone. */
     fun restore(uri: android.net.Uri) {
         scope.launch {

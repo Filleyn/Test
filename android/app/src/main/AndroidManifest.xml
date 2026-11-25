@@ -68,5 +68,8 @@
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="smsto" />
         </intent>
+        <!-- Watch apps a route can be sent to as a course. -->
+        <package android:name="com.garmin.android.apps.connectmobile" />
+        <package android:name="com.garmin.android.apps.explore" />
     </queries>
 </manifest>

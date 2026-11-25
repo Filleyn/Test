@@ -60,6 +60,26 @@ object Gpx {
         return sb.toString()
     }
 
+    /**
+     * A route as a course for a watch: one track (watches import tracks as courses more reliably
+     * than GPX routes), with elevation when known.
+     */
+    fun course(name: String, coords: List<DoubleArray>, elevations: List<Double?> = emptyList(), notes: String = ""): String {
+        val sb = StringBuilder()
+        sb.append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
+        sb.append("""<gpx version="1.1" creator="TrailGuide GPS" xmlns="http://www.topografix.com/GPX/1/1">""").append('\n')
+        sb.append("  <trk><name>${esc(name)}</name>")
+        if (notes.isNotBlank()) sb.append("<desc>${esc(notes)}</desc>")
+        sb.append("<trkseg>\n")
+        coords.forEachIndexed { i, c ->
+            sb.append("""    <trkpt lat="${c[0]}" lon="${c[1]}">""")
+            elevations.getOrNull(i)?.let { sb.append("<ele>${"%.1f".format(Locale.US, it)}</ele>") }
+            sb.append("</trkpt>\n")
+        }
+        sb.append("  </trkseg></trk>\n</gpx>\n")
+        return sb.toString()
+    }
+
     /** Reads waypoints, tracks and routes. */
     fun read(input: InputStream): Imported {
         val parser = Xml.newPullParser()

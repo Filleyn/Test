@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Straighten
@@ -1547,6 +1548,7 @@ private fun BottomPanel(
                 var editingNotes by remember(r.id) { mutableStateOf(false) }
                 var showChecklist by remember(r.id) { mutableStateOf(false) }
                 var showTurns by remember(r.id) { mutableStateOf(false) }
+                var showWatch by remember(r.id) { mutableStateOf(false) }
                 if (r.notes.isNotBlank()) {
                     Text("Notes: ${r.notes}", fontSize = 12.sp, color = TG.Ink, lineHeight = 16.sp, maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -1574,6 +1576,7 @@ private fun BottomPanel(
                     Action(Icons.Filled.StickyNote2, "Notes") { editingNotes = true },
                     Action(Icons.Filled.CheckCircle, "Checklist") { showChecklist = true },
                     Action(Icons.Filled.Navigation, "Turns") { showTurns = true },
+                    Action(Icons.Filled.Watch, "To watch") { showWatch = true },
                 ), Modifier.padding(top = 4.dp), columns = 6)
                 if (routeOnly) Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show less") { setRouteCompact(true) }.padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center) {
@@ -1581,6 +1584,7 @@ private fun BottomPanel(
                 }
                 if (showTripPlan) TripPlanDialog(tripVm, r) { showTripPlan = false }
                 if (showChecklist) ChecklistDialog(tripVm, r) { showChecklist = false }
+                if (showWatch) SendToWatchDialog(tripVm, r.id) { showWatch = false }
                 if (showTurns) TurnsDialog(tripVm, r, onPick = { la, lo -> showTurns = false; tripVm.focusOn(listOf(la to lo)) }, onDismiss = { showTurns = false })
             }
             shownTrackName?.let { name ->

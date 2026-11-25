@@ -165,6 +165,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
     fun messageShown() { _message.value = null }
+    /** A short message at the bottom of the map. */
+    fun showMessage(text: String) { _message.value = text }
 
     // Recording a track and following a route: the work is in RecordingTools.
     private val recorder = com.trailguidegps.app.record.RecordingTools(app, tracks, com.trailguidegps.app.data.SettingsStore.get(app), { _message.value = it }) { id, pts, folderId ->
@@ -553,6 +555,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun backupFileName() = transfer.backupFileName()
     fun backup(uri: android.net.Uri) = transfer.backup(uri)
     fun shareBackup(onReady: (android.net.Uri) -> Unit) = transfer.shareBackup(onReady)
+    /** A route as a GPX course for a watch app (Garmin Connect and others). */
+    fun watchCourse(routeId: String) = transfer.watchCourse(routeId)
     /** One route as a small file another phone with the app can restore. */
     fun shareRoute(id: String, name: String, onReady: (android.net.Uri) -> Unit) = transfer.shareRoute(id, name, onReady)
     fun restore(uri: android.net.Uri) = transfer.restore(uri)
