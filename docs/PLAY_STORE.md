@@ -24,11 +24,14 @@ As of version 1.5.105 the app targets Android 16 (API 36), which Google Play has
 > • Water sources by mile, with how much to carry each day
 > • A packing checklist suggested from the trip's nights, heat and water
 > • A printable trip plan to leave with someone at home
+> • Print topo maps of a route to scale, with a UTM grid
 >
 > ON THE TRAIL
 > • Record your track with the screen off
 > • Follow a route with progress, time to camp, daylight left and off-route alerts
 > • Ways out: the nearest trailheads and road, measured along trails
+> • Check in by text with people at home; send routes to a Garmin watch
+> • Smoke and air quality layers
 > • Elevation profile, peaks, weather forecasts saved for offline reading
 >
 > YOURS
