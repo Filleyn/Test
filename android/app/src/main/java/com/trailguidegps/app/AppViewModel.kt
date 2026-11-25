@@ -602,9 +602,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
         val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
         val f = java.io.File(dir, "Map ${scale.label.replace(":", "-").replace(",", "")} - $safe.pdf")
-        com.trailguidegps.app.map.PrintMap.make(app, stores, route, scale, f, onProgress) { error ->
-            if (error != null) done(null, error)
-            else done(f to androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f), null)
+        viewModelScope.launch {
+            // Each change of trail, for the overview page.
+            val turns = turnSheet(route).takeIf { it.size >= 2 }?.map { it.line() }.orEmpty()
+            com.trailguidegps.app.map.PrintMap.make(app, stores, route, scale, f, turns, onProgress) { error ->
+                if (error != null) done(null, error)
+                else done(f to androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f), null)
+            }
         }
     }
 

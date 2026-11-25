@@ -17,10 +17,13 @@ import org.maplibre.android.maps.Style
 object MapIcons {
     private const val SIZE_DP = 26f
 
-    fun addAll(context: Context, style: Style) {
+    fun addAll(context: Context, style: Style) = each(context) { name, bmp, sdf -> style.addImage(name, bmp, sdf) }
+
+    /** Every map picture, by name (SDF ones take any colour), for a live map or for the print renderer. */
+    fun each(context: Context, add: (String, Bitmap, Boolean) -> Unit) {
         val d = context.resources.displayMetrics.density
         fun put(name: String, bg: Int, dashed: Boolean = false, glyph: (Canvas, Float, Paint) -> Unit) {
-            style.addImage(name, icon(d, bg, dashed, glyph))
+            add(name, icon(d, bg, dashed, glyph), false)
         }
         // Water: a different symbol for each kind, so a spring, a tap and a creek crossing look different.
         // Seasonal ones ("-s") are paler with a dashed ring.
@@ -43,12 +46,12 @@ object MapIcons {
             c.drawRect(s * 0.30f, s * 0.47f, s * 0.70f, s * 0.53f, dark)
             c.drawRect(s * 0.30f, s * 0.62f, s * 0.58f, s * 0.68f, dark)
         }
-        style.addImage("photo-badge", photoBadge(d))
+        add("photo-badge", photoBadge(d), false)
         // Direction arrows along routes, tinted to each route's color (an SDF image takes any color).
-        style.addImage("route-arrow", arrow(d), true)
-        style.addImage("route-arrow-disc", disc(d), true)
-        style.addImage("camp-disc", campDisc(d), true)
-        style.addImage("camp-tent", tent(d), true)
+        add("route-arrow", arrow(d), true)
+        add("route-arrow-disc", disc(d), true)
+        add("camp-disc", campDisc(d), true)
+        add("camp-tent", tent(d), true)
         put("poi-lookout", 0xFFBF360C.toInt()) { c, s, p -> lookout(c, s, p) }
         put("poi-historic", 0xFF6D4C41.toInt()) { c, s, p -> letters(c, s, p, "H") }
         put("poi-campsite", 0xFFB4491A.toInt()) { c, s, p -> tent(c, s, p) }

@@ -47,12 +47,14 @@ object PrintMap {
     private var shooter: MapSnapshotter? = null
     private var shooterStyle: String? = null
 
-    fun make(context: Context, stores: List<MapStore>, route: SavedRoute, scale: PrintPlan.Scale, out: File,
+    fun make(context: Context, stores: List<MapStore>, route: SavedRoute, scale: PrintPlan.Scale, out: File, turns: List<String>,
              progress: (Int, Int) -> Unit, done: (String?) -> Unit) {
         val pages = PrintPlan.pages(route.coords, scale.ratio)
         if (pages.isEmpty() || stores.isEmpty()) { done("Nothing to print: the route or the maps are missing."); return }
         if (pages.size > PrintPlan.MAX_PAGES) { done("That would be ${pages.size} pages. Try 1:62,500, or split the route."); return }
         val style = styleJson(stores)
+        // A new map set means a new renderer (its pictures are given when it's made).
+        if (shooterStyle != null && shooterStyle != style) { runCatching { shooter?.cancel() }; shooter = null }
         val doc = PdfDocument()
         val main = Handler(Looper.getMainLooper())
         var zoomFix = 0.0   // learned from the first page if the map's zoom scale isn't what's expected
@@ -71,7 +73,7 @@ object PrintMap {
             progress(i, pages.size)
             if (i == 0) {
                 overview(context, style, route, pages, scale) { bmp ->
-                    drawOverviewPage(doc, route, scale, pages, bmp)
+                    drawOverviewPage(doc, route, scale, pages, bmp, turns)
                     bmp?.recycle()
                     main.post { page(1) }
                 }
@@ -108,13 +110,20 @@ object PrintMap {
         page(0)
     }
 
-    /** The offline topo style, without imagery, land-manager colours or online-only layers. */
+    /**
+     * The offline topo style, without imagery, land-manager colours or online-only layers. A
+     * printed page draws at a lower zoom than you'd look at on screen, so labels and place icons
+     * come on 1.5 zoom levels sooner, and trail names come from the trail overview layer (whose
+     * names exist at every zoom) as well as the detailed one.
+     */
     private fun styleJson(stores: List<MapStore>): String {
         val o = org.json.JSONObject(MapStyle.build(stores.map { MapStyle.MapSource(it.region, it.dir) }))
         val layers = o.getJSONArray("layers")
         for (i in 0 until layers.length()) {
             val l = layers.getJSONObject(i)
             val id = l.getString("id")
+            if (l.optString("type") == "symbol" && l.has("minzoom")) l.put("minzoom", (l.getDouble("minzoom") - 1.5).coerceAtLeast(0.0))
+            if (id == "trail-overview-names") l.remove("maxzoom")
             if (listOf("satellite", "land-fill", "fire", "smoke", "aqi").any { id.startsWith(it) }) {
                 l.put("layout", (l.optJSONObject("layout") ?: org.json.JSONObject()).put("visibility", "none"))
             }
@@ -130,11 +139,13 @@ object PrintMap {
                          center: LatLng, done: (Shot?) -> Unit) {
         val reuse = shooter
         val snap = if (reuse == null) {
+            val builder = org.maplibre.android.maps.Style.Builder().fromJson(style)
+            // The trailhead, campsite, water and other place pictures the live map adds as it starts.
+            MapIcons.each(context) { name, bmp, sdf -> builder.withImage(name, bmp, sdf) }
             MapSnapshotter(context.applicationContext, MapSnapshotter.Options(w, h)
-                .withStyleBuilder(org.maplibre.android.maps.Style.Builder().fromJson(style))
+                .withStyleBuilder(builder)
                 .withPixelRatio(RATIO).withLogo(false).withCameraPosition(camera)).also { shooter = it; shooterStyle = style }
         } else reuse.apply {
-            if (shooterStyle != style) { setStyleJson(style); shooterStyle = style }
             setSize(w, h)
             setCameraPosition(camera)
         }
@@ -225,8 +236,17 @@ object PrintMap {
                 c.drawText("${i + 1}", p.x, p.y + 3.6f * u, campText)
             }
         }
-        route.coords.last().let { px(it[0], it[1]) }.let { c.drawCircle(it.x, it.y, 6f * u, fill(Color.WHITE)); c.drawCircle(it.x, it.y, 4.2f * u, fill(Color.rgb(183, 28, 28))) }
-        route.coords.first().let { px(it[0], it[1]) }.let { c.drawCircle(it.x, it.y, 6f * u, fill(Color.WHITE)); c.drawCircle(it.x, it.y, 4.2f * u, fill(Color.rgb(46, 139, 87))) }
+        val first = route.coords.first(); val last = route.coords.last()
+        val loop = Geo.distanceM(first[0], first[1], last[0], last[1]) < 150
+        fun tag(pt: PointF, label: String, color: Int) {
+            val t = text(11f * u, color, bold = true)
+            val h = text(11f * u, Color.WHITE, bold = true).apply { style = Paint.Style.STROKE; strokeWidth = 3.5f * u }
+            c.drawText(label, pt.x + 9 * u, pt.y + 4 * u, h); c.drawText(label, pt.x + 9 * u, pt.y + 4 * u, t)
+        }
+        px(last[0], last[1]).let { c.drawCircle(it.x, it.y, 6f * u, fill(Color.WHITE)); c.drawCircle(it.x, it.y, 4.2f * u, fill(Color.rgb(183, 28, 28)))
+            if (!loop) tag(it, "End", Color.rgb(183, 28, 28)) }
+        px(first[0], first[1]).let { c.drawCircle(it.x, it.y, 6f * u, fill(Color.WHITE)); c.drawCircle(it.x, it.y, 4.2f * u, fill(Color.rgb(46, 139, 87)))
+            tag(it, if (loop) "Start and end" else "Start", Color.rgb(27, 94, 32)) }
     }
 
     private fun header(c: Canvas, route: SavedRoute, right: String) {
@@ -291,6 +311,16 @@ object PrintMap {
             route.coords.forEachIndexed { i, cc -> px(cc[0], cc[1]).let { if (i == 0) path.moveTo(it.x, it.y) else path.lineTo(it.x, it.y) } }
             val color = runCatching { Color.parseColor(route.color) }.getOrDefault(Color.rgb(106, 27, 154))
             c.drawPath(path, stroke(Color.WHITE, 7f)); c.drawPath(path, stroke(color, 4f))
+            route.coords.last().let { px(it[0], it[1]) }.let { c.drawCircle(it.x, it.y, 9f, fill(Color.WHITE)); c.drawCircle(it.x, it.y, 6f, fill(Color.rgb(183, 28, 28))) }
+            route.coords.first().let { px(it[0], it[1]) }.let { c.drawCircle(it.x, it.y, 9f, fill(Color.WHITE)); c.drawCircle(it.x, it.y, 6f, fill(Color.rgb(46, 139, 87))) }
+            val campText = text(15f, color, bold = true, align = Paint.Align.CENTER)
+            route.camps.sortedBy { it.alongM }.forEachIndexed { i, cp ->
+                RouteStore.pointAt(route.coords, cp.alongM)?.let { pt ->
+                    val q = px(pt[0], pt[1])
+                    c.drawCircle(q.x, q.y, 11f, fill(Color.WHITE)); c.drawCircle(q.x, q.y, 11f, stroke(color, 2.5f))
+                    c.drawText("${i + 1}", q.x, q.y + 5f, campText)
+                }
+            }
             val box = stroke(Color.argb(220, 33, 33, 33), 2.4f)
             val num = text(26f, Color.argb(230, 33, 33, 33), bold = true)
             pages.forEach { p ->
@@ -303,7 +333,8 @@ object PrintMap {
         }
     }
 
-    private fun drawOverviewPage(doc: PdfDocument, route: SavedRoute, scale: PrintPlan.Scale, pages: List<PrintPlan.Page>, bmp: Bitmap?) {
+    private fun drawOverviewPage(doc: PdfDocument, route: SavedRoute, scale: PrintPlan.Scale, pages: List<PrintPlan.Page>, bmp: Bitmap?,
+                                 turns: List<String>) {
         val page = doc.startPage(PdfDocument.PageInfo.Builder(PrintPlan.PAGE_W, PrintPlan.PAGE_H, 1).create())
         val c = page.canvas
         header(c, route, "Overview · ${pages.size} map page${if (pages.size == 1) "" else "s"} at ${scale.label}")
@@ -313,19 +344,45 @@ object PrintMap {
             (route.stats.gainM * Geo.FT_PER_M).roundToInt(), (route.stats.lossM * Geo.FT_PER_M).roundToInt()), left, y + 4, text(10f, Color.DKGRAY))
         y += 14
         if (bmp != null) {
-            val h = PrintPlan.MAP_W * bmp.height.toFloat() / bmp.width
-            val rect = RectF(left, y, left + PrintPlan.MAP_W, y + h)
+            // Smaller when there's a trail list to fit under it.
+            val h = minOf(PrintPlan.MAP_W * bmp.height.toFloat() / bmp.width, if (turns.size + route.camps.size > 4) 400f else 520f)
+            val w = h * bmp.width / bmp.height
+            val rect = RectF(left + (PrintPlan.MAP_W - w) / 2, y, left + (PrintPlan.MAP_W + w) / 2, y + h)
             c.drawBitmap(bmp, null, rect, Paint(Paint.FILTER_BITMAP_FLAG))
             c.drawRect(rect, stroke(Color.BLACK, 0.8f))
             y = rect.bottom + 18
         }
-        c.drawText("Map pages", left, y, text(11f, bold = true)); y += 15
         val body = text(9.5f)
-        pages.forEach { p ->
-            if (y > PrintPlan.PAGE_H - PrintPlan.MARGIN - 40) return@forEach
-            c.drawText("Page ${p.n}: miles %.1f to %.1f".format(Locale.US, p.fromM / Geo.M_PER_MI, p.toM / Geo.M_PER_MI), left, y, body); y += 13
+        val bottom = PrintPlan.PAGE_H - PrintPlan.MARGIN - 30f
+        // Two columns: trail by trail on the left; map pages and camps on the right.
+        val colR = left + PrintPlan.MAP_W * 0.62f
+        var yl = y; var yr = y
+        if (turns.isNotEmpty()) {
+            c.drawText("Trail by trail", left, yl, text(11f, bold = true)); yl += 15
+            val shown = turns.take(((bottom - yl) / 13).toInt().coerceAtLeast(1))
+            shown.forEach { line ->
+                val fit = body.breakText(line, true, colR - left - 10, null)
+                c.drawText(if (fit < line.length) line.take(fit - 1) + "…" else line, left, yl, body); yl += 13
+            }
+            if (shown.size < turns.size) { c.drawText("…and ${turns.size - shown.size} more on the trip plan", left, yl, text(8.5f, Color.DKGRAY)); yl += 13 }
         }
-        y += 6
+        val x = if (turns.isNotEmpty()) colR else left
+        c.drawText("Map pages", x, yr, text(11f, bold = true)); yr += 15
+        pages.forEach { p ->
+            if (yr > bottom) return@forEach
+            c.drawText("Page ${p.n}: miles %.1f to %.1f".format(Locale.US, p.fromM / Geo.M_PER_MI, p.toM / Geo.M_PER_MI), x, yr, body); yr += 13
+        }
+        if (route.camps.isNotEmpty()) {
+            yr += 6
+            c.drawText("Camps", x, yr, text(11f, bold = true)); yr += 15
+            route.camps.sortedBy { it.alongM }.forEachIndexed { i, cp ->
+                if (yr > bottom) return@forEachIndexed
+                val line = "${i + 1}. mile %.1f".format(Locale.US, cp.alongM / Geo.M_PER_MI) + (cp.name?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
+                val fit = body.breakText(line, true, PrintPlan.PAGE_W - PrintPlan.MARGIN - x, null)
+                c.drawText(if (fit < line.length) line.take(fit - 1) + "…" else line, x, yr, body); yr += 13
+            }
+        }
+        y = maxOf(yl, yr) + 6
         val note = text(8.5f, Color.DKGRAY)
         listOf(
             "Each page is ${scale.label}: print at actual size (100%) on letter paper for the scale bars and grid to measure true.",
