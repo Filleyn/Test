@@ -1,6 +1,6 @@
 # TrailGuide GPS privacy policy
 
-Last updated: November 10, 2026
+Last updated: November 24, 2026
 
 TrailGuide GPS is an offline hiking map. It has no accounts, no advertising and no analytics, and its developer runs no server that receives your data. What you make in the app stays on your phone unless you choose to send it somewhere.
 
@@ -19,6 +19,7 @@ The app contacts other services only for the things below. Each of these service
 | Downloading or updating maps, and checking for map updates | Which map files are requested | GitHub (github.com, api.github.com) |
 | Getting a weather forecast | The coordinates of the place or route points you asked about, rounded to about 35 ft | U.S. National Weather Service (api.weather.gov) |
 | Opening the map with a connection (at most now and then), or tapping Update on the wildfire layer | A request for current fire perimeters in the states you have downloaded | National Interagency Fire Center data on ArcGIS (services3.arcgis.com) |
+| Turning on the smoke or air quality layer (at most hourly), or making a trip plan | A request for smoke outlines and air quality in the states you have downloaded, or around the route | NOAA satellite smoke analysis (satepsanone.nesdis.noaa.gov) and U.S. EPA AirNow (services.arcgis.com) |
 | Viewing or saving satellite imagery | Which map tiles are requested, which shows the area you are looking at | USGS (basemap.nationalmap.gov) and, in Oregon, Oregon Explorer (imagery.oregonexplorer.info) |
 | Tapping Drive, a web link or an agency page | The place or page you tapped opens in your browser or maps app | Google Maps or the linked website |
 

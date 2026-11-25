@@ -88,6 +88,8 @@ val layerNames = linkedMapOf(
     "roadaccess" to "Forest road access (car, high clearance, 4WD)",
     "burns" to "Past wildfire burn areas (since 2000)",
     "fires" to "Active wildfires (updates when online)",
+    "smoke" to "Smoke seen by satellite (updates when online)",
+    "aqi" to "Air quality, PM2.5 (updates when online)",
 )
 
 private data class Section(val id: String, val title: String, val groups: List<String>)
@@ -97,7 +99,7 @@ private val SECTIONS = listOf(
     Section("trails", "Trails and water", listOf("trails", "trailheads", "water", "notes")),
     Section("places", "Places", listOf("campsites", "peaks", "waterfalls", "shelters", "lookouts", "history", "restrooms", "other")),
     Section("land", "Land and roads", listOf("landmanager", "forests", "wilderness", "roadaccess")),
-    Section("hazards", "Hazards", listOf("burns", "fires")),
+    Section("hazards", "Hazards", listOf("burns", "fires", "smoke", "aqi")),
 )
 
 /** One-tap sets of overlays. The base map stays as it is. */

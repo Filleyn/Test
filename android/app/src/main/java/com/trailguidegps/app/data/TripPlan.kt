@@ -58,7 +58,7 @@ object TripPlan {
 
     /** A short plain-text version for the email body, so the essentials show without opening the PDF. */
     fun body(route: SavedRoute, form: TripForm, pace: Pace, area: String? = null,
-             water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null, gear: String? = null): String {
+             water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null, gear: String? = null, air: String? = null): String {
         val start = route.coords.firstOrNull()
         return buildString {
             appendLine("Here's my trip plan. The PDF attached has the map.")
@@ -79,6 +79,7 @@ object TripPlan {
             appendLine("Distance: %.1f mi, +%,d ft climb, about %s".format(route.stats.distanceM / Geo.M_PER_MI,
                 (route.stats.gainM * Geo.FT_PER_M).roundToInt(), Pace.format(pace.minutes(route.stats.distanceM, route.stats.gainM))))
             water.second?.let { appendLine(it) }
+            air?.let { appendLine(it) }
             if (route.camps.isNotEmpty()) {
                 appendLine()
                 TripDays.days(route, route.camps, pace).forEach { d -> appendLine(dayLine(route, d, water.first[d.day])) }
@@ -115,7 +116,7 @@ object TripPlan {
     /** Writes the PDF. [map] is a snapshot of the route area with the route drawn on it, or null. */
     fun write(out: File, route: SavedRoute, form: TripForm, pace: Pace, map: Bitmap?, area: String? = null,
               water: Pair<Map<Int, String>, String?> = emptyMap<Int, String>() to null, gear: String? = null,
-              turns: List<String> = emptyList()) {
+              turns: List<String> = emptyList(), air: String? = null) {
         val doc = PdfDocument()
         var pageNo = 1
         var page = doc.startPage(PdfDocument.PageInfo.Builder(612, 792, pageNo).create())
@@ -225,6 +226,7 @@ object TripPlan {
         y = block(summary, bold, left, y, width, 2) + 4
         if (route.via.isNotEmpty()) y = block("Via " + route.via.joinToString(" → "), text, left, y, width, 2) + 6
         water.second?.let { y = block("$it $WATER_NOTE", text, left, y, width, 3) + 6 }
+        air?.let { y = block(it, text, left, y, width, 3) + 6 }
 
         // Elevation profile.
         val prof = route.stats.profile

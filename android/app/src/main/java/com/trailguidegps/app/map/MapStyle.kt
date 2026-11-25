@@ -56,11 +56,13 @@ object MapStyle {
         "roadaccess" to listOf("mvum-yearlong", "mvum-seasonal", "rough-roads", LAYER_ROAD_HIT),
         "burns" to listOf(LAYER_BURN_FILL, "burns-line", "burns-labels"),
         "fires" to listOf(LAYER_FIRE_FILL, "fire-line", LAYER_FIRE_POINTS, "fire-labels"),
+        "smoke" to listOf("smoke-fill", "smoke-line"),
+        "aqi" to listOf("aqi-fill"),
         "wilderness" to listOf(LAYER_SPECIAL_FILL, "special-line", "special-line-other", "special-line-labels", "special-point-labels"),
     )
 
     /** Layer groups that start switched off. */
-    val DEFAULT_OFF = setOf("landmanager", "satellite", "slope", "roadaccess", "burns")
+    val DEFAULT_OFF = setOf("landmanager", "satellite", "slope", "roadaccess", "burns", "smoke", "aqi")
 
     // ---- Dark and sunlight versions of the map ----
 
@@ -246,6 +248,8 @@ object MapStyle {
             .put(SRC_MEASURE_POINTS, emptyGeoJson())
             .put(SRC_GOTO, emptyGeoJson())
             .put(SRC_SELECTED, emptyGeoJson())
+            .put(SRC_SMOKE, emptyGeoJson())
+            .put(SRC_AQI, emptyGeoJson())
             .put(SRC_FIRE_PERIMS, emptyGeoJson())
             .put(SRC_FIRE_POINTS, emptyGeoJson())
             .put(SRC_RECORDING, emptyGeoJson())
@@ -570,6 +574,12 @@ object MapStyle {
                 arr("match", arr("get", "role"), "start", "#2E8B57", "end", ROUTE_PURPLE, "#FFFFFF")))
             .put("circle-stroke-color", arr("match", arr("get", "role"), "mid", ROUTE_PURPLE, "#FFFFFF"))
             .put("circle-stroke-width", 3))
+        // Air quality (EPA's category colors) and satellite-seen smoke (grey, darker when heavier), under the fires.
+        layer("aqi-fill", "fill", SRC_AQI, paint = JSONObject().put("fill-opacity", 0.22).put("fill-color",
+            arr("match", arr("get", "gridcode"), 1, "#00E400", 2, "#FFFF00", 3, "#FF7E00", 4, "#FF0000", 5, "#8F3F97", 6, "#7E0023", "#9E9E9E")))
+        layer("smoke-fill", "fill", SRC_SMOKE, paint = JSONObject().put("fill-color", "#5D5D5D")
+            .put("fill-opacity", arr("match", arr("get", "level"), 1, 0.16, 2, 0.28, 3, 0.4, 0.16)))
+        layer("smoke-line", "line", SRC_SMOKE, paint = JSONObject().put("line-color", "#5D5D5D").put("line-width", 1).put("line-opacity", 0.5))
         // Current wildfires (online data, last copy kept): orange areas, flame-red dots.
         layer(LAYER_FIRE_FILL, "fill", SRC_FIRE_PERIMS, paint = JSONObject().put("fill-color", "#E65100").put("fill-opacity", 0.28))
         layer("fire-line", "line", SRC_FIRE_PERIMS, paint = JSONObject().put("line-color", "#B71C1C").put("line-width", 1.8))
@@ -648,6 +658,8 @@ object MapStyle {
     const val SRC_GOTO = "user-goto"
     const val SRC_SELECTED = "user-selected"
     const val SRC_FIRE_PERIMS = "fires-perimeters"
+    const val SRC_SMOKE = "air-smoke"
+    const val SRC_AQI = "air-quality"
     const val SRC_FIRE_POINTS = "fires-points"
     const val LAYER_FIRE_FILL = "fire-fill"
     const val LAYER_FIRE_POINTS = "fire-points"

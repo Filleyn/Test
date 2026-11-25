@@ -344,6 +344,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- Smoke and air quality (online, last copy kept) ----
+
+    val air = com.trailguidegps.app.data.AirStore(app)
+    private val _airStatus = MutableStateFlow<String?>(null)
+    val airStatus: StateFlow<String?> = _airStatus.asStateFlow()
+
+    /** Fetches smoke and air quality if the copy is old (or [force]); quietly does nothing offline. */
+    fun refreshAir(force: Boolean = false) {
+        if (!force && !air.stale()) return
+        viewModelScope.launch {
+            _airStatus.value = "Updating…"
+            val boxes = stores.mapNotNull { it.bbox() }
+            val area = if (boxes.isEmpty()) listOf(-125.5, 41.0, -115.5, 47.0)
+                else listOf(boxes.minOf { it[0] } - 0.5, boxes.minOf { it[1] } - 0.5, boxes.maxOf { it[2] } + 0.5, boxes.maxOf { it[3] } + 0.5)
+            _airStatus.value = runCatching { air.refresh(area) }.fold(
+                onSuccess = { null },
+                onFailure = { if (force) "Couldn't update: no connection?" else null },
+            )
+        }
+    }
+
     // ---- Satellite areas saved for offline use (phase 7) ----
 
     val satellite = com.trailguidegps.app.data.SatelliteStore.get(app)
@@ -549,20 +570,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     runCatching { tripWater(route) }.getOrDefault(emptyMap<Int, String>() to null)
                 }
                 val turns = turnSheet(route).takeIf { it.size >= 2 }?.map { it.line() }.orEmpty()
+                // A fresh look at the air first if there's a connection; the last copy otherwise.
+                if (air.stale()) runCatching {
+                    val b = route.coords
+                    air.refresh(listOf(b.minOf { it[1] } - 0.3, b.minOf { it[0] } - 0.3, b.maxOf { it[1] } + 0.3, b.maxOf { it[0] } + 0.3))
+                }
+                val airLine = withContext(Dispatchers.Default) { com.trailguidegps.app.data.AirStore.routeLine(air.data.value, route.coords) }
                 val gear = runCatching { com.trailguidegps.app.data.Checklist.packedLine(checklistItems(route), checklists.get(route.id)) }.getOrNull()
                 val r = withContext(Dispatchers.IO) {
                     runCatching {
                         val dir = java.io.File(app.cacheDir, "exports").apply { mkdirs() }
                         val safe = route.name.replace(Regex("[^A-Za-z0-9 _.-]"), "").ifBlank { "Route" }
                         val f = java.io.File(dir, "Trip plan - $safe.pdf")
-                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line, water, gear, turns)
+                        com.trailguidegps.app.data.TripPlan.write(f, route, form, _pace.value, bitmap, areaStore.areas.value["r:${route.id}"]?.line, water, gear, turns, airLine)
                         // Shared straight from the app's own folder: no copy is left in Downloads.
                         androidx.core.content.FileProvider.getUriForFile(app, "${app.packageName}.files", f)
                     }
                 }
                 r.onSuccess { uri ->
                     onReady(uri, com.trailguidegps.app.data.TripPlan.subject(route, form),
-                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value, areaStore.areas.value["r:${route.id}"]?.line, water, gear))
+                        com.trailguidegps.app.data.TripPlan.body(route, form, _pace.value, areaStore.areas.value["r:${route.id}"]?.line, water, gear, airLine))
                 }.onFailure { _message.value = "Couldn't make the trip plan: ${it.message}" }
             }
         }

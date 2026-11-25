@@ -570,6 +570,13 @@ fun MapScreen(
     }
     val fireData by vm.fires.data.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refreshFires() }
+    val airData by vm.air.data.collectAsStateWithLifecycle()
+    LaunchedEffect(style, airData) {
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_SMOKE)?.setGeoJson(airData?.smoke ?: com.trailguidegps.app.data.AirStore.EMPTY)
+        style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_AQI)?.setGeoJson(airData?.aqi ?: com.trailguidegps.app.data.AirStore.EMPTY)
+    }
+    // Smoke and air quality are fetched only while one of their layers is on (at most hourly).
+    LaunchedEffect(layerOn["smoke"], layerOn["aqi"]) { if (layerOn["smoke"] == true || layerOn["aqi"] == true) vm.refreshAir() }
     LaunchedEffect(style, fireData) {
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_FIRE_PERIMS)?.setGeoJson(fireData?.perimeters ?: com.trailguidegps.app.data.FireStore.EMPTY)
         style?.getSourceAs<GeoJsonSource>(MapStyle.SRC_FIRE_POINTS)?.setGeoJson(fireData?.points ?: com.trailguidegps.app.data.FireStore.EMPTY)
@@ -1099,6 +1106,29 @@ fun MapScreen(
                     onSection = { id, open -> sectionOpen[id] = open; layerPrefs.edit().putBoolean("sec_$id", open).apply() },
                     firesFooter = {
                         val fStatus by vm.firesStatus.collectAsStateWithLifecycle()
+                        val aStatus by vm.airStatus.collectAsStateWithLifecycle()
+                        // Smoke and air quality fetch only when one of them is on.
+                        val airOn = layerOn["smoke"] == true || layerOn["aqi"] == true
+                        LaunchedEffect(airOn) { if (airOn) vm.refreshAir() }
+                        if (airOn) Column(Modifier.fillMaxWidth().padding(start = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val fmt = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US)
+                                Text(aStatus ?: airData?.let { d ->
+                                    "Air quality (EPA AirNow) as of ${fmt.format(java.util.Date(d.aqiAt))}" +
+                                        (d.smokeDay?.let { "; smoke (NOAA satellite) for $it" } ?: "") + ". Preliminary data."
+                                } ?: "Smoke and air quality: not downloaded yet. Connect to update.",
+                                    fontSize = 12.sp, color = TG.Muted, lineHeight = 16.sp, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { vm.refreshAir(force = true) }) { Text("Update", color = TG.Accent, fontSize = 13.sp) }
+                            }
+                            if (layerOn["aqi"] == true) Row(Modifier.padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                com.trailguidegps.app.data.AirStore.CATEGORIES.forEachIndexed { i, (name, hex) ->
+                                    Box(Modifier.weight(1f).background(Color(android.graphics.Color.parseColor(hex)).copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                                        .padding(vertical = 3.dp), contentAlignment = Alignment.Center) {
+                                        Text(listOf("Good", "Moderate", "Sensitive", "Unhealthy", "Very unh.", "Hazard")[i], fontSize = 9.sp, color = TG.Ink, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
                         Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 fStatus ?: fireData?.let {
