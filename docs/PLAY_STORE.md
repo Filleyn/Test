@@ -120,6 +120,8 @@ The app declares two foreground service types. Each needs a description, the use
 - An annual subscription through Google Play, starting with a free trial (about 14 days) of the full app. No limited free tier at launch.
 - A small permanent free mode (online map, GPS position, one saved route) may be added later if installs suggest people want it. It would need the online map server turned back on.
 - No accounts and no server: the app asks Google Play on the phone whether the subscription is active. It must keep working with no signal.
+- When a subscription ends (decided November 26, 2026), downloaded maps lock until it's renewed, as in Gaia, onX and AllTrails. Two protections: maps lock only after the app has confirmed online that the subscription lapsed, never mid-trip on cached status; and saved routes, tracks and waypoints stay listed and exportable as GPX.
+- Price under consideration: $12.99/yr, or $19.99/yr with a $12.99 introductory first year. Turn on Google Play's grace period and account hold for failed renewals.
 - Build the paywall once the app is in Play's internal testing track, because Play billing can only be tested on an app installed from Play. Builds installed from the GitHub release page stay unlocked for field testing.
 
 ## Map hosting and updates (decided November 11, 2026)
