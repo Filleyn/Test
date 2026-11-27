@@ -108,6 +108,11 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
     var recoloring by remember { mutableStateOf<RouteSummary?>(null) }
     var tripPlanFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var watchFor by remember { mutableStateOf<String?>(null) }
+    var moreFor by remember { mutableStateOf<RouteSummary?>(null) }
+    var daysFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
+    var weatherFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
+    var checklistFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
+    var turnsFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var printFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var notesFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
     var datesFor by remember { mutableStateOf<com.trailguidegps.app.data.SavedRoute?>(null) }
@@ -194,25 +199,7 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
                 onHide = { vm.hideRoute(r.id) },
                 onEdit = { vm.editRoute(r.id); onClose() },
                 onToggleMap = { on -> if (on) vm.addRouteToMap(r.id) else vm.hideRoute(r.id) },
-                onRename = { renamingRoute = r },
-                onColor = { recoloring = r },
-                onNotes = { notesFor = vm.routes.load(r.id) },
-                onDates = { datesFor = vm.routes.load(r.id) },
-                onOutBack = { vm.setRouteOutAndBack(r.id, !r.outAndBack) },
-                onShareApp = {
-                    vm.shareRoute(r.id, r.name) { uri ->
-                        ShareFile.send(context, uri, "application/zip", "Share route", "TrailGuide route: ${r.name}",
-                            "A route from TrailGuide GPS, with its camps, notes, dates and checklist. To add it: open TrailGuide GPS, " +
-                                "go to Settings, choose \"Restore from a backup\" and pick this file.")
-                    }
-                },
-                onTripPlan = { tripPlanFor = vm.routes.load(r.id) },
-                onWater = { waterFor = vm.routes.load(r.id) },
-                onReverse = { vm.reverseRoute(r.id) },
-                onMove = { moving = FolderStore.routeKey(r.id) to r.name },
-                onExport = { share(r.name, emptyList(), emptyList(), listOf(r.id)) },
-                onWatch = { watchFor = r.id },
-                onPrint = { printFor = vm.routes.load(r.id) },
+                onMore = { moreFor = r },
                 onDelete = { deleting = r.name to { vm.deleteRoute(r.id); vm.folders.put(FolderStore.routeKey(r.id), null) } },
             )
             HorizontalDivider(color = TG.Line)
@@ -514,6 +501,30 @@ fun SavedScreen(vm: AppViewModel, onClose: () -> Unit, onEditWaypoint: (Waypoint
 
     tripPlanFor?.let { r -> TripPlanDialog(vm, r) { tripPlanFor = null } }
     watchFor?.let { id -> SendToWatchDialog(vm, id) { watchFor = null } }
+    moreFor?.let { r ->
+        fun full() = vm.routes.load(r.id)
+        RouteActionsSheet(r.name, RouteActions(
+            days = { daysFor = full() }, water = { waterFor = full() }, tripPlan = { tripPlanFor = full() }, edit = { vm.editRoute(r.id); onClose() },
+            weather = { weatherFor = full() }, checklist = { checklistFor = full() }, turns = { turnsFor = full() }, dates = { datesFor = full() },
+            reverse = { vm.reverseRoute(r.id) }, outBack = { vm.setRouteOutAndBack(r.id, !r.outAndBack) }, outAndBack = r.outAndBack,
+            notes = { notesFor = full() }, rename = { renamingRoute = r }, color = { recoloring = r },
+            move = { moving = FolderStore.routeKey(r.id) to r.name },
+            print = { printFor = full() }, watch = { watchFor = r.id }, gpx = { share(r.name, emptyList(), emptyList(), listOf(r.id)) },
+            phone = {
+                vm.shareRoute(r.id, r.name) { uri ->
+                    ShareFile.send(context, uri, "application/zip", "Share route", "TrailGuide route: ${r.name}",
+                        "A route from TrailGuide GPS, with its camps, notes, dates and checklist. To add it: open TrailGuide GPS, " +
+                            "go to Settings, choose \"Restore from a backup\" and pick this file.")
+                }
+            },
+        ), withMain = true) { moreFor = null }
+    }
+    daysFor?.let { r -> TripDaysDialog(vm, r, pace, onDismiss = { daysFor = null }) }
+    weatherFor?.let { r -> WeatherDialog(vm, "route:${r.id}", r.name, vm.weatherSpots(r), onDismiss = { weatherFor = null }) }
+    checklistFor?.let { r -> ChecklistDialog(vm, r) { checklistFor = null } }
+    turnsFor?.let { r ->
+        TurnsDialog(vm, r, onPick = { la, lo -> turnsFor = null; vm.showRoute(r.id); vm.focusOn(listOf(la to lo)); onClose() }, onDismiss = { turnsFor = null })
+    }
     printFor?.let { r -> PrintMapDialog(vm, r) { printFor = null } }
     datesFor?.let { r ->
         TripDatesDialog(r, pace, onSave = { a, b -> vm.setTripDates(r.id, a, b); datesFor = null }, onDismiss = { datesFor = null })
@@ -661,9 +672,8 @@ private fun TrackRow(t: TrackSummary, folderName: String?, area: String?, onShow
 @Composable
 private fun RouteRow(
     r: RouteSummary, pace: Pace, onMap: Boolean, folderName: String?, area: String?,
-    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit, onRename: () -> Unit, onColor: () -> Unit, onNotes: () -> Unit, onDates: () -> Unit, onOutBack: () -> Unit, onTripPlan: () -> Unit,
-    onWater: () -> Unit, onReverse: () -> Unit, onShareApp: () -> Unit,
-    onMove: () -> Unit, onExport: () -> Unit, onWatch: () -> Unit, onPrint: () -> Unit, onDelete: () -> Unit,
+    onShow: () -> Unit, onHide: () -> Unit, onEdit: () -> Unit, onToggleMap: (Boolean) -> Unit,
+    onMore: () -> Unit, onDelete: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onShow).padding(start = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 22.dp, height = 4.dp).background(routeColor(r.color), RoundedCornerShape(2.dp)))
@@ -698,17 +708,8 @@ private fun RouteRow(
             "Show on map" to onShow,
             if (onMap) "Hide from map" to onHide else null,
             "Edit route" to onEdit,
-            "Water along route" to onWater,
-            "Reverse direction" to onReverse,
-            "Route notes" to onNotes,
-            "Trip dates" to onDates,
-            (if (r.outAndBack) "Make one way (drop the way back)" else "Make out & back (same way back)") to onOutBack,
-            "Trip plan (PDF)" to onTripPlan,
-            "Print a map to scale" to onPrint,
-            "Move to folder" to onMove,
-            "Rename" to onRename, "Change color" to onColor, "Export GPX" to onExport,
-            "Send to watch (Garmin, COROS…)" to onWatch,
-            "Share with another TrailGuide phone" to onShareApp, "Delete" to onDelete,
+            "Days, water, trip plan, print and more…" to onMore,
+            "Delete" to onDelete,
         ))
     }
 }

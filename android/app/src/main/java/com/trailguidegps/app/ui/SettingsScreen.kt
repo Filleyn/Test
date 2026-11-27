@@ -78,7 +78,7 @@ fun SettingsScreen(vm: AppViewModel, onClose: () -> Unit, onOpenMaps: () -> Unit
                     Text("Quick tips", fontSize = 16.sp, color = TG.Ink)
                     Text("The short tour shown the first time", fontSize = 12.sp, color = TG.Muted)
                 }
-                TextButton(onClick = { vm.settings.update { it.copy(introSeen = false) }; onClose() }) { Text("Show", color = TG.Accent) }
+                TextButton(onClick = { Hints.reset(context); vm.settings.update { it.copy(introSeen = false) }; onClose() }) { Text("Show", color = TG.Accent) }
             }
             Section("Following a route")
             ToggleRow(

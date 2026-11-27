@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -71,14 +72,30 @@ class ScreenshotTest {
     fun routeActions() {
         compose.setContent {
             Box(Modifier.background(Color.White).padding(16.dp)) {
-                ActionGrid(listOf(
-                    Action(Icons.Filled.WaterDrop, "Water") {}, Action(Icons.Filled.NightsStay, "Days") {},
-                    Action(Icons.Filled.WbSunny, "Weather") {}, Action(Icons.Filled.SwapHoriz, "Reverse") {},
-                    Action(Icons.Filled.Description, "Trip plan") {},
-                ), columns = 5)
+                ActionGrid(sampleActions.main() + Action(Icons.Filled.MoreHoriz, "More") {}, columns = 5)
             }
         }
         compose.onRoot().captureRoboImage(out("route-actions"))
+    }
+
+    private val sampleActions = RouteActions(
+        days = {}, water = {}, tripPlan = {}, edit = {}, weather = {}, checklist = {}, turns = {}, dates = {}, difficulty = {},
+        reverse = {}, outBack = {}, outAndBack = false, notes = {}, rename = {}, color = {}, move = {},
+        print = {}, watch = {}, gpx = {}, phone = {},
+    )
+
+    /** The grouped sheet behind More, as Saved shows it (with the four main actions first). */
+    @Test
+    fun routeActionsMore() {
+        compose.setContent {
+            androidx.compose.foundation.layout.Column(Modifier.background(Color.White).padding(16.dp)) {
+                sampleActions.groups(withMain = true).forEach { (title, list) ->
+                    androidx.compose.material3.Text(title, color = TG.Muted, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                    ActionGrid(list, columns = 4)
+                }
+            }
+        }
+        compose.onRoot().captureRoboImage(out("route-actions-more"))
     }
 
     private fun panel(name: String, selected: AppViewModel.SelectedPlace?, expanded: Boolean) {

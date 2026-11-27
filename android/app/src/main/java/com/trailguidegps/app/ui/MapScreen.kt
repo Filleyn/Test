@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Watch
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Straighten
@@ -296,6 +298,7 @@ fun MapScreen(
                 longPressPoints = if (fromMe) 2 else 1
                 vm.addPlanPoint(latLng.latitude, latLng.longitude)
                 longPressSpot = latLng.latitude to latLng.longitude
+                Hints.markSeen(context, Hints.LONG_PRESS)
                 true
             }
             m.addOnMapClickListener { latLng ->
@@ -1494,11 +1497,18 @@ private fun BottomPanel(
                     daylightLine(fix.lat, fix.lon)?.let { Text(it, fontSize = 13.sp, color = TG.Muted) }
                     placeDescription?.let { Text(it, fontSize = 13.sp, color = TG.Ink, maxLines = 2) }
                     if (selected == null && selectedWaypoint == null && shownRoute == null && goTo == null && following == null) {
-                        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                        androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             PillButton(Icons.Filled.Landscape, "Peaks in view") { onPeaks("your location", fix.lat, fix.lon) }
                             PillButton(Icons.Filled.WbSunny, "Weather") { onWeather("your location", fix.lat, fix.lon) }
                             PillButton(Icons.Filled.StickyNote2, "Note") { onNoteAt(fix.lat, fix.lon) }
+                            PillButton(Icons.Filled.Sms, "Check in") { onCheckIn() }
                         }
+                        val hintCtx = androidx.compose.ui.platform.LocalContext.current
+                        var pressHint by remember { mutableStateOf(!Hints.seen(hintCtx, Hints.LONG_PRESS)) }
+                        if (pressHint) HintRow("Long-press anywhere on the map to plan a route there along the trails.",
+                            onDismiss = { Hints.markSeen(hintCtx, Hints.LONG_PRESS); pressHint = false }, Modifier.padding(top = 8.dp))
                     }
                 }
             }
@@ -1550,7 +1560,7 @@ private fun BottomPanel(
                     Box(Modifier.fillMaxWidth().padding(top = 2.dp)) {
                         Text("Saved", fontSize = 13.sp, color = TG.Accent, modifier = Modifier.align(Alignment.CenterStart)
                             .clickable(onClickLabel = "Open saved items") { onSaved() }.padding(horizontal = 10.dp, vertical = 8.dp))
-                        Text("More ▲", fontSize = 13.sp, color = TG.Accent, modifier = Modifier.align(Alignment.Center)
+                        Text("Route tools ▲", fontSize = 13.sp, color = TG.Accent, modifier = Modifier.align(Alignment.Center)
                             .clickable(onClickLabel = "Show route tools") { setRouteCompact(false) }.padding(horizontal = 16.dp, vertical = 8.dp))
                     }
                     return@Column
@@ -1600,19 +1610,38 @@ private fun BottomPanel(
                     Text("$shownRouteCount routes on the map · tap a line to switch", fontSize = 12.sp, color = TG.Muted, modifier = Modifier.weight(1f))
                     TextButton(onClick = onHideAllRoutes) { Text("Hide all", fontSize = 12.sp, color = TG.Accent) }
                 }
-                ActionGrid(listOf(
-                    Action(Icons.Filled.Info, "Details") { showDifficulty = true },
-                    Action(Icons.Filled.Edit, "Edit") { tripVm.editRoute(r.id) },
-                    Action(Icons.Filled.WaterDrop, "Water") { onWater(r.name, r.coords) },
-                    Action(Icons.Filled.NightsStay, "Days") { onDays(r) },
-                    Action(Icons.Filled.WbSunny, "Weather") { onRouteWeather(r) },
-                    Action(Icons.Filled.SwapHoriz, "Reverse") { onReverse(r.id) },
-                    Action(Icons.Filled.Description, "Trip plan") { showTripPlan = true },
-                    Action(Icons.Filled.StickyNote2, "Notes") { editingNotes = true },
-                    Action(Icons.Filled.CheckCircle, "Checklist") { showChecklist = true },
-                    Action(Icons.Filled.Navigation, "Turns") { showTurns = true },
-                    Action(Icons.Filled.Watch, "To watch") { showWatch = true },
-                ), Modifier.padding(top = 4.dp), columns = 6)
+                var showMore by remember(r.id) { mutableStateOf(false) }
+                var renamingRoute by remember(r.id) { mutableStateOf(false) }
+                var recoloring by remember(r.id) { mutableStateOf(false) }
+                var printing by remember(r.id) { mutableStateOf(false) }
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val actions = RouteActions(
+                    days = { onDays(r) }, water = { onWater(r.name, r.coords) }, tripPlan = { showTripPlan = true }, edit = { tripVm.editRoute(r.id) },
+                    weather = { onRouteWeather(r) }, checklist = { showChecklist = true }, turns = { showTurns = true }, dates = { editingDates = true },
+                    difficulty = { showDifficulty = true },
+                    reverse = { onReverse(r.id) }, outBack = { tripVm.setRouteOutAndBack(r.id, !r.outAndBack) }, outAndBack = r.outAndBack,
+                    notes = { editingNotes = true }, rename = { renamingRoute = true }, color = { recoloring = true },
+                    print = { printing = true }, watch = { showWatch = true },
+                    gpx = { tripVm.exportGpx(r.name, emptyList(), emptyList(), listOf(r.id), emptyList())?.let { ShareFile.send(ctx, it, "application/gpx+xml", "Export GPX") } },
+                    phone = {
+                        tripVm.shareRoute(r.id, r.name) { uri ->
+                            ShareFile.send(ctx, uri, "application/zip", "Share route", "TrailGuide route: ${r.name}",
+                                "A route from TrailGuide GPS, with its camps, notes, dates and checklist. To add it: open TrailGuide GPS, " +
+                                    "go to Settings, choose \"Restore from a backup\" and pick this file.")
+                        }
+                    },
+                )
+                var moreHint by remember { mutableStateOf(!Hints.seen(ctx, Hints.ROUTE_MORE)) }
+                if (moreHint) HintRow("More has weather, the checklist, turns, trip dates, printing and sharing.",
+                    onDismiss = { Hints.markSeen(ctx, Hints.ROUTE_MORE); moreHint = false }, Modifier.padding(top = 6.dp))
+                // The four used most, then More for everything else, grouped.
+                ActionGrid(actions.main() + Action(Icons.Filled.MoreHoriz, "More") {
+                    showMore = true; Hints.markSeen(ctx, Hints.ROUTE_MORE); moreHint = false
+                }, Modifier.padding(top = 4.dp), columns = 5)
+                if (showMore) RouteActionsSheet(r.name, actions, withMain = false) { showMore = false }
+                if (renamingRoute) RouteRenameDialog(tripVm, r.id, r.name) { renamingRoute = false }
+                if (recoloring) RouteColorDialog(tripVm, r.id, r.color) { recoloring = false }
+                if (printing) PrintMapDialog(tripVm, r) { printing = false }
                 if (routeOnly) Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Show less") { setRouteCompact(true) }.padding(vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center) {
                     Text("Less ▼ (more map)", fontSize = 12.sp, color = TG.Accent)
@@ -1777,15 +1806,23 @@ private fun percent(done: Long, total: Long): Int = if (total <= 0) 0 else ((don
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun RoundButton(onClick: () -> Unit, description: String, active: Boolean = false, content: @Composable () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = if (active) TG.Accent else TG.Surface,
-        shadowElevation = 4.dp,
-        modifier = Modifier.size(48.dp),
+    // Press and hold shows what the button does.
+    androidx.compose.material3.TooltipBox(
+        positionProvider = androidx.compose.material3.TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { androidx.compose.material3.PlainTooltip { Text(description) } },
+        state = androidx.compose.material3.rememberTooltipState(),
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().semantics { contentDescription = description }) { content() }
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = if (active) TG.Accent else TG.Surface,
+            shadowElevation = 4.dp,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().semantics { contentDescription = description }) { content() }
+        }
     }
 }
 

@@ -17,6 +17,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.clickable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,6 +96,13 @@ fun TripPlanDialog(vm: AppViewModel, route: SavedRoute, onDismiss: () -> Unit) {
                 TimeRow("Expected back", backBy) { v -> alarmAt += v - backBy; backBy = v }
                 TimeRow("Call for help if no word by", alarmAt) { alarmAt = maxOf(it, backBy) }
                 if (alarmAt <= backBy) Text("Set this later than expected back, to allow for a slow day.", fontSize = 12.sp, color = TG.Warn)
+                // Check-ins: who hears from you on the trail; a reminder comes at the expected-back time.
+                val checkInOpen by vm.checkInOpen.collectAsStateWithLifecycle()
+                val people = remember(checkInOpen) { vm.checkIns.contacts() }
+                Text(if (people.isEmpty()) "Who gets check-ins? Add people to text \"I'm OK\" or \"Out safely\" from the trail."
+                    else "Check-ins go to ${people.joinToString(", ") { it.name.ifBlank { it.number } }} · change",
+                    fontSize = 13.sp, color = TG.Accent, lineHeight = 17.sp,
+                    modifier = Modifier.fillMaxWidth().clickable { vm.openCheckIn() }.padding(vertical = 4.dp))
                 OutlinedTextField(vehicle, { vehicle = it }, label = { Text("Vehicle (color, make, plate)") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(parkedAt, { parkedAt = it }, label = { Text("Parked at (trailhead)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes: camp plans, gear, alternate route") },
