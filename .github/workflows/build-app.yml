@@ -64,18 +64,26 @@ jobs:
             exit 1
           fi
 
+      # Robolectric's Android library (about 150 MB) is downloaded from Maven on first use; keep it
+      # between builds so a flaky download can't fail the tests.
+      - name: Cache Robolectric's Android library
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-4.14.1-sdk34
+
       - name: Unit tests
         working-directory: android
         run: |
           exec > >(tee -a "$LOG") 2>&1
+          set -o pipefail
           # Every test in these packages runs, so a new test file is picked up without listing it here.
           TESTS="--tests com.trailguidegps.app.geo.* --tests com.trailguidegps.app.data.* --tests com.trailguidegps.app.route.* --tests com.trailguidegps.app.record.*"
-          # Robolectric downloads its Android library from Maven on first use; when that download
-          # drops, every Robolectric test fails at once. Retry once in that case only.
-          if ! gradle --no-daemon :app:testDebugUnitTest $TESTS; then
-            if grep -q "MavenArtifactFetcher" "$LOG"; then
+          # When Robolectric's download drops, every Robolectric test fails at once. Retry once in that case only.
+          if ! gradle --no-daemon :app:testDebugUnitTest $TESTS 2>&1 | tee "$RUNNER_TEMP/tests1.txt"; then
+            if grep -q "MavenArtifactFetcher" "$RUNNER_TEMP/tests1.txt"; then
               echo "Robolectric's download failed; trying the tests once more."
-              sleep 20
+              sleep 30
               gradle --no-daemon :app:testDebugUnitTest $TESTS
             else
               exit 1
