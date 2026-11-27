@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1806,12 +1807,11 @@ private fun percent(done: Long, total: Long): Int = if (total <= 0) 0 else ((don
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 private fun RoundButton(onClick: () -> Unit, description: String, active: Boolean = false, content: @Composable () -> Unit) {
     // Press and hold shows what the button does.
     androidx.compose.material3.TooltipBox(
         positionProvider = androidx.compose.material3.TooltipDefaults.rememberPlainTooltipPositionProvider(),
-        tooltip = { androidx.compose.material3.PlainTooltip { Text(description) } },
+        tooltip = { PlainTooltip { Text(description) } },
         state = androidx.compose.material3.rememberTooltipState(),
     ) {
         Surface(
